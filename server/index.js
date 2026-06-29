@@ -14,6 +14,7 @@ async function startServer() {
   const db  = await init();
   const adj = require('./routes/adjustments');
 
+  app.use('/api/consignment', require('./routes/consignment')(db));
   app.use('/api/brands',      require('./routes/brands')(db));
   app.use('/api/products',    require('./routes/products')(db));
   app.use('/api/partners',    require('./routes/partners')(db));

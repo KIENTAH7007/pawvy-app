@@ -178,7 +178,44 @@ function createSchema() {
       notes TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`,
-    `CREATE TABLE IF NOT EXISTS invoices (
+    `CREATE TABLE IF NOT EXISTS consignment_placements (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      partner_id INTEGER NOT NULL REFERENCES partners(id),
+      product_id INTEGER NOT NULL REFERENCES products(id),
+      date DATE NOT NULL,
+      qty INTEGER NOT NULL,
+      unit_cost REAL DEFAULT 0,
+      consignment_price REAL DEFAULT 0,
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS consignment_returns (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      partner_id INTEGER NOT NULL REFERENCES partners(id),
+      product_id INTEGER NOT NULL REFERENCES products(id),
+      date DATE NOT NULL,
+      qty INTEGER NOT NULL,
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS consignment_counts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      partner_id INTEGER NOT NULL REFERENCES partners(id),
+      date DATE NOT NULL,
+      notes TEXT,
+      invoiced INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS consignment_count_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      count_id INTEGER NOT NULL REFERENCES consignment_counts(id) ON DELETE CASCADE,
+      product_id INTEGER NOT NULL REFERENCES products(id),
+      qty_on_hand INTEGER NOT NULL DEFAULT 0,
+      qty_counted INTEGER NOT NULL DEFAULT 0,
+      qty_discrepancy INTEGER NOT NULL DEFAULT 0,
+      consignment_price REAL DEFAULT 0,
+      unit_cost REAL DEFAULT 0
+    )`,
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       invoice_number TEXT UNIQUE NOT NULL,
       type TEXT DEFAULT 'Invoice',
