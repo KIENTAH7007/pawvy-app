@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pawvy — Business Manager</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body, #root { height: 100%; }
+      body { font-family: 'Montserrat', sans-serif; background: #0c1726; color: #f5f2eb; }
+      :root {
+        --navy:       #14213d;
+        --navy-light: #1a2d4f;
+        --navy-card:  #1e3358;
+        --orange:     #f36f4a;
+        --orange-pale:#ef603f;
+        --cream:      #f5f2eb;
+        --cream-60:   rgba(245,242,235,0.6);
+        --cream-30:   rgba(245,242,235,0.3);
+        --cream-10:   rgba(245,242,235,0.1);
+        --cream-05:   rgba(245,242,235,0.05);
+        --border:     rgba(245,242,235,0.1);
+        --radius:     10px;
+      }
+      input, select, textarea, button { font-family: inherit; }
+      a { text-decoration: none; color: inherit; }
+      ::-webkit-scrollbar { width: 6px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: var(--cream-30); border-radius: 3px; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

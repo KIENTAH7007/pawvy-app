@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+client/node_modules/
+
+# Build output (Railway builds this itself)
+client/dist/
+server/public/
+
+# Local database (DO NOT commit your personal data)
+data/pawvy.db
+
+# DO commit the seed database (needed for Railway first deploy)
+!data/seed.db
+
+# Logs
+*.log
+pawvy-log.txt
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
