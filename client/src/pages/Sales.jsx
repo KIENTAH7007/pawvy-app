@@ -46,21 +46,33 @@ export default function Sales() {
     load();
   }
 
-  // Discount amount shown in ledger:
-  // marketplace → platform_fee_amt is a fee (show as "Fee")
-  // others → platform_fee_amt is a discount (show as "Disc")
+  // Build all indicators for the Discount/Fee column
   function discountDisplay(s) {
-    const amt = parseFloat(s.platform_fee_amt||0);
-    if (amt === 0) {
-      const sc = parseFloat(s.shipping_charged||0);
-      return sc > 0 ? { label: '+Ship', amt: sc, color: '#7fc93e' } : null;
+    const items = [];
+    const discAmt = parseFloat(s.platform_fee_amt || 0);
+    const shipCharged = parseFloat(s.shipping_charged || 0);
+    const shipCost = parseFloat(s.shipping_cost || 0);
+
+    if (discAmt > 0) {
+      const isMarket = MARKETPLACE.includes(s.channel);
+      items.push({
+        label: isMarket ? `Fee ${parseFloat(s.platform_fee_pct||0).toFixed(0)}%` : 'Disc',
+        text: `− ${fmt.sgd(discAmt)}`,
+        color: isMarket ? 'var(--cream-30)' : '#fbbf24',
+      });
     }
-    const isMarket = MARKETPLACE.includes(s.channel);
-    return {
-      label: isMarket ? `Fee ${parseFloat(s.platform_fee_pct||0).toFixed(0)}%` : 'Disc',
-      amt,
-      color: isMarket ? 'var(--cream-30)' : '#fbbf24',
-    };
+
+    if (shipCharged > 0) {
+      const shipProfit = shipCharged - shipCost;
+      items.push({
+        label: 'Ship',
+        text: `+ ${fmt.sgd(shipCharged)}`,
+        sub: shipCost > 0 ? `profit ${fmt.sgd(shipProfit)}` : null,
+        color: '#7fc93e',
+      });
+    }
+
+    return items;
   }
 
   return (
@@ -131,7 +143,6 @@ export default function Sales() {
                   </thead>
                   <tbody>
                     {sales.map(s => {
-                      const disc = discountDisplay(s);
                       const isVoided = s.voided === 1;
                       const rowStyle = isVoided
                         ? {borderBottom:'1px solid rgba(245,242,235,.04)',opacity:0.4}
@@ -152,14 +163,21 @@ export default function Sales() {
                           <td style={{padding:'8px 10px',textAlign:'right',color:'var(--cream)'}}>{s.qty}</td>
                           <td style={{padding:'8px 10px',textAlign:'right',color:'var(--cream-60)'}}>{fmt.sgd(s.unit_price)}</td>
                           <td style={{padding:'8px 10px',textAlign:'right'}}>
-                            {disc
-                              ? <span style={{color:disc.color,fontSize:11}}>
-                                  {disc.label !== '+Ship' ? `− ` : '+ '}
-                                  {fmt.sgd(disc.amt)}
-                                  {disc.label && disc.label !== '+Ship' && <span style={{color:'var(--cream-30)',marginLeft:4,fontSize:10}}>{disc.label}</span>}
-                                </span>
-                              : <span style={{color:'var(--cream-30)'}}>—</span>
-                            }
+                            {(() => {
+                              const items = discountDisplay(s);
+                              if (items.length === 0) return <span style={{color:'var(--cream-30)'}}>—</span>;
+                              return (
+                                <div style={{display:'flex',flexDirection:'column',gap:2,alignItems:'flex-end'}}>
+                                  {items.map((item, i) => (
+                                    <span key={i} style={{fontSize:11,color:item.color}}>
+                                      {item.text}
+                                      <span style={{color:'var(--cream-30)',marginLeft:4,fontSize:10}}>{item.label}</span>
+                                      {item.sub && <span style={{color:'var(--cream-30)',marginLeft:4,fontSize:9,display:'block'}}>{item.sub}</span>}
+                                    </span>
+                                  ))}
+                                </div>
+                              );
+                            })()}
                           </td>
                           <td style={{padding:'8px 10px',textAlign:'right',fontWeight:600,color:'var(--cream)'}}>{fmt.sgd(s.revenue)}</td>
                           <td style={{padding:'8px 10px',textAlign:'right',fontWeight:700,color:s.profit>=0?'#7fc93e':'#f87171'}}>{fmt.sgd(s.profit)}</td>

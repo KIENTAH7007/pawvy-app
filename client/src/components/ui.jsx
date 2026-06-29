@@ -75,9 +75,9 @@ export function Badge({ children, color = '#888', textColor }) {
 }
 
 /* ── Input ─────────────────────────────────────────────────────── */
-export function Input({ label, error, ...props }) {
+export function Input({ label, error, style, ...props }) {
   return (
-    <label style={{ display:'flex', flexDirection:'column', gap:5 }}>
+    <label style={{ display:'flex', flexDirection:'column', gap:5, ...style }}>
       {label && <span style={{ fontSize:11, fontWeight:600, color:'var(--cream-60)', letterSpacing:.5, textTransform:'uppercase' }}>{label}</span>}
       <input style={{
         background:'var(--navy-light)', border:`1px solid ${error?'#f87171':'var(--border)'}`,
@@ -90,9 +90,9 @@ export function Input({ label, error, ...props }) {
 }
 
 /* ── Select ────────────────────────────────────────────────────── */
-export function Select({ label, children, error, ...props }) {
+export function Select({ label, children, error, style, ...props }) {
   return (
-    <label style={{ display:'flex', flexDirection:'column', gap:5 }}>
+    <label style={{ display:'flex', flexDirection:'column', gap:5, ...style }}>
       {label && <span style={{ fontSize:11, fontWeight:600, color:'var(--cream-60)', letterSpacing:.5, textTransform:'uppercase' }}>{label}</span>}
       <select style={{
         background:'var(--navy-light)', border:`1px solid ${error?'#f87171':'var(--border)'}`,
