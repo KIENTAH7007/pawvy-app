@@ -1,10 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ClipboardList, Plus, RotateCcw, Search, Trash2, CheckCircle, AlertCircle, FileText } from 'lucide-react';
+import { Plus, RotateCcw, Search, Trash2, CheckCircle, AlertCircle, FileText, Archive } from 'lucide-react';
 import { consignmentApi, productsApi } from '../api';
 import { Page, Card, Select, Input, Btn, Badge, Modal } from '../components/ui';
 
 const sgd = v => `SGD ${parseFloat(v||0).toFixed(2)}`;
 const today = () => new Date().toISOString().slice(0,10);
+const PAWVY = {
+  address: '91, Defu Lane 10\nSingapore 539221',
+  contacts: ['+65 9689 4853 (Janice Lee)', '+65 9647 6576 (KT Goh)'],
+  email: 'janicelee@pawvy.co',
+  uen: 'T23LP0163A',
+};
 
 function useIsMobile() {
   const [m, setM] = useState(window.innerWidth < 768);
@@ -12,80 +18,146 @@ function useIsMobile() {
   return m;
 }
 
-// ── PDF Generation ─────────────────────────────────────────────────
-function generateConsignmentPDF(partner, items, countDate) {
-  const rows = items.filter(i => i.on_hand >= 0).map(i => `
-    <tr>
-      <td>${i.brand_name}</td>
-      <td>${i.item_series}${i.variation ? ' · '+i.variation : ''}</td>
-      <td style="text-align:right">${i.total_placed}</td>
-      <td style="text-align:right">${i.total_invoiced}</td>
-      <td style="text-align:right">${i.total_returned}</td>
-      <td style="text-align:right;font-weight:700">${i.on_hand}</td>
-      <td style="text-align:right">${sgd(i.consignment_price)}</td>
-      <td style="text-align:right">${sgd(i.on_hand * (i.consignment_price||0))}</td>
-    </tr>`).join('');
+// ── PDF: Pawvy-branded consignment list ────────────────────────────
+function generateConsignmentPDF(partner, items, docNum) {
+  const date = new Date().toLocaleDateString('en-SG', { day:'numeric', month:'long', year:'numeric' });
+  const activeItems = items.filter(i => i.on_hand > 0);
+  const totalValue  = activeItems.reduce((s,i) => s + i.on_hand * (i.consignment_price||0), 0);
 
-  const totalValue = items.reduce((s,i) => s + Math.max(0,i.on_hand) * (i.consignment_price||0), 0);
+  const PAW_SVG = `<svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="14" cy="10" r="5" fill="white" opacity="0.9"/>
+    <circle cx="26" cy="10" r="5" fill="white" opacity="0.9"/>
+    <circle cx="7"  cy="22" r="4" fill="white" opacity="0.9"/>
+    <circle cx="33" cy="22" r="4" fill="white" opacity="0.9"/>
+    <ellipse cx="20" cy="30" rx="10" ry="8" fill="white" opacity="0.9"/>
+  </svg>`;
+
+  const rows = activeItems.map((i, idx) => `
+    <tr style="background:${idx%2===0?'#fff':'#f8f9fc'}">
+      <td style="padding:8px 12px;border-bottom:1px solid #e8ecf0">${i.brand_name}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #e8ecf0;font-weight:600">${i.item_series}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #e8ecf0;color:#666">${i.variation||'—'}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #e8ecf0;text-align:right">${i.placed_since||0}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #e8ecf0;text-align:right;color:#c0392b">${i.returned_since||0}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #e8ecf0;text-align:right;color:#27ae60">${i.invoiced_since||0}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #e8ecf0;text-align:right;font-weight:700;font-size:14px">${i.on_hand}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #e8ecf0;text-align:right">${parseFloat(i.consignment_price||0).toFixed(2)}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #e8ecf0;text-align:right;font-weight:600">${(i.on_hand*(i.consignment_price||0)).toFixed(2)}</td>
+    </tr>`).join('');
 
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
   <title>Consignment List – ${partner.company_name}</title>
   <style>
-    body { font-family: Arial, sans-serif; font-size: 12px; color: #1a1a1a; margin: 0; padding: 32px; }
-    h1  { font-size: 22px; margin: 0 0 4px; color: #14213d; }
-    .sub { color: #666; font-size: 12px; margin-bottom: 24px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-    th { background: #14213d; color: #fff; padding: 8px 10px; text-align: left; font-size: 11px; }
-    th:nth-child(n+3) { text-align: right; }
-    td { padding: 7px 10px; border-bottom: 1px solid #e5e5e5; }
-    tr:nth-child(even) td { background: #f9f9f9; }
-    .footer { margin-top: 24px; font-size: 11px; color: #888; border-top: 1px solid #ddd; padding-top: 12px; display:flex; justify-content:space-between; }
-    .total { text-align:right; font-size:13px; font-weight:700; margin-top:10px; color:#14213d; }
-    .header { display:flex; justify-content:space-between; align-items:flex-start; }
-    .logo { font-size: 28px; font-weight: 900; color: #f36f4a; letter-spacing:2px; }
-    .meta { text-align:right; font-size:11px; color:#666; }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Helvetica Neue',Arial,sans-serif; font-size:12px; color:#1a1a2e; background:#fff; }
+    @media print { body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } }
   </style></head><body>
-  <div class="header">
+
+  <!-- Header bar -->
+  <div style="background:#14213d;padding:18px 32px;display:flex;align-items:center;justify-content:space-between">
+    <div style="display:flex;align-items:center;gap:14px">
+      ${PAW_SVG}
+      <div>
+        <div style="font-family:Arial Black,sans-serif;font-size:26px;color:#f36f4a;letter-spacing:3px;line-height:1">PAWVY</div>
+        <div style="font-size:9px;color:rgba(255,255,255,.5);letter-spacing:2px;text-transform:uppercase;margin-top:2px">Make Informed Choices</div>
+      </div>
+    </div>
+    <div style="text-align:right">
+      <div style="font-size:22px;font-weight:700;color:#fff;letter-spacing:1px">CONSIGNMENT LIST</div>
+      <div style="color:#f36f4a;font-size:13px;font-weight:600;margin-top:4px">${date}</div>
+    </div>
+  </div>
+
+  <!-- Address + Bill To + Doc Number -->
+  <div style="padding:24px 32px;display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #f0f2f5">
     <div>
-      <div class="logo">PAWVY</div>
-      <div style="font-size:10px;color:#888;margin-bottom:12px">Pawvy Limited Partnership · UEN T23LP0163A</div>
-      <h1>Consignment List</h1>
-      <div class="sub">${partner.company_name}${partner.address ? ' · '+partner.address : ''}</div>
+      <div style="color:#666;font-size:10px;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">From</div>
+      ${PAWVY.address.split('\n').map(l=>`<div style="font-size:12px;color:#333;line-height:1.7">${l}</div>`).join('')}
+      ${PAWVY.contacts.map(c=>`<div style="font-size:12px;color:#333;line-height:1.7">${c}</div>`).join('')}
+      <div style="font-size:12px;color:#14213d;font-weight:600;margin-top:2px"><a href="mailto:${PAWVY.email}" style="color:#14213d">${PAWVY.email}</a></div>
     </div>
-    <div class="meta">
-      <div><strong>Generated:</strong> ${countDate || new Date().toLocaleDateString('en-SG')}</div>
-      <div><strong>Partner:</strong> ${partner.company_name}</div>
+    <div>
+      <div style="color:#666;font-size:10px;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">Bill To</div>
+      <div style="font-size:14px;font-weight:700;color:#14213d">${partner.company_name}</div>
+      ${partner.address ? `<div style="font-size:12px;color:#555;margin-top:3px;max-width:200px;line-height:1.5">${partner.address}</div>` : ''}
+      ${partner.pic_name ? `<div style="font-size:11px;color:#888;margin-top:4px">Attn: ${partner.pic_name}</div>` : ''}
+    </div>
+    <div style="text-align:right">
+      <div style="font-size:20px;font-weight:700;color:#14213d;font-family:monospace">${docNum}</div>
+      <div style="font-size:10px;color:#888;margin-top:4px">UEN: ${PAWVY.uen}</div>
     </div>
   </div>
-  <table>
-    <thead><tr>
-      <th>Brand</th><th>Product</th>
-      <th>Placed</th><th>Invoiced</th><th>Returned</th>
-      <th>On Hand</th><th>Price</th><th>Value</th>
-    </tr></thead>
-    <tbody>${rows}</tbody>
-  </table>
-  <div class="total">Total Consignment Value: ${sgd(totalValue)}</div>
-  <div class="footer">
-    <span>Pawvy Limited Partnership · 91 Defu Lane 10, Singapore 539221 · janicelee@pawvy.co</span>
-    <span>Printed ${new Date().toLocaleDateString('en-SG')}</span>
+
+  <!-- Table -->
+  <div style="padding:24px 32px">
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead>
+        <tr style="background:#14213d">
+          <th style="padding:10px 12px;text-align:left;color:#fff;font-weight:700;font-size:11px;letter-spacing:.5px">Brand</th>
+          <th style="padding:10px 12px;text-align:left;color:#fff;font-weight:700;font-size:11px">Product</th>
+          <th style="padding:10px 12px;text-align:left;color:#fff;font-weight:700;font-size:11px">Variation</th>
+          <th style="padding:10px 12px;text-align:right;color:#fff;font-weight:700;font-size:11px">Placed</th>
+          <th style="padding:10px 12px;text-align:right;color:#fff;font-weight:700;font-size:11px">Returned</th>
+          <th style="padding:10px 12px;text-align:right;color:#fff;font-weight:700;font-size:11px">Invoiced</th>
+          <th style="padding:10px 12px;text-align:right;color:#f36f4a;font-weight:700;font-size:11px">On Hand</th>
+          <th style="padding:10px 12px;text-align:right;color:#fff;font-weight:700;font-size:11px">Price (SGD)</th>
+          <th style="padding:10px 12px;text-align:right;color:#fff;font-weight:700;font-size:11px">Value (SGD)</th>
+        </tr>
+      </thead>
+      <tbody>${rows || '<tr><td colspan="9" style="padding:20px;text-align:center;color:#888">No active consignment stock</td></tr>'}</tbody>
+    </table>
   </div>
+
+  <!-- Totals -->
+  <div style="padding:0 32px 24px;display:flex;justify-content:flex-end">
+    <div style="width:280px">
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid #ddd;font-size:12px;color:#555">
+        <span>Total Items On Hand</span><span style="font-weight:600">${activeItems.reduce((s,i)=>s+i.on_hand,0)} units</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:10px 0;border-top:2px solid #14213d;margin-top:4px">
+        <span style="font-size:14px;font-weight:700;color:#14213d">Total Consignment Value</span>
+        <span style="font-size:14px;font-weight:700;color:#14213d">SGD ${totalValue.toFixed(2)}</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notes -->
+  <div style="padding:0 32px 24px;font-size:10px;color:#888;line-height:1.8">
+    <div>* Price is in SGD</div>
+    <div>¹ All products are verified and received by consignee</div>
+  </div>
+
+  <!-- Thank you -->
+  <div style="text-align:center;padding:16px 32px;font-style:italic;font-size:15px;font-weight:600;color:#14213d">
+    Thank you for the partnership !
+  </div>
+
+  <!-- Orange footer bar -->
+  <div style="background:#f36f4a;height:10px"></div>
   </body></html>`;
 
   const win = window.open('', '_blank');
   win.document.write(html);
   win.document.close();
-  win.print();
+  setTimeout(() => win.print(), 400);
+}
+
+// ── Generate doc number ────────────────────────────────────────────
+function makeDocNum(prefix = 'CS') {
+  const d = new Date();
+  const ymd = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+  const seq = String(Math.floor(Math.random()*900)+100);
+  return `${prefix}-${ymd}-${seq}`;
 }
 
 // ── Place Stock Modal ──────────────────────────────────────────────
 function PlaceStockModal({ open, onClose, partnerId, onSaved }) {
-  const [date, setDate]       = useState(today());
+  const [date, setDate]         = useState(today());
   const [products, setProducts] = useState([]);
-  const [lines, setLines]     = useState([{ product_id:'', qty:'', consignment_price:'', unit_cost:'' }]);
-  const [notes, setNotes]     = useState('');
-  const [saving, setSaving]   = useState(false);
-  const [error, setError]     = useState('');
+  const [lines, setLines]       = useState([{ product_id:'', qty:'', consignment_price:'', unit_cost:'' }]);
+  const [notes, setNotes]       = useState('');
+  const [saving, setSaving]     = useState(false);
+  const [error, setError]       = useState('');
 
   useEffect(() => {
     if (open) {
@@ -96,13 +168,13 @@ function PlaceStockModal({ open, onClose, partnerId, onSaved }) {
 
   function updateLine(idx, key, val) {
     setLines(prev => {
-      const next = [...prev];
-      next[idx] = { ...next[idx], [key]: val };
+      const next = prev.map((l,i) => i===idx ? { ...l, [key]: val } : l);
       if (key === 'product_id') {
         const prod = products.find(p => String(p.id) === String(val));
         if (prod) {
-          next[idx].consignment_price = prod.price_consignment_sg || '';
-          next[idx].unit_cost         = prod.unit_cost || '';
+          // Fix #1: auto-fill but keep as string so field stays editable
+          next[idx].consignment_price = String(prod.price_consignment_sg ?? '');
+          next[idx].unit_cost         = String(prod.unit_cost ?? '');
         }
       }
       return next;
@@ -110,16 +182,16 @@ function PlaceStockModal({ open, onClose, partnerId, onSaved }) {
   }
 
   async function save() {
-    const valid = lines.filter(l => l.product_id && l.qty);
-    if (!valid.length) { setError('Add at least one product line.'); return; }
+    const valid = lines.filter(l => l.product_id && l.qty && parseFloat(l.qty) > 0);
+    if (!valid.length) { setError('Add at least one product with qty > 0.'); return; }
     setSaving(true); setError('');
     try {
       for (const l of valid) {
         await consignmentApi.addPlacement({
           partner_id: partnerId, product_id: l.product_id,
-          date, qty: l.qty,
-          consignment_price: l.consignment_price || 0,
-          unit_cost: l.unit_cost || 0,
+          date, qty: parseInt(l.qty),
+          consignment_price: parseFloat(l.consignment_price) || 0,
+          unit_cost:         parseFloat(l.unit_cost)         || 0,
           notes: notes || null,
         });
       }
@@ -129,15 +201,17 @@ function PlaceStockModal({ open, onClose, partnerId, onSaved }) {
   }
 
   return (
-    <Modal open={open} title="PLACE STOCK" onClose={onClose} width={620}>
-      <div style={{display:'flex',flexDirection:'column',gap:14}}>
+    <Modal open={open} title="PLACE STOCK" onClose={onClose} width={660}>
+      <div style={{display:'flex',flexDirection:'column',gap:12}}>
         <Input label="Date" type="date" value={date} onChange={e=>setDate(e.target.value)} style={{width:180}}/>
-
-        <div style={{fontSize:10,fontWeight:700,letterSpacing:.8,textTransform:'uppercase',color:'var(--cream-30)',display:'grid',gridTemplateColumns:'2fr 70px 100px 100px',gap:8,padding:'0 4px'}}>
-          <span>Product / SKU</span><span>Qty</span><span>Consign Price</span><span>Unit Cost</span>
+        <div style={{display:'grid',gridTemplateColumns:'2fr 60px 110px 100px 28px',gap:8,padding:'0 2px'}}>
+          {['Product / SKU','Qty','Consign Price ✏','Unit Cost ✏'].map(h=>(
+            <div key={h} style={{fontSize:9.5,fontWeight:700,letterSpacing:.7,textTransform:'uppercase',color:'var(--cream-30)'}}>{h}</div>
+          ))}
+          <div/>
         </div>
         {lines.map((line, idx) => (
-          <div key={idx} style={{display:'grid',gridTemplateColumns:'2fr 70px 100px 100px 32px',gap:8,alignItems:'flex-start'}}>
+          <div key={idx} style={{display:'grid',gridTemplateColumns:'2fr 60px 110px 100px 28px',gap:8,alignItems:'flex-start'}}>
             <Select value={line.product_id} onChange={e=>updateLine(idx,'product_id',e.target.value)}>
               <option value="">— Select product —</option>
               {products.map(p=>(
@@ -145,10 +219,11 @@ function PlaceStockModal({ open, onClose, partnerId, onSaved }) {
               ))}
             </Select>
             <Input type="number" min="1" value={line.qty} onChange={e=>updateLine(idx,'qty',e.target.value)} placeholder="0"/>
-            <Input type="number" step="0.01" value={line.consignment_price} onChange={e=>updateLine(idx,'consignment_price',e.target.value)} placeholder="0.00"/>
-            <Input type="number" step="0.01" value={line.unit_cost} onChange={e=>updateLine(idx,'unit_cost',e.target.value)} placeholder="0.00"/>
+            {/* Fix #1: type="text" with inputMode="decimal" avoids browser number input locking */}
+            <Input type="text" inputMode="decimal" value={line.consignment_price} onChange={e=>updateLine(idx,'consignment_price',e.target.value)} placeholder="0.00"/>
+            <Input type="text" inputMode="decimal" value={line.unit_cost} onChange={e=>updateLine(idx,'unit_cost',e.target.value)} placeholder="0.00"/>
             <button onClick={()=>setLines(l=>l.filter((_,i)=>i!==idx))} disabled={lines.length===1}
-              style={{background:'none',border:'none',color:'rgba(248,113,113,.6)',cursor:'pointer',padding:'10px 0',display:'flex',alignItems:'center'}}>
+              style={{background:'none',border:'none',color:'rgba(248,113,113,.6)',cursor:'pointer',padding:'8px 0',display:'flex',alignItems:'center'}}>
               <Trash2 size={14}/>
             </button>
           </div>
@@ -157,8 +232,8 @@ function PlaceStockModal({ open, onClose, partnerId, onSaved }) {
           <Plus size={12}/> Add product
         </Btn>
         <Input label="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="e.g. Restocking visit June"/>
-        {error && <div style={{color:'#f87171',fontSize:12}}>{error}</div>}
-        <div style={{display:'flex',gap:10}}>
+        {error && <div style={{color:'#f87171',fontSize:12,padding:'6px 0'}}>{error}</div>}
+        <div style={{display:'flex',gap:10,paddingTop:4}}>
           <Btn onClick={save} disabled={saving} size="lg" style={{flex:1,justifyContent:'center'}}>
             {saving ? 'Saving…' : <><Plus size={14}/> Confirm Placement</>}
           </Btn>
@@ -185,13 +260,25 @@ function ReturnModal({ open, onClose, partnerId, onHandItems, onSaved }) {
     setLines(prev => { const n=[...prev]; n[idx]={...n[idx],[key]:val}; return n; });
   }
 
+  // Fix #2: max qty = on_hand for selected product
+  function maxQty(product_id) {
+    return onHandItems.find(i => String(i.product_id)===String(product_id))?.on_hand || 0;
+  }
+
   async function save() {
-    const valid = lines.filter(l => l.product_id && l.qty && parseInt(l.qty) > 0);
-    if (!valid.length) { setError('Add at least one product line.'); return; }
+    const valid = lines.filter(l => l.product_id && parseInt(l.qty) > 0);
+    if (!valid.length) { setError('Add at least one product line with qty > 0.'); return; }
+    // Fix #2: validate qty doesn't exceed on-hand
+    const overQty = valid.find(l => parseInt(l.qty) > maxQty(l.product_id));
+    if (overQty) {
+      const oh = maxQty(overQty.product_id);
+      setError(`Qty exceeds on-hand stock (max ${oh}). Please check and correct.`);
+      return;
+    }
     setSaving(true); setError('');
     try {
       for (const l of valid) {
-        await consignmentApi.addReturn({ partner_id: partnerId, product_id: l.product_id, date, qty: l.qty, notes: notes||null });
+        await consignmentApi.addReturn({ partner_id: partnerId, product_id: l.product_id, date, qty: parseInt(l.qty), notes: notes||null });
       }
       onSaved();
     } catch(e) { setError(e.message); }
@@ -199,35 +286,49 @@ function ReturnModal({ open, onClose, partnerId, onHandItems, onSaved }) {
   }
 
   return (
-    <Modal open={open} title="RECORD RETURN" onClose={onClose} width={480}>
-      <div style={{display:'flex',flexDirection:'column',gap:14}}>
+    <Modal open={open} title="RECORD RETURN" onClose={onClose} width={500}>
+      <div style={{display:'flex',flexDirection:'column',gap:12}}>
         <Input label="Date" type="date" value={date} onChange={e=>setDate(e.target.value)} style={{width:180}}/>
-        <div style={{fontSize:10,fontWeight:700,letterSpacing:.8,textTransform:'uppercase',color:'var(--cream-30)',display:'grid',gridTemplateColumns:'2fr 80px',gap:8,padding:'0 4px'}}>
-          <span>Product</span><span>Qty Returned</span>
+        <div style={{display:'grid',gridTemplateColumns:'2fr 100px 28px',gap:8,padding:'0 2px'}}>
+          {['Product (on hand)','Qty Returned'].map(h=>(
+            <div key={h} style={{fontSize:9.5,fontWeight:700,letterSpacing:.7,textTransform:'uppercase',color:'var(--cream-30)'}}>{h}</div>
+          ))}
+          <div/>
         </div>
-        {lines.map((line, idx) => (
-          <div key={idx} style={{display:'grid',gridTemplateColumns:'2fr 80px 32px',gap:8,alignItems:'flex-start'}}>
-            <Select value={line.product_id} onChange={e=>updateLine(idx,'product_id',e.target.value)}>
-              <option value="">— Select product —</option>
-              {onHandItems.filter(i=>i.on_hand>0).map(p=>(
-                <option key={p.product_id} value={p.product_id}>
-                  {p.brand_name} · {p.item_series}{p.variation?' · '+p.variation:''} (on hand: {p.on_hand})
-                </option>
-              ))}
-            </Select>
-            <Input type="number" min="1" value={line.qty} onChange={e=>updateLine(idx,'qty',e.target.value)} placeholder="0"/>
-            <button onClick={()=>setLines(l=>l.filter((_,i)=>i!==idx))} disabled={lines.length===1}
-              style={{background:'none',border:'none',color:'rgba(248,113,113,.6)',cursor:'pointer',padding:'10px 0',display:'flex',alignItems:'center'}}>
-              <Trash2 size={14}/>
-            </button>
-          </div>
-        ))}
+        {lines.map((line, idx) => {
+          const max = maxQty(line.product_id);
+          return (
+            <div key={idx} style={{display:'grid',gridTemplateColumns:'2fr 100px 28px',gap:8,alignItems:'flex-start'}}>
+              <Select value={line.product_id} onChange={e=>updateLine(idx,'product_id',e.target.value)}>
+                <option value="">— Select product —</option>
+                {onHandItems.filter(i=>i.on_hand>0).map(p=>(
+                  <option key={p.product_id} value={p.product_id}>
+                    {p.brand_name} · {p.item_series}{p.variation?' · '+p.variation:''} (on hand: {p.on_hand})
+                  </option>
+                ))}
+              </Select>
+              <div>
+                {/* Fix #2: max attribute caps input at on-hand qty */}
+                <Input type="number" min="1" max={max||undefined} value={line.qty}
+                  onChange={e=>updateLine(idx,'qty',Math.min(parseInt(e.target.value)||0,max||9999).toString())}
+                  placeholder="0"/>
+                {line.product_id && max > 0 && (
+                  <div style={{fontSize:10,color:'var(--cream-30)',marginTop:2,paddingLeft:2}}>max {max}</div>
+                )}
+              </div>
+              <button onClick={()=>setLines(l=>l.filter((_,i)=>i!==idx))} disabled={lines.length===1}
+                style={{background:'none',border:'none',color:'rgba(248,113,113,.6)',cursor:'pointer',padding:'8px 0',display:'flex',alignItems:'center'}}>
+                <Trash2 size={14}/>
+              </button>
+            </div>
+          );
+        })}
         <Btn size="sm" variant="ghost" onClick={()=>setLines(l=>[...l,{product_id:'',qty:''}])}>
           <Plus size={12}/> Add product
         </Btn>
         <Input label="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="e.g. Damaged, unsold stock"/>
-        {error && <div style={{color:'#f87171',fontSize:12}}>{error}</div>}
-        <div style={{display:'flex',gap:10}}>
+        {error && <div style={{background:'rgba(248,113,113,.1)',border:'1px solid rgba(248,113,113,.3)',borderRadius:6,padding:'8px 12px',color:'#f87171',fontSize:12}}>{error}</div>}
+        <div style={{display:'flex',gap:10,paddingTop:4}}>
           <Btn onClick={save} disabled={saving} size="lg" style={{flex:1,justifyContent:'center'}}>
             {saving ? 'Saving…' : <><RotateCcw size={14}/> Confirm Return</>}
           </Btn>
@@ -247,36 +348,23 @@ function StockCountModal({ open, onClose, partnerId, onHandItems, onSaved }) {
   const [result, setResult] = useState(null);
   const [error, setError]   = useState('');
 
-  useEffect(() => {
-    if (open) {
-      setDate(today()); setNotes(''); setCounts({}); setResult(null); setError('');
-    }
-  }, [open]);
+  useEffect(() => { if (open) { setDate(today()); setNotes(''); setCounts({}); setResult(null); setError(''); } }, [open]);
 
   const activeItems = onHandItems.filter(i => i.on_hand >= 0);
-
-  function setCount(productId, val) {
-    setCounts(prev => ({ ...prev, [productId]: val }));
-  }
+  const allFilled   = activeItems.length > 0 && activeItems.every(i => counts[i.product_id] !== undefined && counts[i.product_id] !== '');
 
   const discrepancies = activeItems.map(item => {
     const counted = parseInt(counts[item.product_id] ?? '');
-    const disc    = isNaN(counted) ? null : Math.max(0, item.on_hand - counted);
-    return { ...item, counted: isNaN(counted) ? null : counted, discrepancy: disc };
+    return { ...item, counted: isNaN(counted)?null:counted, discrepancy: isNaN(counted)?null:Math.max(0,item.on_hand-counted) };
   });
-
-  const totalDisc   = discrepancies.reduce((s,d) => s + (d.discrepancy||0), 0);
-  const totalInvoice = discrepancies.reduce((s,d) => s + (d.discrepancy||0) * (d.consignment_price||0), 0);
-  const allFilled    = activeItems.length > 0 && activeItems.every(i => counts[i.product_id] !== undefined && counts[i.product_id] !== '');
+  const totalDisc    = discrepancies.reduce((s,d) => s+(d.discrepancy||0), 0);
+  const totalInvoice = discrepancies.reduce((s,d) => s+(d.discrepancy||0)*(d.consignment_price||0), 0);
 
   async function submit() {
-    if (!allFilled) { setError('Please fill in the physical count for every product.'); return; }
+    if (!allFilled) { setError('Please fill in physical count for every product.'); return; }
     setSaving(true); setError('');
     try {
-      const items = activeItems.map(i => ({
-        product_id: i.product_id,
-        qty_counted: parseInt(counts[i.product_id]) || 0,
-      }));
+      const items = activeItems.map(i => ({ product_id: i.product_id, qty_counted: parseInt(counts[i.product_id])||0 }));
       const res = await consignmentApi.submitCount({ partner_id: partnerId, date, notes: notes||null, items });
       setResult(res);
     } catch(e) { setError(e.message); }
@@ -284,30 +372,18 @@ function StockCountModal({ open, onClose, partnerId, onHandItems, onSaved }) {
   }
 
   if (result) return (
-    <Modal open={open} title="STOCK COUNT COMPLETE" onClose={()=>{onSaved();onClose();}} width={480}>
+    <Modal open={open} title="COUNT COMPLETE" onClose={()=>{onSaved();onClose();}} width={440}>
       <div style={{display:'flex',flexDirection:'column',gap:14,alignItems:'center',padding:'10px 0'}}>
         <CheckCircle size={48} color="#7fc93e"/>
-        <div style={{textAlign:'center'}}>
-          <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:'var(--cream)',letterSpacing:1}}>Count Submitted</div>
-          <div style={{fontSize:12,color:'var(--cream-60)',marginTop:4}}>
-            {result.lines_invoiced} product{result.lines_invoiced!==1?'s':''} invoiced
-          </div>
-        </div>
-        {result.lines_invoiced > 0 ? (
-          <div style={{background:'rgba(127,201,62,.1)',border:'1px solid rgba(127,201,62,.3)',borderRadius:8,padding:'14px 20px',textAlign:'center',width:'100%'}}>
-            <div style={{fontSize:11,color:'#7fc93e',marginBottom:4}}>Invoice Generated</div>
-            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:28,color:'#7fc93e',letterSpacing:1}}>
-              {sgd(result.invoice_total)}
+        <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:'var(--cream)',letterSpacing:1}}>Count Submitted</div>
+        {result.lines_invoiced > 0
+          ? <div style={{background:'rgba(127,201,62,.1)',border:'1px solid rgba(127,201,62,.3)',borderRadius:8,padding:'14px 20px',textAlign:'center',width:'100%'}}>
+              <div style={{fontSize:11,color:'#7fc93e',marginBottom:4}}>Invoice Generated</div>
+              <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:28,color:'#7fc93e',letterSpacing:1}}>{sgd(result.invoice_total)}</div>
+              <div style={{fontSize:10,color:'var(--cream-30)',marginTop:4}}>Sale records created in ledger</div>
             </div>
-            <div style={{fontSize:10,color:'var(--cream-30)',marginTop:4}}>
-              Sale records created in ledger • Partner to pay by transfer
-            </div>
-          </div>
-        ) : (
-          <div style={{background:'rgba(245,242,235,.05)',border:'1px solid var(--border)',borderRadius:8,padding:'14px 20px',textAlign:'center',width:'100%'}}>
-            <div style={{fontSize:12,color:'var(--cream-30)'}}>No discrepancy — stock matches system count</div>
-          </div>
-        )}
+          : <div style={{padding:'14px 20px',textAlign:'center',color:'var(--cream-30)',fontSize:12}}>No discrepancy — stock matches system count ✓</div>
+        }
         <Btn onClick={()=>{onSaved();onClose();}} size="lg" style={{width:'100%',justifyContent:'center'}}>Done</Btn>
       </div>
     </Modal>
@@ -315,80 +391,131 @@ function StockCountModal({ open, onClose, partnerId, onHandItems, onSaved }) {
 
   return (
     <Modal open={open} title="STOCK COUNT" onClose={onClose} width={700}>
-      <div style={{display:'flex',flexDirection:'column',gap:14}}>
+      <div style={{display:'flex',flexDirection:'column',gap:12}}>
         <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
           <Input label="Count Date" type="date" value={date} onChange={e=>setDate(e.target.value)} style={{width:180}}/>
-          <Input label="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="e.g. Monthly count June 2026" style={{flex:1}}/>
+          <Input label="Notes" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="e.g. Monthly count June 2026" style={{flex:1}}/>
         </div>
-
-        {activeItems.length === 0 ? (
-          <div style={{padding:30,textAlign:'center',color:'var(--cream-30)',fontSize:12}}>
-            No active consignment stock to count.
-          </div>
-        ) : (
-          <>
-            <div style={{overflowX:'auto',borderRadius:8,border:'1px solid var(--border)'}}>
-              <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
-                <thead>
-                  <tr style={{background:'rgba(245,242,235,.05)'}}>
-                    {['Brand','Product','On Hand (System)','Physical Count','Discrepancy','Invoice'].map(h=>(
-                      <th key={h} style={{padding:'8px 12px',textAlign:['On Hand (System)','Physical Count','Discrepancy','Invoice'].includes(h)?'right':'left',fontSize:9.5,fontWeight:700,letterSpacing:.7,textTransform:'uppercase',color:'var(--cream-30)',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap'}}>{h}</th>
+        {activeItems.length === 0
+          ? <div style={{padding:30,textAlign:'center',color:'var(--cream-30)',fontSize:12}}>No active consignment stock to count.</div>
+          : <>
+              <div style={{overflowX:'auto',borderRadius:8,border:'1px solid var(--border)'}}>
+                <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                  <thead><tr style={{background:'rgba(245,242,235,.05)'}}>
+                    {['Brand','Product','On Hand','Physical Count','Discrepancy','Invoice'].map(h=>(
+                      <th key={h} style={{padding:'8px 12px',textAlign:['On Hand','Physical Count','Discrepancy','Invoice'].includes(h)?'right':'left',fontSize:9.5,fontWeight:700,letterSpacing:.7,textTransform:'uppercase',color:'var(--cream-30)',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap'}}>{h}</th>
                     ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {discrepancies.map(item => (
-                    <tr key={item.product_id} style={{borderBottom:'1px solid rgba(245,242,235,.04)'}}>
-                      <td style={{padding:'8px 12px'}}><Badge color={item.brand_color}>{item.brand_name}</Badge></td>
-                      <td style={{padding:'8px 12px',color:'var(--cream)',maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-                        {item.item_series}{item.variation?' · '+item.variation:''}
-                      </td>
-                      <td style={{padding:'8px 12px',textAlign:'right',fontWeight:700,color:'var(--cream)'}}>{item.on_hand}</td>
-                      <td style={{padding:'8px 12px',textAlign:'right'}}>
-                        <input type="number" min="0" value={counts[item.product_id]??''}
-                          onChange={e=>setCount(item.product_id, e.target.value)}
-                          placeholder="—"
-                          style={{width:70,background:'var(--navy-light)',border:`1px solid ${counts[item.product_id]!==undefined&&counts[item.product_id]!==''?'var(--orange)':'var(--border)'}`,borderRadius:6,padding:'6px 8px',color:'var(--cream)',fontSize:12,textAlign:'right',outline:'none'}}/>
-                      </td>
-                      <td style={{padding:'8px 12px',textAlign:'right',fontWeight:700,
-                        color: item.discrepancy === null ? 'var(--cream-30)' : item.discrepancy > 0 ? '#fbbf24' : '#7fc93e'}}>
-                        {item.discrepancy === null ? '—' : item.discrepancy > 0 ? `−${item.discrepancy}` : '✓ 0'}
-                      </td>
-                      <td style={{padding:'8px 12px',textAlign:'right',color:'var(--cream)',fontSize:11}}>
-                        {item.discrepancy > 0 ? sgd(item.discrepancy * item.consignment_price) : '—'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Summary bar */}
-            <div style={{background:'rgba(245,242,235,.04)',border:'1px solid var(--border)',borderRadius:8,padding:'10px 16px',display:'flex',gap:24,flexWrap:'wrap'}}>
-              <span style={{fontSize:12,color:'var(--cream-30)'}}>
-                Total discrepancy: <strong style={{color: totalDisc > 0 ? '#fbbf24' : '#7fc93e'}}>{totalDisc} units</strong>
-              </span>
-              <span style={{fontSize:12,color:'var(--cream-30)'}}>
-                Invoice amount: <strong style={{color:'var(--orange)'}}>{sgd(totalInvoice)}</strong>
-              </span>
-              {totalDisc > 0 && (
-                <span style={{fontSize:11,color:'var(--cream-30)'}}>
-                  ⚡ Sale records will be created automatically
-                </span>
-              )}
-            </div>
-          </>
-        )}
-
-        {error && (
-          <div style={{display:'flex',gap:8,background:'rgba(248,113,113,.1)',border:'1px solid rgba(248,113,113,.3)',borderRadius:7,padding:'10px 14px',color:'#f87171',fontSize:12}}>
-            <AlertCircle size={14} style={{flexShrink:0,marginTop:1}}/>{error}
-          </div>
-        )}
-
+                  </tr></thead>
+                  <tbody>
+                    {discrepancies.map(item=>(
+                      <tr key={item.product_id} style={{borderBottom:'1px solid rgba(245,242,235,.04)'}}>
+                        <td style={{padding:'8px 12px'}}><Badge color={item.brand_color}>{item.brand_name}</Badge></td>
+                        <td style={{padding:'8px 12px',color:'var(--cream)',maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                          {item.item_series}{item.variation?' · '+item.variation:''}
+                        </td>
+                        <td style={{padding:'8px 12px',textAlign:'right',fontWeight:700,color:'var(--cream)'}}>{item.on_hand}</td>
+                        <td style={{padding:'8px 12px',textAlign:'right'}}>
+                          <input type="number" min="0" value={counts[item.product_id]??''}
+                            onChange={e=>setCounts(p=>({...p,[item.product_id]:e.target.value}))}
+                            placeholder="—"
+                            style={{width:70,background:'var(--navy-light)',border:`1px solid ${counts[item.product_id]!==undefined&&counts[item.product_id]!==''?'var(--orange)':'var(--border)'}`,borderRadius:6,padding:'6px 8px',color:'var(--cream)',fontSize:12,textAlign:'right',outline:'none'}}/>
+                        </td>
+                        <td style={{padding:'8px 12px',textAlign:'right',fontWeight:700,color:item.discrepancy===null?'var(--cream-30)':item.discrepancy>0?'#fbbf24':'#7fc93e'}}>
+                          {item.discrepancy===null?'—':item.discrepancy>0?`−${item.discrepancy}`:'✓ 0'}
+                        </td>
+                        <td style={{padding:'8px 12px',textAlign:'right',fontSize:11,color:'var(--cream)'}}>
+                          {item.discrepancy>0 ? sgd(item.discrepancy*item.consignment_price) : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div style={{background:'rgba(245,242,235,.04)',border:'1px solid var(--border)',borderRadius:8,padding:'10px 16px',display:'flex',gap:24,flexWrap:'wrap'}}>
+                <span style={{fontSize:12,color:'var(--cream-30)'}}>Discrepancy: <strong style={{color:totalDisc>0?'#fbbf24':'#7fc93e'}}>{totalDisc} units</strong></span>
+                <span style={{fontSize:12,color:'var(--cream-30)'}}>To invoice: <strong style={{color:'var(--orange)'}}>{sgd(totalInvoice)}</strong></span>
+              </div>
+            </>
+        }
+        {error && <div style={{display:'flex',gap:8,background:'rgba(248,113,113,.1)',border:'1px solid rgba(248,113,113,.3)',borderRadius:7,padding:'10px 14px',color:'#f87171',fontSize:12}}><AlertCircle size={14} style={{flexShrink:0,marginTop:1}}/>{error}</div>}
         <div style={{display:'flex',gap:10}}>
           <Btn onClick={submit} disabled={saving||!allFilled} size="lg" style={{flex:1,justifyContent:'center'}}>
-            {saving ? 'Submitting…' : <><Search size={14}/> Submit Count & Invoice</>}
+            {saving?'Submitting…':<><Search size={14}/> Submit Count & Invoice</>}
+          </Btn>
+          <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ── Close Month Modal (#4) ─────────────────────────────────────────
+function CloseMonthModal({ open, onClose, partnerId, onHandItems, onSaved }) {
+  const [date, setDate]         = useState(today());
+  const [periodLabel, setPeriod] = useState(() => {
+    const d = new Date(); d.setMonth(d.getMonth()-0);
+    return d.toLocaleString('default',{month:'long',year:'numeric'});
+  });
+  const [saving, setSaving] = useState(false);
+  const [done, setDone]     = useState(false);
+  const [error, setError]   = useState('');
+
+  useEffect(() => { if (open) { setDate(today()); setDone(false); setError(''); } }, [open]);
+
+  async function submit() {
+    setSaving(true); setError('');
+    try {
+      await consignmentApi.closeMonth({ partner_id: partnerId, date, period_label: periodLabel });
+      setDone(true);
+    } catch(e) { setError(e.message); }
+    finally { setSaving(false); }
+  }
+
+  if (done) return (
+    <Modal open={open} title="MONTH CLOSED" onClose={()=>{onSaved();onClose();}} width={420}>
+      <div style={{display:'flex',flexDirection:'column',gap:14,alignItems:'center',padding:'10px 0'}}>
+        <Archive size={40} color="#7fc93e"/>
+        <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:'var(--cream)',letterSpacing:1}}>Period Snapshot Saved</div>
+        <div style={{fontSize:12,color:'var(--cream-60)',textAlign:'center',lineHeight:1.7}}>
+          On-hand quantities for <strong style={{color:'var(--cream)'}}>{periodLabel}</strong> have been snapshotted.<br/>
+          The counter resets — next period starts fresh from today's on-hand.
+        </div>
+        <Btn onClick={()=>{onSaved();onClose();}} size="lg" style={{width:'100%',justifyContent:'center'}}>Done</Btn>
+      </div>
+    </Modal>
+  );
+
+  return (
+    <Modal open={open} title="CLOSE MONTH" onClose={onClose} width={500}>
+      <div style={{display:'flex',flexDirection:'column',gap:14}}>
+        <div style={{background:'rgba(251,191,36,.08)',border:'1px solid rgba(251,191,36,.3)',borderRadius:8,padding:'12px 14px',fontSize:12,color:'#fbbf24',lineHeight:1.7}}>
+          ⚠ <strong>Before closing:</strong> make sure you have already done the stock count and issued the invoice for this period. Closing the month locks current on-hand as the new baseline for next period.
+        </div>
+        <Input label="Period Label (for your records)" value={periodLabel} onChange={e=>setPeriod(e.target.value)} placeholder="e.g. June 2026"/>
+        <Input label="Snapshot Date" type="date" value={date} onChange={e=>setDate(e.target.value)} style={{width:180}}/>
+
+        <div style={{border:'1px solid var(--border)',borderRadius:8,overflow:'hidden'}}>
+          <div style={{padding:'8px 14px',background:'rgba(245,242,235,.04)',fontSize:10,fontWeight:700,letterSpacing:.7,textTransform:'uppercase',color:'var(--cream-30)',borderBottom:'1px solid var(--border)'}}>
+            On-hand to be snapshotted ({onHandItems.filter(i=>i.on_hand>0).length} SKUs)
+          </div>
+          <div style={{maxHeight:180,overflowY:'auto'}}>
+            {onHandItems.filter(i=>i.on_hand>0).map(item=>(
+              <div key={item.product_id} style={{display:'flex',justifyContent:'space-between',padding:'8px 14px',borderBottom:'1px solid rgba(245,242,235,.04)',fontSize:12}}>
+                <span style={{color:'var(--cream-60)'}}>{item.brand_name} · {item.item_series}{item.variation?' · '+item.variation:''}</span>
+                <span style={{fontWeight:700,color:'var(--cream)'}}>{item.on_hand} units</span>
+              </div>
+            ))}
+            {onHandItems.filter(i=>i.on_hand>0).length === 0 && (
+              <div style={{padding:20,textAlign:'center',color:'var(--cream-30)',fontSize:12}}>No active stock to snapshot</div>
+            )}
+          </div>
+        </div>
+
+        {error && <div style={{color:'#f87171',fontSize:12}}>{error}</div>}
+        <div style={{display:'flex',gap:10}}>
+          <Btn onClick={submit} disabled={saving||onHandItems.filter(i=>i.on_hand>0).length===0} size="lg"
+            style={{flex:1,justifyContent:'center',background:'rgba(251,191,36,.15)',color:'#fbbf24',border:'1px solid rgba(251,191,36,.4)'}}>
+            {saving?'Saving…':<><Archive size={14}/> Confirm Close Month</>}
           </Btn>
           <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
         </div>
@@ -400,16 +527,17 @@ function StockCountModal({ open, onClose, partnerId, onHandItems, onSaved }) {
 // ── Main Consignment Page ──────────────────────────────────────────
 export default function Consignment() {
   const isMobile = useIsMobile();
-  const [partners, setPartners]     = useState([]);
-  const [partnerId, setPartnerId]   = useState('');
-  const [onHand, setOnHand]         = useState([]);
-  const [partner, setPartner]       = useState(null);
-  const [counts, setCounts]         = useState([]);
-  const [placements, setPlacements] = useState([]);
-  const [returns, setReturns]       = useState([]);
-  const [loading, setLoading]       = useState(false);
-  const [tab, setTab]               = useState('summary'); // summary | history
-  const [modal, setModal]           = useState(null);      // null | 'place' | 'return' | 'count'
+  const [partners, setPartners]         = useState([]);
+  const [partnerId, setPartnerId]       = useState('');
+  const [onHand, setOnHand]             = useState([]);
+  const [partner, setPartner]           = useState(null);
+  const [counts, setCounts]             = useState([]);
+  const [placements, setPlacements]     = useState([]);
+  const [returns, setReturns]           = useState([]);
+  const [snapshots, setSnapshots]       = useState([]);
+  const [loading, setLoading]           = useState(false);
+  const [tab, setTab]                   = useState('summary');
+  const [modal, setModal]               = useState(null);
 
   useEffect(() => {
     consignmentApi.partners().then(data => {
@@ -418,66 +546,73 @@ export default function Consignment() {
     });
   }, []);
 
-  const loadPartnerData = useCallback(async (pid) => {
+  const loadPartnerData = useCallback(async pid => {
     if (!pid) return;
     setLoading(true);
-    const [oh, cnts, plac, rets] = await Promise.all([
+    const [oh, cnts, plac, rets, snaps] = await Promise.all([
       consignmentApi.onHand(pid),
       consignmentApi.counts(pid),
       consignmentApi.placements(pid),
       consignmentApi.returns(pid),
+      consignmentApi.snapshots(pid),
     ]);
     setPartner(oh.partner);
     setOnHand(oh.items);
     setCounts(cnts);
     setPlacements(plac);
     setReturns(rets);
+    setSnapshots(snaps);
     setLoading(false);
   }, []);
 
   useEffect(() => { if (partnerId) loadPartnerData(partnerId); }, [partnerId]);
 
-  const totalValue   = onHand.reduce((s,i) => s + Math.max(0,i.on_hand) * (i.consignment_price||0), 0);
-  const totalUnits   = onHand.reduce((s,i) => s + Math.max(0,i.on_hand), 0);
-  const totalInvoiced= onHand.reduce((s,i) => s + (i.total_invoiced||0), 0);
-
-  const TABS = ['summary','history'];
+  const totalValue    = onHand.reduce((s,i) => s + Math.max(0,i.on_hand)*(i.consignment_price||0), 0);
+  const totalUnits    = onHand.reduce((s,i) => s + Math.max(0,i.on_hand), 0);
+  const totalInvoiced = onHand.reduce((s,i) => s + (i.invoiced_since||0), 0);
+  const lastSnapshot  = snapshots[0];
 
   return (
     <Page title="CONSIGNMENT" subtitle="Track stock placed at consignment partners">
-      {/* Partner selector */}
       <div style={{display:'flex',gap:12,alignItems:'flex-end',flexWrap:'wrap'}}>
         <Select label="Consignment Partner" value={partnerId} onChange={e=>setPartnerId(e.target.value)} style={{width:260}}>
           <option value="">— Select partner —</option>
           {partners.map(p=><option key={p.id} value={p.id}>{p.company_name}</option>)}
         </Select>
         {partners.length === 0 && (
-          <div style={{fontSize:12,color:'#fbbf24',paddingBottom:8}}>
-            ⚠ No consignment partners found. Set a partner's model to "Consignment" in the Partners tab.
+          <div style={{fontSize:12,color:'#fbbf24',paddingBottom:8}}>⚠ No consignment partners. Set a partner's model to "Consignment" in Partners tab.</div>
+        )}
+        {lastSnapshot && (
+          <div style={{fontSize:11,color:'var(--cream-30)',paddingBottom:8}}>
+            Last closed: <strong style={{color:'var(--cream)'}}>{lastSnapshot.label}</strong>
+            <span style={{color:'var(--cream-30)',marginLeft:6}}>· Showing activity since {lastSnapshot.date}</span>
           </div>
         )}
       </div>
 
       {partnerId && (
         <>
-          {/* Action buttons */}
+          {/* Actions */}
           <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
             <Btn onClick={()=>setModal('place')}><Plus size={14}/> Place Stock</Btn>
             <Btn onClick={()=>setModal('count')} variant="secondary"><Search size={14}/> Stock Count</Btn>
             <Btn onClick={()=>setModal('return')} variant="ghost"><RotateCcw size={14}/> Record Return</Btn>
             <div style={{flex:1}}/>
-            <Btn variant="ghost" onClick={()=>generateConsignmentPDF(partner||{company_name:'Partner'}, onHand, new Date().toLocaleDateString('en-SG'))}>
+            <Btn variant="ghost" onClick={()=>setModal('close')} style={{color:'#fbbf24',borderColor:'rgba(251,191,36,.3)'}}>
+              <Archive size={14}/> Close Month
+            </Btn>
+            <Btn variant="ghost" onClick={()=>generateConsignmentPDF(partner||{company_name:'Partner'}, onHand, makeDocNum())}>
               <FileText size={14}/> Print List
             </Btn>
           </div>
 
-          {/* KPI cards */}
+          {/* KPIs */}
           <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr 1fr':'repeat(4,1fr)',gap:10}}>
             {[
-              { label:'On Hand Units', value: totalUnits, color:'var(--cream)' },
-              { label:'Consignment Value', value: `SGD ${totalValue.toFixed(2)}`, color:'var(--orange)' },
-              { label:'Units Invoiced', value: totalInvoiced, color:'#7fc93e' },
-              { label:'SKUs on Floor', value: onHand.filter(i=>i.on_hand>0).length, color:'var(--cream-60)' },
+              { label: lastSnapshot ? 'On Hand (Current Period)' : 'On Hand Units', value: totalUnits, color:'var(--cream)' },
+              { label:'Consignment Value', value:`SGD ${totalValue.toFixed(2)}`, color:'var(--orange)' },
+              { label:'Units Invoiced (Period)', value: totalInvoiced, color:'#7fc93e' },
+              { label:'Active SKUs', value: onHand.filter(i=>i.on_hand>0).length, color:'var(--cream-60)' },
             ].map(k=>(
               <div key={k.label} style={{background:'var(--navy)',border:'1px solid var(--border)',borderRadius:8,padding:'14px 16px'}}>
                 <div style={{fontSize:10,fontWeight:700,letterSpacing:.7,textTransform:'uppercase',color:'var(--cream-30)',marginBottom:6}}>{k.label}</div>
@@ -488,72 +623,58 @@ export default function Consignment() {
 
           {/* Tabs */}
           <div style={{display:'flex',gap:2,borderBottom:'1px solid var(--border)'}}>
-            {[['summary','On-Hand Summary'],['history','Activity Log']].map(([key,label])=>(
+            {[['summary','On-Hand Summary'],['history','Activity Log'],['periods','Period History']].map(([key,label])=>(
               <button key={key} onClick={()=>setTab(key)}
-                style={{padding:'8px 16px',fontSize:12,fontWeight:600,border:'none',cursor:'pointer',
-                  background:'none',color:tab===key?'var(--orange)':'var(--cream-30)',
-                  borderBottom:`2px solid ${tab===key?'var(--orange)':'transparent'}`,
-                  marginBottom:-1,transition:'all .15s'}}>
+                style={{padding:'8px 16px',fontSize:12,fontWeight:600,border:'none',cursor:'pointer',background:'none',
+                  color:tab===key?'var(--orange)':'var(--cream-30)',borderBottom:`2px solid ${tab===key?'var(--orange)':'transparent'}`,marginBottom:-1}}>
                 {label}
               </button>
             ))}
           </div>
 
-          {loading ? (
-            <div style={{padding:40,textAlign:'center',color:'var(--cream-30)',fontSize:12}}>Loading…</div>
-          ) : tab === 'summary' ? (
-            /* ── On-Hand Summary Table ── */
+          {loading ? <div style={{padding:40,textAlign:'center',color:'var(--cream-30)',fontSize:12}}>Loading…</div>
+
+          : tab === 'summary' ? (
             <div style={{background:'var(--navy)',border:'1px solid var(--border)',borderRadius:'var(--radius)'}}>
-              {onHand.length === 0 ? (
-                <div style={{padding:40,textAlign:'center',color:'var(--cream-30)',fontSize:12}}>
-                  No stock placed yet. Use "Place Stock" to add your first consignment batch.
-                </div>
-              ) : (
-                <div style={{overflowX:'auto'}}>
-                  <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:700}}>
-                    <thead>
-                      <tr>
-                        {['Brand','Product','Total Placed','Invoiced','Returned','On Hand','Price','Value'].map(h=>(
-                          <th key={h} style={{padding:'9px 12px',textAlign:['Total Placed','Invoiced','Returned','On Hand','Price','Value'].includes(h)?'right':'left',fontSize:9.5,fontWeight:700,letterSpacing:.7,textTransform:'uppercase',color:'var(--cream-30)',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap'}}>{h}</th>
+              {onHand.length === 0
+                ? <div style={{padding:40,textAlign:'center',color:'var(--cream-30)',fontSize:12}}>No stock placed yet. Use "Place Stock" to add your first consignment batch.</div>
+                : <div style={{overflowX:'auto'}}>
+                    <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:720}}>
+                      <thead><tr>
+                        {['Brand','Product',lastSnapshot?'Placed (Period)':'Total Placed',lastSnapshot?'Invoiced (Period)':'Invoiced',lastSnapshot?'Returned (Period)':'Returned','On Hand','Price','Value'].map(h=>(
+                          <th key={h} style={{padding:'9px 12px',textAlign:['Placed (Period)','Total Placed','Invoiced (Period)','Invoiced','Returned (Period)','Returned','On Hand','Price','Value'].includes(h)?'right':'left',fontSize:9.5,fontWeight:700,letterSpacing:.7,textTransform:'uppercase',color:'var(--cream-30)',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap'}}>{h}</th>
                         ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {onHand.map(item=>(
-                        <tr key={item.product_id} style={{borderBottom:'1px solid rgba(245,242,235,.04)'}}>
-                          <td style={{padding:'9px 12px'}}><Badge color={item.brand_color}>{item.brand_name}</Badge></td>
-                          <td style={{padding:'9px 12px',color:'var(--cream)'}}>
-                            {item.item_series}{item.variation?' · '+item.variation:''}
-                          </td>
-                          <td style={{padding:'9px 12px',textAlign:'right',color:'var(--cream-60)'}}>{item.total_placed}</td>
-                          <td style={{padding:'9px 12px',textAlign:'right',color:'#7fc93e'}}>{item.total_invoiced}</td>
-                          <td style={{padding:'9px 12px',textAlign:'right',color:'var(--cream-60)'}}>{item.total_returned}</td>
-                          <td style={{padding:'9px 12px',textAlign:'right'}}>
-                            <span style={{fontWeight:700,fontSize:14,color:item.on_hand>0?'var(--cream)':item.on_hand===0?'var(--cream-30)':'#f87171'}}>
-                              {item.on_hand}
-                            </span>
-                          </td>
-                          <td style={{padding:'9px 12px',textAlign:'right',color:'var(--cream-60)'}}>{sgd(item.consignment_price)}</td>
-                          <td style={{padding:'9px 12px',textAlign:'right',fontWeight:700,color:'var(--orange)'}}>
-                            {sgd(Math.max(0,item.on_hand) * (item.consignment_price||0))}
-                          </td>
+                      </tr></thead>
+                      <tbody>
+                        {onHand.map(item=>(
+                          <tr key={item.product_id} style={{borderBottom:'1px solid rgba(245,242,235,.04)'}}>
+                            <td style={{padding:'9px 12px'}}><Badge color={item.brand_color}>{item.brand_name}</Badge></td>
+                            <td style={{padding:'9px 12px',color:'var(--cream)'}}>{item.item_series}{item.variation?' · '+item.variation:''}</td>
+                            <td style={{padding:'9px 12px',textAlign:'right',color:'var(--cream-60)'}}>{item.placed_since||0}</td>
+                            <td style={{padding:'9px 12px',textAlign:'right',color:'#7fc93e'}}>{item.invoiced_since||0}</td>
+                            <td style={{padding:'9px 12px',textAlign:'right',color:'var(--cream-60)'}}>{item.returned_since||0}</td>
+                            <td style={{padding:'9px 12px',textAlign:'right'}}>
+                              <span style={{fontWeight:700,fontSize:14,color:item.on_hand>0?'var(--cream)':item.on_hand===0?'var(--cream-30)':'#f87171'}}>{item.on_hand}</span>
+                            </td>
+                            <td style={{padding:'9px 12px',textAlign:'right',color:'var(--cream-60)'}}>{sgd(item.consignment_price)}</td>
+                            <td style={{padding:'9px 12px',textAlign:'right',fontWeight:700,color:'var(--orange)'}}>{sgd(Math.max(0,item.on_hand)*(item.consignment_price||0))}</td>
+                          </tr>
+                        ))}
+                        <tr style={{borderTop:'2px solid var(--border)'}}>
+                          <td colSpan={5} style={{padding:'10px 12px',fontWeight:700,color:'var(--cream-30)',fontSize:11}}>TOTAL</td>
+                          <td style={{padding:'10px 12px',textAlign:'right',fontWeight:700,color:'var(--cream)'}}>{totalUnits}</td>
+                          <td/>
+                          <td style={{padding:'10px 12px',textAlign:'right',fontWeight:700,color:'var(--orange)'}}>{sgd(totalValue)}</td>
                         </tr>
-                      ))}
-                      <tr style={{borderTop:'2px solid var(--border)'}}>
-                        <td colSpan={5} style={{padding:'10px 12px',fontWeight:700,color:'var(--cream-30)',fontSize:11}}>TOTAL</td>
-                        <td style={{padding:'10px 12px',textAlign:'right',fontWeight:700,color:'var(--cream)'}}>{totalUnits}</td>
-                        <td/>
-                        <td style={{padding:'10px 12px',textAlign:'right',fontWeight:700,color:'var(--orange)'}}>{sgd(totalValue)}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                      </tbody>
+                    </table>
+                  </div>
+              }
             </div>
-          ) : (
-            /* ── Activity Log ── */
+
+          ) : tab === 'history' ? (
             <div style={{display:'flex',flexDirection:'column',gap:16}}>
-              {/* Stock Counts */}
+              {/* Counts */}
               <Card title={`STOCK COUNTS (${counts.length})`}>
                 {counts.length === 0
                   ? <div style={{padding:'20px 16px',fontSize:12,color:'var(--cream-30)'}}>No stock counts yet.</div>
@@ -565,24 +686,19 @@ export default function Consignment() {
                           {c.notes && <span style={{fontSize:11,color:'var(--cream-30)',marginLeft:10}}>{c.notes}</span>}
                         </div>
                         <div style={{display:'flex',gap:10,alignItems:'center'}}>
-                          {c.invoice_amount > 0 && (
-                            <span style={{fontSize:12,fontWeight:700,color:'#7fc93e'}}>Invoice: {sgd(c.invoice_amount)}</span>
-                          )}
-                          {c.total_discrepancy === 0 && (
-                            <span style={{fontSize:11,color:'var(--cream-30)'}}>No discrepancy</span>
-                          )}
+                          {c.invoice_amount>0 && <span style={{fontSize:12,fontWeight:700,color:'#7fc93e'}}>Invoice: {sgd(c.invoice_amount)}</span>}
+                          {c.total_discrepancy===0 && <span style={{fontSize:11,color:'var(--cream-30)'}}>No discrepancy</span>}
                           <button onClick={async()=>{if(window.confirm('Void this count and its invoiced sales?')){await consignmentApi.deleteCount(c.id);loadPartnerData(partnerId);}}}
-                            style={{background:'none',border:'none',color:'rgba(248,113,113,.5)',cursor:'pointer',padding:4,display:'flex',alignItems:'center'}}
-                            title="Void count">
+                            style={{background:'none',border:'none',color:'rgba(248,113,113,.5)',cursor:'pointer',padding:4,display:'flex',alignItems:'center'}} title="Void count">
                             <Trash2 size={13}/>
                           </button>
                         </div>
                       </div>
-                      <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                      <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
                         {c.items?.map(i=>(
                           <div key={i.product_id} style={{fontSize:10,background:'rgba(245,242,235,.06)',borderRadius:4,padding:'3px 8px',color:i.qty_discrepancy>0?'#fbbf24':'var(--cream-30)'}}>
                             {i.item_series}{i.variation?' · '+i.variation:''}: counted {i.qty_counted} / on-hand {i.qty_on_hand}
-                            {i.qty_discrepancy > 0 && ` → −${i.qty_discrepancy} invoiced`}
+                            {i.qty_discrepancy>0 && ` → −${i.qty_discrepancy} invoiced`}
                           </div>
                         ))}
                       </div>
@@ -595,12 +711,11 @@ export default function Consignment() {
               <Card title={`PLACEMENTS (${placements.length})`}>
                 {placements.length === 0
                   ? <div style={{padding:'20px 16px',fontSize:12,color:'var(--cream-30)'}}>No placements recorded.</div>
-                  : (
-                    <div style={{overflowX:'auto'}}>
+                  : <div style={{overflowX:'auto'}}>
                       <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
                         <thead><tr>
-                          {['Date','Brand','Product','Qty','Price','Notes',''].map(h=>(
-                            <th key={h} style={{padding:'8px 12px',textAlign:['Qty','Price'].includes(h)?'right':'left',fontSize:9.5,fontWeight:700,letterSpacing:.7,textTransform:'uppercase',color:'var(--cream-30)',borderBottom:'1px solid var(--border)'}}>{h}</th>
+                          {['Date','Brand','Product','Qty','Consign Price','Notes',''].map(h=>(
+                            <th key={h} style={{padding:'8px 12px',textAlign:['Qty','Consign Price'].includes(h)?'right':'left',fontSize:9.5,fontWeight:700,letterSpacing:.7,textTransform:'uppercase',color:'var(--cream-30)',borderBottom:'1px solid var(--border)'}}>{h}</th>
                           ))}
                         </tr></thead>
                         <tbody>
@@ -623,7 +738,6 @@ export default function Consignment() {
                         </tbody>
                       </table>
                     </div>
-                  )
                 }
               </Card>
 
@@ -631,8 +745,7 @@ export default function Consignment() {
               <Card title={`RETURNS (${returns.length})`}>
                 {returns.length === 0
                   ? <div style={{padding:'20px 16px',fontSize:12,color:'var(--cream-30)'}}>No returns recorded.</div>
-                  : (
-                    <div style={{overflowX:'auto'}}>
+                  : <div style={{overflowX:'auto'}}>
                       <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
                         <thead><tr>
                           {['Date','Brand','Product','Qty','Notes',''].map(h=>(
@@ -658,30 +771,51 @@ export default function Consignment() {
                         </tbody>
                       </table>
                     </div>
-                  )
                 }
               </Card>
+            </div>
+
+          ) : (
+            /* Period History tab */
+            <div style={{display:'flex',flexDirection:'column',gap:12}}>
+              {snapshots.length === 0
+                ? <div style={{padding:40,textAlign:'center',color:'var(--cream-30)',fontSize:12}}>
+                    No closed periods yet. Use "Close Month" after each monthly stock count to lock the on-hand snapshot.
+                  </div>
+                : snapshots.map((period, pi) => (
+                    <Card key={pi} title={`📦 ${period.label}`}>
+                      <div style={{overflowX:'auto'}}>
+                        <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                          <thead><tr>
+                            {['Brand','Product','On Hand at Close','Price','Value'].map(h=>(
+                              <th key={h} style={{padding:'8px 12px',textAlign:['On Hand at Close','Price','Value'].includes(h)?'right':'left',fontSize:9.5,fontWeight:700,letterSpacing:.7,textTransform:'uppercase',color:'var(--cream-30)',borderBottom:'1px solid var(--border)'}}>{h}</th>
+                            ))}
+                          </tr></thead>
+                          <tbody>
+                            {period.items.map(item=>(
+                              <tr key={item.id} style={{borderBottom:'1px solid rgba(245,242,235,.04)'}}>
+                                <td style={{padding:'8px 12px'}}><Badge color={item.brand_color}>{item.brand_name}</Badge></td>
+                                <td style={{padding:'8px 12px',color:'var(--cream)'}}>{item.item_series}{item.variation?' · '+item.variation:''}</td>
+                                <td style={{padding:'8px 12px',textAlign:'right',fontWeight:700,color:'var(--cream)'}}>{item.on_hand_qty}</td>
+                                <td style={{padding:'8px 12px',textAlign:'right',color:'var(--cream-60)'}}>{sgd(item.consignment_price)}</td>
+                                <td style={{padding:'8px 12px',textAlign:'right',fontWeight:700,color:'var(--orange)'}}>{sgd(item.on_hand_qty*(item.consignment_price||0))}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </Card>
+                  ))
+              }
             </div>
           )}
         </>
       )}
 
-      {/* Modals */}
-      <PlaceStockModal
-        open={modal==='place'} partnerId={partnerId}
-        onClose={()=>setModal(null)}
-        onSaved={()=>{setModal(null);loadPartnerData(partnerId);}}
-      />
-      <ReturnModal
-        open={modal==='return'} partnerId={partnerId} onHandItems={onHand}
-        onClose={()=>setModal(null)}
-        onSaved={()=>{setModal(null);loadPartnerData(partnerId);}}
-      />
-      <StockCountModal
-        open={modal==='count'} partnerId={partnerId} onHandItems={onHand}
-        onClose={()=>setModal(null)}
-        onSaved={()=>loadPartnerData(partnerId)}
-      />
+      <PlaceStockModal open={modal==='place'} partnerId={partnerId} onClose={()=>setModal(null)} onSaved={()=>{setModal(null);loadPartnerData(partnerId);}}/>
+      <ReturnModal open={modal==='return'} partnerId={partnerId} onHandItems={onHand} onClose={()=>setModal(null)} onSaved={()=>{setModal(null);loadPartnerData(partnerId);}}/>
+      <StockCountModal open={modal==='count'} partnerId={partnerId} onHandItems={onHand} onClose={()=>setModal(null)} onSaved={()=>loadPartnerData(partnerId)}/>
+      <CloseMonthModal open={modal==='close'} partnerId={partnerId} onHandItems={onHand} onClose={()=>setModal(null)} onSaved={()=>{loadPartnerData(partnerId);setTab('periods');}}/>
     </Page>
   );
 }

@@ -216,6 +216,17 @@ function createSchema() {
       consignment_price REAL DEFAULT 0,
       unit_cost REAL DEFAULT 0
     )`,
+    `CREATE TABLE IF NOT EXISTS consignment_snapshots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      partner_id INTEGER NOT NULL REFERENCES partners(id),
+      product_id INTEGER NOT NULL REFERENCES products(id),
+      snapshot_date DATE NOT NULL,
+      period_label TEXT,
+      on_hand_qty INTEGER NOT NULL DEFAULT 0,
+      consignment_price REAL DEFAULT 0,
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
     `CREATE TABLE IF NOT EXISTS invoices (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       invoice_number TEXT UNIQUE NOT NULL,

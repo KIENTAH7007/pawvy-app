@@ -140,6 +140,8 @@ export default function Dashboard() {
   const [summary,     setSummary]     = useState(null);
   const [trend,       setTrend]       = useState([]);
   const [partners,    setPartners]    = useState([]);
+  const [allChannels, setAllChannels] = useState([]);
+  const [b2cMode,     setB2cMode]     = useState(false);
   const [brands,      setBrands]      = useState([]);
   const [selectedBrand, setSelected] = useState(null); // { id, name, color }
   const [loading,     setLoading]     = useState(true);
@@ -153,8 +155,9 @@ export default function Dashboard() {
       reportsApi.trend({ year: curYear }),
       partnerReportApi.top({ date_from:year.from, date_to:year.to, limit:10 }),
       brandsApi.getAll(),
-    ]).then(([sum, tr, pts, br]) => {
-      setSummary(sum); setTrend(tr); setPartners(pts); setBrands(br); setLoading(false);
+      reportsApi.allChannels({ date_from:year.from, date_to:year.to }),
+    ]).then(([sum, tr, pts, br, ac]) => {
+      setSummary(sum); setTrend(tr); setPartners(pts); setBrands(br); setAllChannels(ac); setLoading(false);
     }).catch(() => setLoading(false));
   }, []);
 
@@ -281,41 +284,61 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Top Partners table */}
+          {/* Top Partners / All Channels table */}
           <div style={{background:'var(--navy)',border:'1px solid var(--border)',borderRadius:'var(--radius)',overflow:'hidden'}}>
-            <div style={{padding:'12px 16px',borderBottom:'1px solid var(--border)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-              <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:14,letterSpacing:1,color:'var(--cream)'}}>TOP PARTNERS · YTD PROFIT RANKING</span>
-              <span style={{fontSize:10,color:'var(--cream-30)'}}>Jan – {new Date().toLocaleString('default',{month:'short'})} {curYear}</span>
+            <div style={{padding:'12px 16px',borderBottom:'1px solid var(--border)',display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8}}>
+              <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:14,letterSpacing:1,color:'var(--cream)'}}>
+                {b2cMode ? 'ALL CHANNELS · YTD PROFIT RANKING' : 'TOP PARTNERS · YTD PROFIT RANKING'}
+              </span>
+              <div style={{display:'flex',alignItems:'center',gap:8}}>
+                <span style={{fontSize:10,color:'var(--cream-30)'}}>Jan – {new Date().toLocaleString('default',{month:'short'})} {curYear}</span>
+                <div style={{display:'flex',borderRadius:6,overflow:'hidden',border:'1px solid var(--border)'}}>
+                  {[['Partners','false'],['All Channels','true']].map(([label,val])=>(
+                    <button key={val} onClick={()=>setB2cMode(val==='true')}
+                      style={{padding:'4px 10px',fontSize:10,fontWeight:700,border:'none',cursor:'pointer',
+                        background: String(b2cMode)===val ? 'var(--orange)' : 'var(--navy-light)',
+                        color: String(b2cMode)===val ? '#fff' : 'var(--cream-30)',
+                        transition:'all .15s'}}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
             <div style={{overflowX:'auto'}}>
               {loading ? <div style={{padding:30,textAlign:'center',color:'var(--cream-30)',fontSize:12}}>Loading…</div>
-              : partners.length === 0 ? <div style={{padding:30,textAlign:'center',color:'var(--cream-30)',fontSize:12}}>No partner sales recorded yet — they'll appear here once you record B2B sales</div>
-              : (
-                <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
-                  <thead>
-                    <tr>
-                      {['#','Partner','Type','Model','Units','Revenue','Profit'].map(h=>(
-                        <th key={h} style={{padding:'8px 14px',textAlign:['#','Units','Revenue','Profit'].includes(h)?'right':'left',fontSize:9.5,fontWeight:700,letterSpacing:.8,textTransform:'uppercase',color:'var(--cream-30)',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap'}}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {partners.map((p,i) => (
-                      <tr key={p.partner} style={{borderBottom:'1px solid var(--cream-05)'}}>
-                        <td style={{padding:'9px 14px',color:'var(--cream-30)',textAlign:'right',fontSize:11}}>{i+1}</td>
-                        <td style={{padding:'9px 14px',color:'var(--cream)',fontWeight:500}}>{p.partner}</td>
-                        <td style={{padding:'9px 14px',color:'var(--cream-60)',fontSize:11}}>{p.business_type||'—'}</td>
-                        <td style={{padding:'9px 14px'}}>
-                          <Badge color={p.model==='Consignment'?'#378ADD':p.model==='Commission'?'#7F77DD':'#f36f4a'}>{p.model||'—'}</Badge>
-                        </td>
-                        <td style={{padding:'9px 14px',color:'var(--cream)',textAlign:'right'}}>{p.units}</td>
-                        <td style={{padding:'9px 14px',color:'var(--cream)',textAlign:'right',fontWeight:600}}>SGD {parseFloat(p.revenue||0).toFixed(2)}</td>
-                        <td style={{padding:'9px 14px',color:'#7fc93e',textAlign:'right',fontWeight:700}}>SGD {parseFloat(p.profit||0).toFixed(2)}</td>
+              : (b2cMode ? allChannels : partners).length === 0
+                ? <div style={{padding:30,textAlign:'center',color:'var(--cream-30)',fontSize:12}}>No data yet</div>
+                : (
+                  <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                    <thead>
+                      <tr>
+                        {['#', b2cMode?'Channel / Partner':'Partner', 'Type', b2cMode?'Category':'Model', 'Units','Revenue','Profit'].map(h=>(
+                          <th key={h} style={{padding:'8px 14px',textAlign:['#','Units','Revenue','Profit'].includes(h)?'right':'left',fontSize:9.5,fontWeight:700,letterSpacing:.8,textTransform:'uppercase',color:'var(--cream-30)',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap'}}>{h}</th>
+                        ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
+                    </thead>
+                    <tbody>
+                      {(b2cMode ? allChannels : partners).map((p,i) => (
+                        <tr key={p.name||p.partner} style={{borderBottom:'1px solid var(--cream-05)'}}>
+                          <td style={{padding:'9px 14px',color:'var(--cream-30)',textAlign:'right',fontSize:11}}>{i+1}</td>
+                          <td style={{padding:'9px 14px',color:'var(--cream)',fontWeight:500}}>{p.name||p.partner}</td>
+                          <td style={{padding:'9px 14px',color:'var(--cream-60)',fontSize:11}}>{p.business_type||'—'}</td>
+                          <td style={{padding:'9px 14px'}}>
+                            {b2cMode && p.category==='B2C'
+                              ? <Badge color="#378ADD">{p.type_label||p.channel||'B2C'}</Badge>
+                              : <Badge color={p.model==='Consignment'?'#378ADD':p.model==='Commission'?'#7F77DD':'#f36f4a'}>{p.model||p.type_label||'—'}</Badge>
+                            }
+                          </td>
+                          <td style={{padding:'9px 14px',color:'var(--cream)',textAlign:'right'}}>{p.units}</td>
+                          <td style={{padding:'9px 14px',color:'var(--cream)',textAlign:'right',fontWeight:600}}>SGD {parseFloat(p.revenue||0).toFixed(2)}</td>
+                          <td style={{padding:'9px 14px',color:'#7fc93e',textAlign:'right',fontWeight:700}}>SGD {parseFloat(p.profit||0).toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )
+              }
             </div>
           </div>
         </>

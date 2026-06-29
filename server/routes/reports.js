@@ -140,6 +140,41 @@ function reportsRouter(db) {
     `, [...p, lim]));
   });
 
+  /* ── All channels (partners + B2C) for Dashboard toggle ─────── */
+  router.get('/all-channels', (req, res) => {
+    const { date_from, date_to, market } = req.query;
+    let where = `WHERE ${VOIDED_FILTER}`;
+    const p = [];
+    if (date_from) { where += ' AND s.date >= ?'; p.push(date_from); }
+    if (date_to)   { where += ' AND s.date <= ?'; p.push(date_to); }
+    if (market)    { where += ' AND s.market = ?'; p.push(market); }
+
+    const partnerSales = db.query(`
+      SELECT pt.company_name AS name, 'Partner' AS category,
+        COALESCE(pt.model,'—') AS type_label, pt.business_type,
+        ROUND(SUM(${REVENUE_SQL}),2) AS revenue,
+        ROUND(SUM(${PROFIT_SQL}),2)  AS profit,
+        SUM(s.qty) AS units, COUNT(*) AS orders
+      FROM sales s JOIN partners pt ON pt.id=s.partner_id
+      ${where} AND s.partner_id IS NOT NULL
+      GROUP BY s.partner_id ORDER BY profit DESC
+    `, p);
+
+    const b2cSales = db.query(`
+      SELECT s.channel AS name, 'B2C' AS category,
+        s.channel AS type_label, NULL AS business_type,
+        ROUND(SUM(${REVENUE_SQL}),2) AS revenue,
+        ROUND(SUM(${PROFIT_SQL}),2)  AS profit,
+        SUM(s.qty) AS units, COUNT(*) AS orders
+      FROM sales s
+      ${where} AND s.partner_id IS NULL
+      GROUP BY s.channel ORDER BY profit DESC
+    `, p);
+
+    const combined = [...partnerSales, ...b2cSales].sort((a,b) => (b.profit||0) - (a.profit||0));
+    res.json(combined);
+  });
+
   return router;
 }
 
