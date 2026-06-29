@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { productsApi, brandsApi } from '../api';
-import { Page, Select, Input, Badge, Btn, Modal, FormRow, Divider, fmt } from '../components/ui';
+import { Page, Select, Input, Badge, Btn, Modal, FormRow, Divider } from '../components/ui';
 
 const MARKET_FIELDS = {
   SG: [
@@ -21,24 +21,33 @@ const MARKET_FIELDS = {
   ],
 };
 
+const BRAND_COLORS = [
+  '#f36f4a','#378ADD','#639922','#BA7517','#7F77DD','#1D9E75',
+  '#E0445A','#F7B731','#20BF6B','#2D98DA','#8854D0','#A55EEA',
+];
+
 export default function Products() {
   const [products, setProducts] = useState([]);
   const [brands,   setBrands]   = useState([]);
   const [filterBrand, setFB]    = useState('');
   const [filterMkt,   setFM]    = useState('SG');
   const [search,   setSearch]   = useState('');
-  const [modal,    setModal]    = useState(null);
+  const [showArchived, setShowArchived] = useState(false);  // Fix #2
+  const [modal,    setModal]    = useState(null);  // 'add' | 'edit' | 'addBrand' | 'editBrand'
   const [form,     setForm]     = useState({});
+  const [brandForm, setBrandForm] = useState({ name:'', color: BRAND_COLORS[0] });
   const [saving,   setSaving]   = useState(false);
 
   const load = () => {
     const q = {};
     if (filterBrand) q.brand_id = filterBrand;
     if (search)      q.search   = search;
+    // Fix #2: show only active by default; show archived only when toggled
+    if (!showArchived) q.active = 'true';
     productsApi.getAll(q).then(setProducts);
   };
   useEffect(() => { brandsApi.getAll().then(setBrands); }, []);
-  useEffect(() => { load(); }, [filterBrand, search]);
+  useEffect(() => { load(); }, [filterBrand, search, showArchived]);
 
   const sf = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -52,17 +61,41 @@ export default function Products() {
     } finally { setSaving(false); }
   }
 
+  // Fix #1: Brand management
+  async function saveBrand() {
+    if (!brandForm.name) return;
+    setSaving(true);
+    try {
+      if (modal === 'editBrand') {
+        await brandsApi.update(brandForm.id, brandForm);
+      } else {
+        await brandsApi.create(brandForm);
+      }
+      const updated = await brandsApi.getAll();
+      setBrands(updated);
+      setModal(null);
+      setBrandForm({ name:'', color: BRAND_COLORS[0] });
+    } finally { setSaving(false); }
+  }
+
   const mktCols = MARKET_FIELDS[filterMkt] || MARKET_FIELDS.SG;
 
-  const currencyLabel = { SG:'SGD', MY:'MYR', AU:'AUD' }[filterMkt];
+  const activeCount   = products.filter(p => p.is_active !== 0).length;
+  const archivedCount = products.filter(p => p.is_active === 0).length;
 
   return (
-    <Page title="PRODUCTS & PRICING" subtitle={`${products.length} SKUs`}
-      action={<Btn onClick={() => { setForm({ is_active:1 }); setModal('add'); }}><span style={{fontSize:16}}>+</span> Add Product</Btn>}>
+    <Page title="PRODUCTS & PRICING" subtitle={`${activeCount} active SKUs${archivedCount > 0 && showArchived ? ` + ${archivedCount} archived` : ''}`}
+      action={
+        <div style={{display:'flex',gap:8}}>
+          <Btn variant="ghost" size="sm" onClick={() => { setBrandForm({ name:'', color: BRAND_COLORS[0] }); setModal('addBrand'); }}>
+            + Add Brand
+          </Btn>
+          <Btn onClick={() => { setForm({ is_active:1 }); setModal('add'); }}><span style={{fontSize:16}}>+</span> Add Product</Btn>
+        </div>
+      }>
 
       {/* Filters */}
       <div style={{display:'flex',gap:8,alignItems:'flex-end',flexWrap:'wrap'}}>
-        {/* Market selector — prominent */}
         <div style={{display:'flex',gap:4}}>
           {['SG','MY','AU'].map(m => (
             <button key={m} onClick={() => setFM(m)}
@@ -78,12 +111,33 @@ export default function Products() {
           {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
         </Select>
         <Input label="Search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Name, variation, barcode…" style={{width:220}}/>
+
+        {/* Fix #2: Show archived toggle */}
+        <label style={{display:'flex',alignItems:'center',gap:7,paddingBottom:6,cursor:'pointer',fontSize:12,color:'var(--cream-60)'}}>
+          <input type="checkbox" checked={showArchived} onChange={e=>setShowArchived(e.target.checked)}
+            style={{accentColor:'var(--orange)',width:14,height:14}}/>
+          Show archived
+        </label>
+
         <div style={{fontSize:11,color:'var(--cream-30)',paddingBottom:10}}>
-          Showing <strong style={{color:'var(--cream)'}}>{filterMkt}</strong> pricing columns
+          Showing <strong style={{color:'var(--cream)'}}>{filterMkt}</strong> pricing
         </div>
       </div>
 
-      {/* Table — scrollable */}
+      {/* Brands quick-view */}
+      <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+        {brands.map(b => (
+          <div key={b.id} onClick={() => { setBrandForm({...b}); setModal('editBrand'); }}
+            style={{display:'flex',alignItems:'center',gap:5,padding:'4px 10px',borderRadius:20,
+              border:`1px solid ${b.color}44`,cursor:'pointer',
+              background:`${b.color}11`}}>
+            <span style={{width:8,height:8,borderRadius:'50%',background:b.color,display:'inline-block'}}/>
+            <span style={{fontSize:11,color:b.color,fontWeight:600}}>{b.name}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Table */}
       <div style={{background:'var(--navy)',border:'1px solid var(--border)',borderRadius:'var(--radius)'}}>
         <div style={{overflowX:'auto'}}>
           <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:700}}>
@@ -100,33 +154,40 @@ export default function Products() {
             <tbody>
               {products.length === 0
                 ? <tr><td colSpan={5+mktCols.length} style={{padding:40,textAlign:'center',color:'var(--cream-30)'}}>No products found</td></tr>
-                : products.map(p => (
-                  <tr key={p.id} style={{borderBottom:'1px solid rgba(245,242,235,.04)',cursor:'pointer'}}
-                    onClick={() => { setForm({...p}); setModal('edit'); }}
-                    onMouseEnter={e=>e.currentTarget.style.background='rgba(245,242,235,.03)'}
-                    onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                    <td style={td()}><Badge color={p.brand_color}>{p.brand_name}</Badge></td>
-                    <td style={td()}>{p.item_series}</td>
-                    <td style={{...td(),color:'var(--cream-60)'}}>{p.variation||'—'}</td>
-                    <td style={{...td(),color:'var(--cream-60)',fontSize:11}}>{p.barcode||'—'}</td>
-                    {mktCols.map(c => (
-                      <td key={c.key} style={{...td('right'),color: c.key==='unit_cost'?'var(--cream-30)':'var(--cream)'}}>
-                        {parseFloat(p[c.key]||0)>0 ? `${parseFloat(p[c.key]).toFixed(2)}` : '—'}
+                : products.map(p => {
+                  const archived = p.is_active === 0;
+                  return (
+                    <tr key={p.id}
+                      style={{borderBottom:'1px solid rgba(245,242,235,.04)',cursor:'pointer',opacity:archived?0.55:1}}
+                      onClick={() => { setForm({...p}); setModal('edit'); }}
+                      onMouseEnter={e=>e.currentTarget.style.background='rgba(245,242,235,.03)'}
+                      onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                      <td style={td()}><Badge color={p.brand_color}>{p.brand_name}</Badge></td>
+                      <td style={td()}>
+                        {p.item_series}
+                        {archived && <span style={{marginLeft:6,fontSize:9,fontWeight:700,color:'var(--cream-30)',background:'rgba(245,242,235,.08)',padding:'1px 5px',borderRadius:3}}>ARCHIVED</span>}
                       </td>
-                    ))}
-                    <td style={td()}>
-                      <Btn size="sm" variant="ghost" onClick={e=>{e.stopPropagation();setForm({...p});setModal('edit');}}>Edit</Btn>
-                    </td>
-                  </tr>
-                ))
+                      <td style={{...td(),color:'var(--cream-60)'}}>{p.variation||'—'}</td>
+                      <td style={{...td(),color:'var(--cream-60)',fontSize:11}}>{p.barcode||'—'}</td>
+                      {mktCols.map(c => (
+                        <td key={c.key} style={{...td('right'),color: c.key==='unit_cost'?'var(--cream-30)':'var(--cream)'}}>
+                          {parseFloat(p[c.key]||0)>0 ? `${parseFloat(p[c.key]).toFixed(2)}` : '—'}
+                        </td>
+                      ))}
+                      <td style={td()}>
+                        <Btn size="sm" variant="ghost" onClick={e=>{e.stopPropagation();setForm({...p});setModal('edit');}}>Edit</Btn>
+                      </td>
+                    </tr>
+                  );
+                })
               }
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Add / Edit Modal */}
-      <Modal open={!!modal} title={modal==='edit'?'EDIT PRODUCT':'ADD PRODUCT'} onClose={()=>setModal(null)} width={640}>
+      {/* Product Add / Edit Modal */}
+      <Modal open={modal==='add'||modal==='edit'} title={modal==='edit'?'EDIT PRODUCT':'ADD PRODUCT'} onClose={()=>setModal(null)} width={640}>
         <div style={{display:'flex',flexDirection:'column',gap:14}}>
           <FormRow cols={2}>
             <Select label="Brand *" value={form.brand_id||''} onChange={e=>sf('brand_id',e.target.value)}>
@@ -161,19 +222,48 @@ export default function Products() {
           </FormRow>
 
           <Input label="Notes" value={form.notes||''} onChange={e=>sf('notes',e.target.value)} placeholder="Optional"/>
+
           <div style={{display:'flex',gap:10,paddingTop:4}}>
             <Btn onClick={save} disabled={saving} size="lg" style={{flex:1,justifyContent:'center'}}>{saving?'Saving…':'Save Product'}</Btn>
             {modal==='edit' && (
-              <Btn variant="danger" onClick={async()=>{await productsApi.delete(form.id);load();setModal(null);}}>Archive</Btn>
+              form.is_active !== 0
+                ? <Btn variant="danger" onClick={async()=>{await productsApi.delete(form.id);load();setModal(null);}}>Archive</Btn>
+                : <Btn variant="secondary" onClick={async()=>{await productsApi.update(form.id,{...form,is_active:1});load();setModal(null);}}>Restore</Btn>
             )}
           </div>
+        </div>
+      </Modal>
+
+      {/* Fix #1: Brand Add / Edit Modal */}
+      <Modal open={modal==='addBrand'||modal==='editBrand'}
+        title={modal==='editBrand'?'EDIT BRAND':'ADD NEW BRAND'}
+        onClose={()=>setModal(null)} width={420}>
+        <div style={{display:'flex',flexDirection:'column',gap:14}}>
+          <Input label="Brand Name *" value={brandForm.name||''} onChange={e=>setBrandForm(f=>({...f,name:e.target.value}))} placeholder="e.g. Better Bone"/>
+          <div>
+            <div style={{fontSize:11,color:'var(--cream-60)',marginBottom:8,fontWeight:600,letterSpacing:.5,textTransform:'uppercase'}}>Brand Colour</div>
+            <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+              {BRAND_COLORS.map(c => (
+                <button key={c} onClick={()=>setBrandForm(f=>({...f,color:c}))}
+                  style={{width:28,height:28,borderRadius:'50%',background:c,border:brandForm.color===c?'3px solid #fff':'3px solid transparent',cursor:'pointer',outline:'none',padding:0}}/>
+              ))}
+              <input type="color" value={brandForm.color||'#888888'} onChange={e=>setBrandForm(f=>({...f,color:e.target.value}))}
+                style={{width:28,height:28,borderRadius:'50%',border:'1px solid var(--border)',cursor:'pointer',padding:0,background:'none'}}/>
+            </div>
+          </div>
+          <div style={{display:'flex',alignItems:'center',gap:10,padding:'10px',background:`${brandForm.color}15`,borderRadius:8}}>
+            <div style={{width:24,height:24,borderRadius:'50%',background:brandForm.color||'#888'}}/>
+            <span style={{color:brandForm.color||'#888',fontWeight:700,fontSize:14}}>{brandForm.name||'Brand Preview'}</span>
+          </div>
+          <Btn onClick={saveBrand} disabled={saving||!brandForm.name} size="lg" style={{justifyContent:'center'}}>
+            {saving ? 'Saving…' : modal==='editBrand' ? 'Update Brand' : 'Add Brand'}
+          </Btn>
         </div>
       </Modal>
     </Page>
   );
 }
 
-// Style helpers
 const th = (align='left') => ({
   padding:'9px 12px',textAlign:align,fontSize:9.5,fontWeight:700,
   letterSpacing:.7,textTransform:'uppercase',color:'var(--cream-30)',

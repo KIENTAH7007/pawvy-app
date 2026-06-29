@@ -178,10 +178,10 @@ export default function Dashboard() {
       {/* KPIs */}
       <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10}}>
         <KpiCard label={`${period.label} Profit`} featured
-          value={loading?'…':`SGD ${parseFloat(summary?.totals?.profit||0).toFixed(0)}`}
+          value={loading?'…':`SGD ${parseFloat(summary?.totals?.profit||0).toFixed(2)}`}
           sub="gross, excl. operating costs"/>
         <KpiCard label="Revenue (month)"
-          value={loading?'…':`SGD ${parseFloat(summary?.totals?.revenue||0).toFixed(0)}`}
+          value={loading?'…':`SGD ${parseFloat(summary?.totals?.revenue||0).toFixed(2)}`}
           sub={`${summary?.totals?.transactions||0} transactions`}/>
         <KpiCard label="Units Sold (month)"
           value={loading?'…':String(summary?.totals?.units_sold||0)}
@@ -266,7 +266,7 @@ export default function Dashboard() {
                             {b.name}
                           </span>
                           <span style={{fontSize:10,color:'var(--cream-30)',display:'flex',alignItems:'center',gap:6}}>
-                            SGD {parseFloat(b.profit||0).toFixed(0)} · {b.units}u
+                            SGD {parseFloat(b.profit||0).toFixed(2)} · {b.units}u
                             <ChevronRight size={11} style={{color:'var(--cream-30)'}}/>
                           </span>
                         </div>
@@ -309,8 +309,8 @@ export default function Dashboard() {
                           <Badge color={p.model==='Consignment'?'#378ADD':p.model==='Commission'?'#7F77DD':'#f36f4a'}>{p.model||'—'}</Badge>
                         </td>
                         <td style={{padding:'9px 14px',color:'var(--cream)',textAlign:'right'}}>{p.units}</td>
-                        <td style={{padding:'9px 14px',color:'var(--cream)',textAlign:'right',fontWeight:600}}>SGD {parseFloat(p.revenue||0).toFixed(0)}</td>
-                        <td style={{padding:'9px 14px',color:'#7fc93e',textAlign:'right',fontWeight:700}}>SGD {parseFloat(p.profit||0).toFixed(0)}</td>
+                        <td style={{padding:'9px 14px',color:'var(--cream)',textAlign:'right',fontWeight:600}}>SGD {parseFloat(p.revenue||0).toFixed(2)}</td>
+                        <td style={{padding:'9px 14px',color:'#7fc93e',textAlign:'right',fontWeight:700}}>SGD {parseFloat(p.profit||0).toFixed(2)}</td>
                       </tr>
                     ))}
                   </tbody>

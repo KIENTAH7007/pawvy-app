@@ -235,6 +235,13 @@ function createSchema() {
     "ALTER TABLE partners ADD COLUMN discount_threshold REAL DEFAULT 0",
   ].forEach(sql => { try { db.run(sql); } catch(e) {} });
 
+  // Add sale-level columns (safe ALTER TABLE — ignored if already exist)
+  [
+    "ALTER TABLE sales ADD COLUMN voided INTEGER DEFAULT 0",
+    "ALTER TABLE sales ADD COLUMN shipping_charged REAL DEFAULT 0",
+    "ALTER TABLE sales ADD COLUMN shipping_cost REAL DEFAULT 0",
+  ].forEach(sql => { try { db.run(sql); } catch(e) {} });
+
   // Backfill NULL discount_type for existing rows (Railway seed data has NULLs)
   try {
     db.run("UPDATE partners SET discount_type = 'standard_rebate' WHERE discount_type IS NULL");

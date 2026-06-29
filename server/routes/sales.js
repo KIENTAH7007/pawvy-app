@@ -1,11 +1,29 @@
 const { Router } = require('express');
 
+const MARKETPLACE_CHANNELS = ['Shopee', 'Lazada', 'Amazon', 'TikTok Shop'];
+
+// Revenue differs by channel:
+// Marketplace: full price (fee is a cost, not a revenue deduction)
+// B2B / Event: price minus discount + shipping charged
+const REVENUE_EXPR = `CASE WHEN s.channel IN ('Shopee','Lazada','Amazon','TikTok Shop')
+  THEN ROUND(s.qty * s.unit_price + COALESCE(s.shipping_charged,0), 2)
+  ELSE ROUND(s.qty * s.unit_price - s.platform_fee_amt + COALESCE(s.shipping_charged,0), 2)
+END`;
+
+// Profit is consistent: gross margin minus fees/discounts plus shipping net
+const PROFIT_EXPR = `ROUND(
+  s.qty * (s.unit_price - s.unit_cost)
+  - s.platform_fee_amt
+  + COALESCE(s.shipping_charged,0)
+  - COALESCE(s.shipping_cost,0),
+2)`;
+
 module.exports = function(db) {
   const router = Router();
 
   // GET sales with rich joined data + computed profit
   router.get('/', (req, res) => {
-    const { market, brand_id, partner_id, channel, date_from, date_to, limit } = req.query;
+    const { market, brand_id, partner_id, channel, date_from, date_to, limit, show_voided } = req.query;
 
     let sql = `
       SELECT
@@ -13,10 +31,10 @@ module.exports = function(db) {
         p.item_series, p.variation, p.barcode,
         b.id AS brand_id, b.name AS brand_name, b.color AS brand_color,
         pt.company_name AS partner_name,
-        ROUND(s.qty * s.unit_price, 2)                                        AS revenue,
-        ROUND(s.qty * s.unit_cost,  2)                                        AS cogs,
-        ROUND(s.qty * (s.unit_price - s.unit_cost) - s.platform_fee_amt, 2)  AS profit,
-        ROUND((s.unit_price - s.unit_cost - (s.platform_fee_amt / CASE WHEN s.qty=0 THEN 1 ELSE s.qty END)) / CASE WHEN s.unit_price=0 THEN 1 ELSE s.unit_price END * 100, 1) AS margin_pct
+        ${REVENUE_EXPR} AS revenue,
+        ROUND(s.qty * s.unit_cost, 2) AS cogs,
+        ${PROFIT_EXPR} AS profit,
+        ROUND((s.unit_price - s.unit_cost) / CASE WHEN s.unit_price=0 THEN 1 ELSE s.unit_price END * 100, 1) AS margin_pct
       FROM sales s
       JOIN products  p  ON p.id  = s.product_id
       JOIN brands    b  ON b.id  = p.brand_id
@@ -24,6 +42,9 @@ module.exports = function(db) {
       WHERE 1=1
     `;
     const params = [];
+
+    // Hide voided by default unless explicitly requested
+    if (show_voided !== 'true') { sql += ' AND COALESCE(s.voided,0) = 0'; }
 
     if (market)     { sql += ' AND s.market = ?';          params.push(market); }
     if (brand_id)   { sql += ' AND b.id = ?';              params.push(brand_id); }
@@ -41,19 +62,25 @@ module.exports = function(db) {
   // GET summary totals (for dashboard)
   router.get('/summary', (req, res) => {
     const { market, date_from, date_to } = req.query;
-    let where = 'WHERE 1=1';
+    let where = "WHERE COALESCE(s.voided,0) = 0";
     const params = [];
     if (market)    { where += ' AND s.market = ?';  params.push(market); }
     if (date_from) { where += ' AND s.date >= ?';   params.push(date_from); }
     if (date_to)   { where += ' AND s.date <= ?';   params.push(date_to); }
 
+    const revenueExpr = `SUM(CASE WHEN s.channel IN ('Shopee','Lazada','Amazon','TikTok Shop')
+      THEN s.qty * s.unit_price + COALESCE(s.shipping_charged,0)
+      ELSE s.qty * s.unit_price - s.platform_fee_amt + COALESCE(s.shipping_charged,0)
+    END)`;
+    const profitExpr = `SUM(s.qty * (s.unit_price - s.unit_cost) - s.platform_fee_amt + COALESCE(s.shipping_charged,0) - COALESCE(s.shipping_cost,0))`;
+
     const totals = db.queryOne(`
       SELECT
-        COUNT(*)                                                              AS transactions,
-        COALESCE(SUM(s.qty), 0)                                             AS units_sold,
-        ROUND(COALESCE(SUM(s.qty * s.unit_price), 0), 2)                   AS revenue,
-        ROUND(COALESCE(SUM(s.qty * s.unit_cost),  0), 2)                   AS cogs,
-        ROUND(COALESCE(SUM(s.qty * (s.unit_price - s.unit_cost) - s.platform_fee_amt), 0), 2) AS profit
+        COUNT(*)                                                AS transactions,
+        COALESCE(SUM(s.qty), 0)                               AS units_sold,
+        ROUND(COALESCE(${revenueExpr}, 0), 2)                 AS revenue,
+        ROUND(COALESCE(SUM(s.qty * s.unit_cost), 0), 2)       AS cogs,
+        ROUND(COALESCE(${profitExpr}, 0), 2)                  AS profit
       FROM sales s
       JOIN products p ON p.id = s.product_id
       ${where}
@@ -63,8 +90,8 @@ module.exports = function(db) {
     const byBrand = db.query(`
       SELECT
         b.id, b.name, b.color,
-        ROUND(SUM(s.qty * (s.unit_price - s.unit_cost) - s.platform_fee_amt), 2) AS profit,
-        SUM(s.qty)                                                               AS units
+        ROUND(SUM(s.qty * (s.unit_price - s.unit_cost) - s.platform_fee_amt + COALESCE(s.shipping_charged,0) - COALESCE(s.shipping_cost,0)), 2) AS profit,
+        SUM(s.qty) AS units
       FROM sales s
       JOIN products p ON p.id = s.product_id
       JOIN brands   b ON b.id = p.brand_id
@@ -75,9 +102,12 @@ module.exports = function(db) {
     // By month (last 12)
     const byMonth = db.query(`
       SELECT
-        strftime('%Y-%m', s.date)                                               AS month,
-        ROUND(SUM(s.qty * (s.unit_price - s.unit_cost) - s.platform_fee_amt), 2) AS profit,
-        ROUND(SUM(s.qty * s.unit_price), 2)                                     AS revenue
+        strftime('%Y-%m', s.date) AS month,
+        ROUND(SUM(s.qty * (s.unit_price - s.unit_cost) - s.platform_fee_amt + COALESCE(s.shipping_charged,0) - COALESCE(s.shipping_cost,0)), 2) AS profit,
+        ROUND(SUM(CASE WHEN s.channel IN ('Shopee','Lazada','Amazon','TikTok Shop')
+          THEN s.qty * s.unit_price + COALESCE(s.shipping_charged,0)
+          ELSE s.qty * s.unit_price - s.platform_fee_amt + COALESCE(s.shipping_charged,0)
+        END), 2) AS revenue
       FROM sales s
       JOIN products p ON p.id = s.product_id
       ${where}
@@ -98,37 +128,42 @@ module.exports = function(db) {
     const {
       date, product_id, partner_id, channel, market,
       qty, unit_cost, unit_price,
-      platform_fee_pct, notes
+      platform_fee_pct, platform_fee_amt,
+      shipping_charged, shipping_cost,
+      notes
     } = req.body;
 
     if (!date || !product_id || !channel || !qty || unit_price === undefined) {
       return res.status(400).json({ error: 'date, product_id, channel, qty, unit_price are required' });
     }
 
-    // Auto-fill unit_cost from product if not provided
     let cost = unit_cost;
     if (cost === undefined || cost === null) {
       const product = db.queryOne('SELECT unit_cost FROM products WHERE id = ?', [product_id]);
       cost = product?.unit_cost || 0;
     }
 
-    const fee_pct  = platform_fee_pct || 0;
-    const fee_amt  = parseFloat(((qty * unit_price) * (fee_pct / 100)).toFixed(2));
+    const fee_pct = platform_fee_pct || 0;
+    const fee_amt = platform_fee_amt !== undefined ? parseFloat(platform_fee_amt) :
+                    parseFloat(((qty * unit_price) * (fee_pct / 100)).toFixed(2));
 
     const result = db.run(`
       INSERT INTO sales
-        (date, product_id, partner_id, channel, market, qty, unit_cost, unit_price, platform_fee_pct, platform_fee_amt, notes)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?)
+        (date, product_id, partner_id, channel, market, qty, unit_cost, unit_price,
+         platform_fee_pct, platform_fee_amt, shipping_charged, shipping_cost, notes)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
     `, [
       date, product_id, partner_id || null, channel, market || 'SG',
-      qty, cost, unit_price, fee_pct, fee_amt, notes || null
+      qty, cost, unit_price, fee_pct, fee_amt,
+      shipping_charged || 0, shipping_cost || 0,
+      notes || null
     ]);
 
     const sale = db.queryOne(`
       SELECT s.*, p.item_series, p.variation, b.name AS brand_name, b.color AS brand_color,
-        ROUND(s.qty * s.unit_price, 2) AS revenue,
-        ROUND(s.qty * s.unit_cost,  2) AS cogs,
-        ROUND(s.qty * (s.unit_price - s.unit_cost) - s.platform_fee_amt, 2) AS profit
+        ${REVENUE_EXPR} AS revenue,
+        ROUND(s.qty * s.unit_cost, 2) AS cogs,
+        ${PROFIT_EXPR} AS profit
       FROM sales s JOIN products p ON p.id=s.product_id JOIN brands b ON b.id=p.brand_id
       WHERE s.id = ?
     `, [result.lastID]);
@@ -138,27 +173,40 @@ module.exports = function(db) {
 
   // PUT update a sale
   router.put('/:id', (req, res) => {
-    const { date, product_id, partner_id, channel, market, qty, unit_cost, unit_price, platform_fee_pct, notes } = req.body;
+    const { date, product_id, partner_id, channel, market, qty, unit_cost, unit_price,
+            platform_fee_pct, platform_fee_amt, shipping_charged, shipping_cost, notes } = req.body;
     const fee_pct = platform_fee_pct || 0;
-    const fee_amt = parseFloat(((qty * unit_price) * (fee_pct / 100)).toFixed(2));
+    const fee_amt = platform_fee_amt !== undefined ? parseFloat(platform_fee_amt) :
+                    parseFloat(((qty * unit_price) * (fee_pct / 100)).toFixed(2));
 
     db.run(`
       UPDATE sales SET date=?, product_id=?, partner_id=?, channel=?, market=?,
         qty=?, unit_cost=?, unit_price=?, platform_fee_pct=?, platform_fee_amt=?,
+        shipping_charged=?, shipping_cost=?,
         notes=?, updated_at=CURRENT_TIMESTAMP
       WHERE id=?
-    `, [date, product_id, partner_id||null, channel, market||'SG', qty, unit_cost, unit_price, fee_pct, fee_amt, notes||null, req.params.id]);
+    `, [date, product_id, partner_id||null, channel, market||'SG', qty, unit_cost, unit_price,
+        fee_pct, fee_amt, shipping_charged||0, shipping_cost||0, notes||null, req.params.id]);
 
     const sale = db.queryOne(`
       SELECT s.*, p.item_series, p.variation, b.name AS brand_name, b.color AS brand_color,
-        ROUND(s.qty*(s.unit_price-s.unit_cost)-s.platform_fee_amt,2) AS profit
+        ${REVENUE_EXPR} AS revenue,
+        ${PROFIT_EXPR} AS profit
       FROM sales s JOIN products p ON p.id=s.product_id JOIN brands b ON b.id=p.brand_id
       WHERE s.id=?
     `, [req.params.id]);
     res.json(sale);
   });
 
-  // DELETE a sale
+  // PATCH void a sale (soft delete with audit trail)
+  router.patch('/:id/void', (req, res) => {
+    const sale = db.queryOne('SELECT id, voided FROM sales WHERE id = ?', [req.params.id]);
+    if (!sale) return res.status(404).json({ error: 'Sale not found' });
+    db.run('UPDATE sales SET voided = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [req.params.id]);
+    res.json({ ok: true, id: req.params.id, voided: true });
+  });
+
+  // DELETE a sale (hard delete — kept for legacy)
   router.delete('/:id', (req, res) => {
     db.run('DELETE FROM sales WHERE id = ?', [req.params.id]);
     res.json({ ok: true });

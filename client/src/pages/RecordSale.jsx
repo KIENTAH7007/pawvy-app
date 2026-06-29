@@ -8,10 +8,20 @@ const B2C_CHANNELS = ['Shopee', 'Lazada', 'Amazon', 'TikTok Shop', 'Event Sale',
 const B2B_CHANNELS = ['Wholesale Order', 'Consignment Sale'];
 const PLATFORM_FEES = { Shopee: 9, Lazada: 9, 'TikTok Shop': 8, Amazon: 15 };
 const IS_MARKETPLACE = ch => ['Shopee', 'Lazada', 'Amazon', 'TikTok Shop'].includes(ch);
-const IS_EVENT      = ch => ch === 'Event Sale';
 const IS_B2B        = ch => B2B_CHANNELS.includes(ch);
 
+function useIsMobile() {
+  const [mobile, setMobile] = useState(window.innerWidth < 680);
+  useEffect(() => {
+    const h = () => setMobile(window.innerWidth < 680);
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
+  }, []);
+  return mobile;
+}
+
 // ── Discount calculation ─────────────────────────────────────────
+// Fix #4: Vanillapup CN is monthly — no per-order amount, just informational label.
 function calcDiscount(partner, subtotal) {
   if (!partner || !IS_B2B) return { amount: 0, label: null, type: 'none' };
   const dt = partner.discount_type || 'standard_rebate';
@@ -19,12 +29,10 @@ function calcDiscount(partner, subtotal) {
   const thresh = parseFloat(partner.discount_threshold) || 0;
 
   if (dt === 'fixed_pct') {
-    // e.g. Kohepets: 5% on every order
     const amount = parseFloat((subtotal * dv / 100).toFixed(2));
     return { amount, pct: dv, label: `${dv}% partner discount`, type: 'fixed_pct' };
   }
   if (dt === 'threshold_pct') {
-    // Simple % above threshold (no standard delivery/rebate tiers)
     if (subtotal >= thresh) {
       const amount = parseFloat((subtotal * dv / 100).toFixed(2));
       return { amount, pct: dv, label: `${dv}% discount (order ≥ $${thresh})`, type: 'threshold_pct' };
@@ -32,7 +40,6 @@ function calcDiscount(partner, subtotal) {
     return { amount: 0, label: `${dv}% discount kicks in at $${thresh}`, type: 'threshold_pct_unmet' };
   }
   if (dt === 'hybrid') {
-    // Pawpy Kisses model: standard delivery/rebate tiers + % at top tier
     if (subtotal >= thresh) {
       const amount = parseFloat((subtotal * dv / 100).toFixed(2));
       return { amount, pct: dv, label: `${dv}% discount (≥ $${thresh})`, type: 'hybrid' };
@@ -41,12 +48,14 @@ function calcDiscount(partner, subtotal) {
     return { amount: 0, label: null, type: 'hybrid' };
   }
   if (dt === 'credit_note') {
-    // Vanillapup: 5% base at $1000, +1% per $300, cap 8%
-    if (subtotal < 1000) return { amount: 0, label: 'CN: min $1,000 order required', type: 'credit_note_unmet' };
+    // Fix #4: CN is calculated monthly on total orders — NOT per individual order.
+    // Show tier info but store NO discount amount on this sale.
+    if (subtotal < 1000) {
+      return { amount: 0, label: 'CN tracked monthly (min $1,000/month) — deferred to next SOA', type: 'credit_note_unmet' };
+    }
     const addPct = Math.min(Math.floor((subtotal - 1000) / 300), 3);
     const pct    = Math.min(5 + addPct, 8);
-    const amount = parseFloat((subtotal * pct / 100).toFixed(2));
-    return { amount, pct, label: `CN ${pct}% = SGD ${amount.toFixed(2)} — credited to NEXT month SOA`, type: 'credit_note' };
+    return { amount: 0, pct, label: `CN ${pct}% — tracked monthly, credited in next month SOA`, type: 'credit_note' };
   }
   if (dt === 'standard_rebate') {
     if (subtotal >= 600) return { amount: 30, label: '$30 cash rebate (≥ $600)', type: 'standard_rebate' };
@@ -56,7 +65,6 @@ function calcDiscount(partner, subtotal) {
   return { amount: 0, label: null, type: 'none' };
 }
 
-// Delivery FOC check (standard rebate partners only, Wholesale Order only)
 function getDelivery(partner, subtotal, channel) {
   if (channel !== 'Wholesale Order') return null;
   const dt = partner?.discount_type || 'standard_rebate';
@@ -75,6 +83,7 @@ const EMPTY_LINE = { brand_id: '', product_id: '', qty: '', unit_cost: '', unit_
 
 export default function RecordSale() {
   const nav = useNavigate();
+  const isMobile = useIsMobile();
   const [date,      setDate]      = useState(new Date().toISOString().slice(0, 10));
   const [market,    setMarket]    = useState('SG');
   const [channel,   setChannel]   = useState('');
@@ -82,6 +91,8 @@ export default function RecordSale() {
   const [notes,     setNotes]     = useState('');
   const [feePct,    setFeePct]    = useState(0);
   const [deliveryCharge, setDeliveryCharge] = useState('');
+  const [shippingCharged, setShippingCharged] = useState('');
+  const [shippingCost,    setShippingCost]    = useState('');
   const [lines,     setLines]     = useState([{ ...EMPTY_LINE }]);
   const [brands,    setBrands]    = useState([]);
   const [partners,  setPartners]  = useState([]);
@@ -96,14 +107,10 @@ export default function RecordSale() {
   const selectedPartner = partners.find(p => String(p.id) === String(partnerId));
   const partnerModel    = selectedPartner?.model || '';
 
-  // Determine which price field to auto-fill — takes explicit params to avoid closure issues
   function getPriceForProduct(prod, ch, mkt, pModel) {
     const c = ch    ?? channel;
     const m = mkt   ?? market;
     const p = pModel ?? partnerModel;
-    if (c === 'Event Sale') {
-      return m === 'MY' ? prod.price_rrp_my : m === 'AU' ? prod.price_rrp_au : (prod.price_rrp_sg || 0);
-    }
     if (p === 'Consignment') {
       return prod.price_consignment_sg || prod.price_wholesale_sg || 0;
     }
@@ -124,7 +131,6 @@ export default function RecordSale() {
         const prod  = prods.find(p => String(p.id) === String(val));
         if (prod) {
           next[idx].unit_cost  = prod.unit_cost;
-          // Pass channel/market/partnerModel explicitly to avoid closure issues
           const price = getPriceForProduct(prod, channel, market, partnerModel);
           next[idx].unit_price = price || '';
         }
@@ -133,7 +139,6 @@ export default function RecordSale() {
     });
   }
 
-  // Re-fill prices when channel, market, or partner changes
   useEffect(() => {
     setLines(prev => prev.map(line => {
       if (!line.product_id) return line;
@@ -148,7 +153,6 @@ export default function RecordSale() {
   const addLine    = ()  => setLines(p => [...p, { ...EMPTY_LINE }]);
   const removeLine = (i) => setLines(p => p.filter((_, idx) => idx !== i));
 
-  // Totals
   const lineCalcs  = lines.map(l => ({
     qty:   parseFloat(l.qty)        || 0,
     cost:  parseFloat(l.unit_cost)  || 0,
@@ -160,17 +164,37 @@ export default function RecordSale() {
   const totalProfit = lineCalcs.reduce((s, l) => s + l.lineProfit, 0);
   const mktFeeAmt   = IS_MARKETPLACE(channel) ? subtotal * (feePct / 100) : 0;
 
-  // B2B discount
   const discount    = IS_B2B(channel) && selectedPartner ? calcDiscount(selectedPartner, subtotal) : { amount: 0, label: null, type: 'none' };
   const delivery    = IS_B2B(channel) && channel === 'Wholesale Order' ? getDelivery(selectedPartner, subtotal, channel) : null;
   const delivAmt    = delivery && !delivery.free ? parseFloat(deliveryCharge) || 0 : 0;
-  // Credit note doesn't reduce THIS sale's profit — it's deferred to next SOA
   const discountAffectsProfit = discount.type !== 'credit_note' && discount.type !== 'credit_note_unmet';
-  const netProfit   = totalProfit - mktFeeAmt - (discountAffectsProfit ? discount.amount : 0);
+  
+  const shipCharged = parseFloat(shippingCharged) || 0;
+  const shipCost    = parseFloat(shippingCost) || 0;
+  const shipProfit  = shipCharged - shipCost;
+
+  const netProfit   = totalProfit - mktFeeAmt - (discountAffectsProfit ? discount.amount : 0) + shipProfit;
 
   const invoiceTotal = IS_B2B(channel)
-    ? subtotal + delivAmt - (discountAffectsProfit ? discount.amount : 0)
+    ? subtotal + delivAmt - (discountAffectsProfit ? discount.amount : 0) + shipCharged
     : null;
+
+  // Fix #7: Build per-line discount amounts for saving
+  // For B2B, we store the discount in platform_fee_amt per line.
+  function getPerLineDiscountAmt(lineIdx) {
+    if (!IS_B2B(channel) || !discountAffectsProfit || discount.amount === 0) return 0;
+    const lc = lineCalcs[lineIdx];
+    if (subtotal === 0 || lc.revenue === 0) return 0;
+
+    const { type, pct } = discount;
+    if (type === 'fixed_pct' || type === 'hybrid' || type === 'threshold_pct') {
+      // Percentage discount — apply directly per line
+      return parseFloat((lc.qty * lc.price * (pct / 100)).toFixed(2));
+    }
+    // Fixed cash rebate — distribute proportionally across lines
+    const share = lc.revenue / subtotal;
+    return parseFloat((discount.amount * share).toFixed(2));
+  }
 
   async function handleSave() {
     const validLines = lines.filter(l => l.product_id && l.qty && l.unit_price);
@@ -179,51 +203,112 @@ export default function RecordSale() {
     }
     setSaving(true); setError('');
     try {
-      // Build sale notes
       const saleNotes = [
         notes || null,
-        discount.type === 'credit_note' && discount.amount > 0
-          ? `CN ${discount.pct}% = SGD ${discount.amount.toFixed(2)} — credit to next SOA`
+        discount.type === 'credit_note' && discount.pct > 0
+          ? `CN tier ${discount.pct}% — calculated on monthly total, credited to next SOA`
           : null,
         discount.type !== 'credit_note' && discount.amount > 0
           ? `Discount applied: ${discount.label}`
           : null,
+        shipCharged > 0
+          ? `Shipping: charged $${shipCharged.toFixed(2)}, cost $${shipCost.toFixed(2)}`
+          : null,
       ].filter(Boolean).join(' | ') || null;
 
-      for (const l of validLines) {
+      for (let i = 0; i < validLines.length; i++) {
+        const l = validLines[i];
         const qty   = parseInt(l.qty);
         const price = parseFloat(l.unit_price);
         const cost  = parseFloat(l.unit_cost) || 0;
-        const feeA  = IS_MARKETPLACE(channel) ? parseFloat((qty * price * feePct / 100).toFixed(2)) : 0;
+
+        // Platform fee (marketplace) or B2B discount stored in platform_fee_amt
+        let feeAmt = 0;
+        let feePctToSave = 0;
+        if (IS_MARKETPLACE(channel)) {
+          feePctToSave = feePct;
+          feeAmt = parseFloat((qty * price * feePct / 100).toFixed(2));
+        } else if (IS_B2B(channel)) {
+          // Fix #7: store B2B discount in platform_fee_amt
+          feeAmt = getPerLineDiscountAmt(lines.indexOf(l));
+          feePctToSave = 0;
+        }
+
+        // Only first line gets the shipping amount (it's per-order)
+        const isFirst = (i === 0);
+
         await salesApi.create({
           date, product_id: l.product_id, partner_id: partnerId || null,
           channel, market, qty, unit_cost: cost, unit_price: price,
-          platform_fee_pct: IS_MARKETPLACE(channel) ? feePct : 0,
-          platform_fee_amt: feeA,
+          platform_fee_pct: feePctToSave,
+          platform_fee_amt: feeAmt,
+          shipping_charged: isFirst ? shipCharged : 0,
+          shipping_cost:    isFirst ? shipCost    : 0,
           notes: saleNotes,
         });
       }
       setSaved(true);
-      setTimeout(() => { setSaved(false); setLines([{ ...EMPTY_LINE }]); setNotes(''); }, 1800);
+      setTimeout(() => {
+        setSaved(false);
+        setLines([{ ...EMPTY_LINE }]);
+        setNotes('');
+        setShippingCharged('');
+        setShippingCost('');
+      }, 1800);
     } catch (e) { setError(e.message); }
     finally { setSaving(false); }
   }
 
-  const priceLabel = IS_EVENT(channel) ? 'RRP' : partnerModel === 'Consignment' ? 'Consignment price' : 'Wholesale price';
+  const priceLabel = partnerModel === 'Consignment' ? 'Consignment price' : 'Wholesale price';
+
+  /* ── Mobile line card ─────────────────────────────────────────── */
+  function MobileLineCard({ line, idx }) {
+    const prods = productsByBrand[line.brand_id] || [];
+    const lc = lineCalcs[idx];
+    return (
+      <div style={{border:'1px solid var(--border)',borderRadius:8,padding:12,background:'rgba(245,242,235,.03)',display:'flex',flexDirection:'column',gap:8}}>
+        <div style={{display:'flex',gap:8}}>
+          <Select value={line.brand_id} onChange={async e=>{updateLine(idx,'brand_id',e.target.value);updateLine(idx,'product_id','');await ensureProducts(e.target.value);}} style={{flex:1}}>
+            <option value="">Brand</option>
+            {brands.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
+          </Select>
+          <button onClick={()=>removeLine(idx)} disabled={lines.length===1}
+            style={{background:'none',border:'none',color:'rgba(248,113,113,.6)',cursor:'pointer',padding:4,display:'flex',alignItems:'center'}}>
+            <Trash2 size={16}/>
+          </button>
+        </div>
+        <Select value={line.product_id} onChange={e=>updateLine(idx,'product_id',e.target.value)} disabled={!line.brand_id}>
+          <option value="">— Select SKU —</option>
+          {prods.map(p=><option key={p.id} value={p.id}>{p.item_series}{p.variation?' · '+p.variation:''}</option>)}
+        </Select>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
+          <Input label="Qty" type="number" min="1" value={line.qty} onChange={e=>updateLine(idx,'qty',e.target.value)} placeholder="0"/>
+          <Input label="Unit Cost" type="number" step="0.01" value={line.unit_cost} onChange={e=>updateLine(idx,'unit_cost',e.target.value)} placeholder="0.00"/>
+          <Input label="Sale Price" type="number" step="0.01" value={line.unit_price} onChange={e=>updateLine(idx,'unit_price',e.target.value)} placeholder="0.00"/>
+        </div>
+        {lc.revenue > 0 && (
+          <div style={{textAlign:'right',fontSize:13,fontWeight:700,color:lc.lineProfit>=0?'#7fc93e':'#f87171'}}>
+            {fmt.sgd(lc.revenue)}
+            <span style={{fontSize:10,color:'var(--cream-30)',marginLeft:6}}>profit {fmt.sgd(lc.lineProfit)}</span>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <Page title="RECORD SALE" subtitle="Log a sale — add multiple products for one order">
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 268px', gap: 16, alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 268px', gap: 16, alignItems: 'start' }}>
 
         {/* ── Main form ── */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <Card>
-            <div style={{ padding: 16, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 2fr', gap: 12 }}>
+            <div style={{ padding: 16, display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1fr 1fr 1fr 2fr', gap: 12 }}>
               <Input label="Date *" type="date" value={date} onChange={e => setDate(e.target.value)} />
               <Select label="Market *" value={market} onChange={e => setMarket(e.target.value)}>
                 {['SG', 'MY', 'AU'].map(m => <option key={m} value={m}>{m}</option>)}
               </Select>
-              <Select label="Channel *" value={channel} onChange={e => setChannel(e.target.value)}>
+              <Select label="Channel *" value={channel} onChange={e => setChannel(e.target.value)} style={isMobile ? {gridColumn:'span 2'} : {}}>
                 <option value="">— Select —</option>
                 <optgroup label="B2C / Online">
                   {B2C_CHANNELS.map(c => <option key={c} value={c}>{c}</option>)}
@@ -232,7 +317,7 @@ export default function RecordSale() {
                   {B2B_CHANNELS.map(c => <option key={c} value={c}>{c}</option>)}
                 </optgroup>
               </Select>
-              <Select label="Partner / Retailer" value={partnerId} onChange={e => setPartnerId(e.target.value)}>
+              <Select label="Partner / Retailer" value={partnerId} onChange={e => setPartnerId(e.target.value)} style={isMobile ? {gridColumn:'span 2'} : {}}>
                 <option value="">— None / Direct —</option>
                 {partners.filter(p => p.model !== 'None').map(p => (
                   <option key={p.id} value={p.id}>
@@ -242,7 +327,7 @@ export default function RecordSale() {
               </Select>
             </div>
             {selectedPartner && (
-              <div style={{ margin: '-4px 16px 12px', fontSize: 11, color: 'var(--cream-30)', display: 'flex', gap: 16 }}>
+              <div style={{ margin: '-4px 16px 12px', fontSize: 11, color: 'var(--cream-30)', display: 'flex', gap: 16, flexWrap:'wrap' }}>
                 <span>Model: <strong style={{ color: partnerModel === 'Consignment' ? '#378ADD' : '#f36f4a' }}>{partnerModel}</strong></span>
                 <span>Price auto-fill: <strong style={{ color: 'var(--cream-60)' }}>{priceLabel}</strong></span>
                 {selectedPartner.discount_type && selectedPartner.discount_type !== 'none' && selectedPartner.discount_type !== 'standard_rebate' && (
@@ -258,39 +343,75 @@ export default function RecordSale() {
               <span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 13, letterSpacing: 1, color: 'var(--cream)' }}>PRODUCTS</span>
               <Btn size="sm" variant="secondary" onClick={addLine}><Plus size={12} /> Add Product</Btn>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 70px 100px 100px 90px 36px', gap: 8, padding: '7px 16px 3px', fontSize: 9.5, fontWeight: 700, letterSpacing: .8, textTransform: 'uppercase', color: 'var(--cream-30)' }}>
-              <span>Brand</span><span>Product / SKU</span><span>Qty</span><span>Unit Cost</span><span>Sale Price</span><span style={{ textAlign: 'right' }}>Line Total</span><span />
-            </div>
-            {lines.map((line, idx) => {
-              const prods = productsByBrand[line.brand_id] || [];
-              const lc    = lineCalcs[idx];
-              return (
-                <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 70px 100px 100px 90px 36px', gap: 8, padding: '6px 16px', borderBottom: '1px solid var(--cream-05)' }}>
-                  <Select value={line.brand_id} onChange={async e => { updateLine(idx, 'brand_id', e.target.value); updateLine(idx, 'product_id', ''); await ensureProducts(e.target.value); }}>
-                    <option value="">Brand</option>
-                    {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                  </Select>
-                  <Select value={line.product_id} onChange={e => updateLine(idx, 'product_id', e.target.value)} disabled={!line.brand_id}>
-                    <option value="">— SKU —</option>
-                    {prods.map(p => <option key={p.id} value={p.id}>{p.item_series}{p.variation ? ' · ' + p.variation : ''}</option>)}
-                  </Select>
-                  <Input type="number" min="1" value={line.qty}        onChange={e => updateLine(idx, 'qty',        e.target.value)} placeholder="0" />
-                  <Input type="number" step="0.01" value={line.unit_cost}  onChange={e => updateLine(idx, 'unit_cost',  e.target.value)} placeholder="0.00" />
-                  <Input type="number" step="0.01" value={line.unit_price} onChange={e => updateLine(idx, 'unit_price', e.target.value)} placeholder="0.00" />
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', fontWeight: 600, color: lc.lineProfit >= 0 ? '#7fc93e' : '#f87171', fontSize: 12 }}>
-                    {lc.revenue > 0 ? fmt.sgd(lc.revenue) : '—'}
-                  </div>
-                  <button onClick={() => removeLine(idx)} disabled={lines.length === 1}
-                    style={{ background: 'none', border: 'none', color: 'rgba(248,113,113,.6)', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}>
-                    <Trash2 size={14} />
-                  </button>
+
+            {isMobile ? (
+              <div style={{padding:'8px 12px',display:'flex',flexDirection:'column',gap:8}}>
+                {lines.map((line, idx) => <MobileLineCard key={idx} line={line} idx={idx}/>)}
+              </div>
+            ) : (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 70px 100px 100px 90px 36px', gap: 8, padding: '7px 16px 3px', fontSize: 9.5, fontWeight: 700, letterSpacing: .8, textTransform: 'uppercase', color: 'var(--cream-30)' }}>
+                  <span>Brand</span><span>Product / SKU</span><span>Qty</span><span>Unit Cost</span><span>Sale Price</span><span style={{ textAlign: 'right' }}>Line Total</span><span />
                 </div>
-              );
-            })}
+                {lines.map((line, idx) => {
+                  const prods = productsByBrand[line.brand_id] || [];
+                  const lc    = lineCalcs[idx];
+                  return (
+                    <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 70px 100px 100px 90px 36px', gap: 8, padding: '6px 16px', borderBottom: '1px solid var(--cream-05)' }}>
+                      <Select value={line.brand_id} onChange={async e => { updateLine(idx, 'brand_id', e.target.value); updateLine(idx, 'product_id', ''); await ensureProducts(e.target.value); }}>
+                        <option value="">Brand</option>
+                        {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                      </Select>
+                      <Select value={line.product_id} onChange={e => updateLine(idx, 'product_id', e.target.value)} disabled={!line.brand_id}>
+                        <option value="">— SKU —</option>
+                        {prods.map(p => <option key={p.id} value={p.id}>{p.item_series}{p.variation ? ' · ' + p.variation : ''}</option>)}
+                      </Select>
+                      <Input type="number" min="1" value={line.qty}        onChange={e => updateLine(idx, 'qty',        e.target.value)} placeholder="0" />
+                      <Input type="number" step="0.01" value={line.unit_cost}  onChange={e => updateLine(idx, 'unit_cost',  e.target.value)} placeholder="0.00" />
+                      <Input type="number" step="0.01" value={line.unit_price} onChange={e => updateLine(idx, 'unit_price', e.target.value)} placeholder="0.00" />
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', fontWeight: 600, color: lc.lineProfit >= 0 ? '#7fc93e' : '#f87171', fontSize: 12 }}>
+                        {lc.revenue > 0 ? fmt.sgd(lc.revenue) : '—'}
+                      </div>
+                      <button onClick={() => removeLine(idx)} disabled={lines.length === 1}
+                        style={{ background: 'none', border: 'none', color: 'rgba(248,113,113,.6)', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}>
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </>
+            )}
             <div style={{ padding: '8px 16px' }}>
               <Btn size="sm" variant="ghost" onClick={addLine}><Plus size={12} /> Add another product</Btn>
             </div>
           </Card>
+
+          {/* Shipping (Fix #10) — shown for B2B Wholesale orders */}
+          {IS_B2B(channel) && channel === 'Wholesale Order' && (
+            <Card title="SHIPPING (OPTIONAL)">
+              <div style={{padding:'12px 16px',display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+                <Input
+                  label="Shipping Charged to Partner (SGD)"
+                  type="number" step="0.01"
+                  value={shippingCharged}
+                  onChange={e => setShippingCharged(e.target.value)}
+                  placeholder="0.00"
+                />
+                <Input
+                  label="Actual Shipping Cost (SGD)"
+                  type="number" step="0.01"
+                  value={shippingCost}
+                  onChange={e => setShippingCost(e.target.value)}
+                  placeholder="0.00"
+                />
+              </div>
+              {shipCharged > 0 && (
+                <div style={{padding:'0 16px 12px',fontSize:11,color:'#7fc93e'}}>
+                  Shipping profit: SGD {shipProfit.toFixed(2)} (charged SGD {shipCharged.toFixed(2)} − cost SGD {shipCost.toFixed(2)})
+                </div>
+              )}
+            </Card>
+          )}
 
           <Card>
             <div style={{ padding: 14, display: 'flex', gap: 10, alignItems: 'flex-end' }}>
@@ -315,7 +436,6 @@ export default function RecordSale() {
                 <Row label={`Marketplace fee (${feePct}%)`} value={`− ${fmt.sgd(mktFeeAmt)}`} muted />
               )}
 
-              {/* Discount row */}
               {IS_B2B(channel) && discount.label && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                   <span style={{ fontSize: 11, color: discount.amount > 0 ? '#fbbf24' : 'var(--cream-30)', flex: 1, lineHeight: 1.4 }}>{discount.label}</span>
@@ -325,7 +445,6 @@ export default function RecordSale() {
                 </div>
               )}
 
-              {/* Delivery */}
               {delivery !== null && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: 11, color: delivery.free ? '#7fc93e' : 'var(--cream-30)' }}>
@@ -337,6 +456,10 @@ export default function RecordSale() {
                         style={{ width: 70, background: 'var(--navy-light)', border: '1px solid var(--border)', borderRadius: 5, padding: '4px 8px', color: 'var(--cream)', fontSize: 11, textAlign: 'right' }} />
                   }
                 </div>
+              )}
+
+              {shipCharged > 0 && (
+                <Row label={`Shipping charged`} value={`+ ${fmt.sgd(shipCharged)}`} />
               )}
 
               <div style={{ height: 1, background: 'var(--border)', margin: '2px 0' }} />
@@ -353,7 +476,7 @@ export default function RecordSale() {
             </div>
           </Card>
 
-          {/* Standard rebate guide */}
+          {/* Rebate tiers */}
           {IS_B2B(channel) && channel === 'Wholesale Order' && (!selectedPartner || selectedPartner.discount_type === 'standard_rebate') && (
             <Card title="REBATE TIERS">
               <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 5 }}>
@@ -370,7 +493,6 @@ export default function RecordSale() {
             </Card>
           )}
 
-          {/* Hybrid rebate guide (Pawpy Kisses model) */}
           {IS_B2B(channel) && channel === 'Wholesale Order' && selectedPartner?.discount_type === 'hybrid' && (
             <Card title={`${selectedPartner.company_name.split(' ')[0].toUpperCase()} REBATE TIERS`}>
               <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 5 }}>
@@ -393,27 +515,24 @@ export default function RecordSale() {
             </Card>
           )}
 
-          {/* Vanillapup CN guide */}
+          {/* Fix #4: Vanillapup CN — monthly tracking only */}
           {IS_B2B(channel) && selectedPartner?.discount_type === 'credit_note' && (
             <Card title="VANILLAPUP CN TIERS">
               <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 5, fontSize: 11 }}>
                 {[
-                  { min: 1900, pct: 8, label: '≥ $1,900 → 8% CN' },
-                  { min: 1600, pct: 7, label: '≥ $1,600 → 7% CN' },
-                  { min: 1300, pct: 6, label: '≥ $1,300 → 6% CN' },
-                  { min: 1000, pct: 5, label: '≥ $1,000 → 5% CN' },
-                  { min:    0, pct: 0, label: '< $1,000 → no CN' },
-                ].map((tier, i) => {
-                  const active = subtotal >= tier.min && (i === 0 || subtotal < [1900,1600,1300,1000,0][i-1]);
-                  return (
-                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px', borderRadius: 5, background: active ? 'rgba(251,191,36,.08)' : 'transparent' }}>
-                      <span style={{ color: active ? '#fbbf24' : 'var(--cream-30)' }}>{tier.label.split(' → ')[0]}</span>
-                      <span style={{ fontWeight: active ? 700 : 400, color: active ? '#fbbf24' : 'var(--cream-30)' }}>{tier.label.split(' → ')[1]}</span>
-                    </div>
-                  );
-                })}
-                <div style={{ color: 'var(--cream-30)', fontSize: 10, marginTop: 4, lineHeight: 1.6, borderTop: '1px solid var(--border)', paddingTop: 6 }}>
-                  CN is credited to the NEXT month's SOA, not deducted from this invoice.
+                  { min: 1900, pct: 8, label: '≥ $1,900/mth → 8% CN' },
+                  { min: 1600, pct: 7, label: '≥ $1,600/mth → 7% CN' },
+                  { min: 1300, pct: 6, label: '≥ $1,300/mth → 6% CN' },
+                  { min: 1000, pct: 5, label: '≥ $1,000/mth → 5% CN' },
+                  { min:    0, pct: 0, label: '< $1,000/mth → no CN' },
+                ].map((tier, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px', borderRadius: 5 }}>
+                    <span style={{ color: 'var(--cream-30)' }}>{tier.label.split(' → ')[0]}</span>
+                    <span style={{ color: 'var(--cream-30)' }}>{tier.label.split(' → ')[1]}</span>
+                  </div>
+                ))}
+                <div style={{ color: '#fbbf24', fontSize: 10, marginTop: 4, lineHeight: 1.6, borderTop: '1px solid var(--border)', paddingTop: 6 }}>
+                  ⚠ CN is calculated on the MONTHLY TOTAL of all Vanillapup orders — not per individual order. No deduction on this sale. Credited to next month's SOA.
                 </div>
               </div>
             </Card>
@@ -437,7 +556,6 @@ export default function RecordSale() {
   );
 }
 
-// Helper component
 function Row({ label, value, muted }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
