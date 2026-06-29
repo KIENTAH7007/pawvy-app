@@ -48,14 +48,8 @@ function generateConsignmentPDF(partner, items, docNum) {
   </style></head><body>
 
   <!-- Header bar -->
-  <div style="background:#14213d;padding:18px 32px;display:flex;align-items:center;justify-content:space-between">
-    <div style="display:flex;align-items:center;gap:14px">
-      <img src="${LOGO_B64}" alt="Pawvy" style="height:60px;width:auto;object-fit:contain"/>
-      <div>
-        <div style="font-family:Arial Black,sans-serif;font-size:30px;color:#ffffff;letter-spacing:4px;line-height:1;font-weight:900">PAWVY</div>
-        <div style="font-size:10px;color:rgba(255,255,255,.6);letter-spacing:2.5px;text-transform:uppercase;margin-top:4px;font-weight:600">MAKE INFORMED CHOICES</div>
-      </div>
-    </div>
+  <div style="background:#14213d;padding:16px 32px;display:flex;align-items:center;justify-content:space-between">
+    <img src="${LOGO_B64}" alt="Pawvy" style="height:80px;width:auto;object-fit:contain"/>
     <div style="text-align:right">
       <div style="font-size:22px;font-weight:700;color:#fff;letter-spacing:1px">CONSIGNMENT LIST</div>
       <div style="color:#f36f4a;font-size:13px;font-weight:600;margin-top:4px">${date}</div>
