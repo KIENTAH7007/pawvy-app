@@ -216,6 +216,7 @@ function createSchema() {
       consignment_price REAL DEFAULT 0,
       unit_cost REAL DEFAULT 0
     )`,
+    `CREATE TABLE IF NOT EXISTS invoices (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       invoice_number TEXT UNIQUE NOT NULL,
       type TEXT DEFAULT 'Invoice',
