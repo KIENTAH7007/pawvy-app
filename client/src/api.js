@@ -50,3 +50,15 @@ export const adjApi       = { getAll: (q) => api.get(`/adjustments${qs(q)}`), cr
 export const invoicesApi  = { getAll: (q) => api.get(`/invoices${qs(q)}`), get: (id) => api.get(`/invoices/${id}`), create: (d) => api.post('/invoices',d) };
 
 export const brandSkuApi = { detail: (q) => api.get(`/reports/brand-sku${qs(q)}`), };
+
+// ── Sequential document number generator (localStorage counter per day) ──
+// CS-YYYYMMDD-001, INV-YYYYMMDD-001, DO-YYYYMMDD-001 etc.
+export function makeDocNum(prefix = 'CS') {
+  const d = new Date();
+  const ymd = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+  const key = `docnum_${prefix}_${ymd}`;
+  const current = parseInt(localStorage.getItem(key) || '0');
+  const next = current + 1;
+  localStorage.setItem(key, String(next));
+  return `${prefix}-${ymd}-${String(next).padStart(3,'0')}`;
+}
