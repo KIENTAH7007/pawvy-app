@@ -66,11 +66,40 @@ module.exports = function(db) {
       return a.days_remaining - b.days_remaining;
     });
 
+    // Brand-level rollup — the unit a distributor actually orders in (containers/pallets),
+    // not individual SKUs. "X of Y SKUs need reorder" + earliest stockout signals when to
+    // start paying attention to a brand; once you commit, top-up qty covers the WHOLE catalogue.
+    const brandMap = {};
+    result.forEach(item => {
+      if (!brandMap[item.brand_id]) {
+        brandMap[item.brand_id] = {
+          brand_id: item.brand_id, brand_name: item.brand_name, brand_color: item.brand_color,
+          total_skus: 0, needs_reorder_count: 0, earliest_days_remaining: null,
+          total_recommended_qty: 0, total_estimated_cost: 0,
+        };
+      }
+      const b = brandMap[item.brand_id];
+      b.total_skus++;
+      if (item.needs_reorder) b.needs_reorder_count++;
+      if (item.days_remaining !== null && (b.earliest_days_remaining === null || item.days_remaining < b.earliest_days_remaining)) {
+        b.earliest_days_remaining = item.days_remaining;
+      }
+      b.total_recommended_qty += item.recommended_qty;
+      b.total_estimated_cost = parseFloat((b.total_estimated_cost + item.estimated_cost).toFixed(2));
+    });
+
+    const brands = Object.values(brandMap).sort((a, b) => {
+      if (a.earliest_days_remaining === null) return 1;
+      if (b.earliest_days_remaining === null) return -1;
+      return a.earliest_days_remaining - b.earliest_days_remaining;
+    });
+
     res.json({
       trailing_days: TRAILING_DAYS,
       lead_time_days: LEAD_TIME_DAYS,
       cover_days: COVER_DAYS,
       items: result,
+      brands,
     });
   });
 
