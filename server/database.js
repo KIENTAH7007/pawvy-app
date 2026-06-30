@@ -277,6 +277,18 @@ function createSchema() {
 
   tables.forEach(sql => db.run(sql));
 
+  // Phase 3: Invoice / Delivery Order / SOA support columns
+  [
+    "ALTER TABLE invoices ADD COLUMN paid_date DATE",
+    "ALTER TABLE invoices ADD COLUMN shipping REAL DEFAULT 0",
+    "ALTER TABLE invoices ADD COLUMN period_start DATE",
+    "ALTER TABLE invoices ADD COLUMN period_end DATE",
+    "ALTER TABLE invoices ADD COLUMN included_in_soa_id INTEGER REFERENCES invoices(id)",
+    "ALTER TABLE sales ADD COLUMN invoice_id INTEGER REFERENCES invoices(id)",
+    "ALTER TABLE sales ADD COLUMN do_id INTEGER REFERENCES invoices(id)",
+    "ALTER TABLE partners ADD COLUMN billing_cycle TEXT DEFAULT 'per_invoice'",
+  ].forEach(sql => { try { db.run(sql); } catch(e) {} });
+
   // Add discount columns to partners (safe ALTER TABLE — ignored if already exist)
   [
     "ALTER TABLE partners ADD COLUMN discount_type TEXT DEFAULT 'standard_rebate'",
@@ -296,6 +308,9 @@ function createSchema() {
     db.run("UPDATE partners SET discount_type = 'standard_rebate' WHERE discount_type IS NULL");
     db.run("UPDATE partners SET discount_value = 0 WHERE discount_value IS NULL");
     db.run("UPDATE partners SET discount_threshold = 0 WHERE discount_threshold IS NULL");
+    // One-time backfill only — billing_cycle starts NULL before the ALTER's DEFAULT applies to existing rows.
+    // Vanillapup's credit_note model is inherently SOA-based, so default it that way; everyone else gets per_invoice.
+    db.run("UPDATE partners SET billing_cycle = CASE WHEN discount_type = 'credit_note' THEN 'soa' ELSE 'per_invoice' END WHERE billing_cycle IS NULL");
   } catch(e) {}
 
   console.log('✅ Schema ready');

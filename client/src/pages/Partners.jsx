@@ -176,6 +176,27 @@ export default function Partners() {
             </div>
           </div>
 
+          {/* ── Billing Cycle ── */}
+          <div style={{borderTop:'1px solid var(--border)',paddingTop:14}}>
+            <div style={{fontSize:10,fontWeight:700,letterSpacing:1,textTransform:'uppercase',color:'var(--cream-30)',marginBottom:12}}>
+              Billing Cycle
+            </div>
+            <div style={{display:'flex',gap:8}}>
+              {[
+                { value:'per_invoice', label:'Per-Invoice', desc:'Pay each invoice individually, ~7 day grace period' },
+                { value:'soa',         label:'Monthly SOA', desc:'Invoices consolidated into one monthly statement' },
+              ].map(opt => (
+                <button key={opt.value} onClick={()=>sf('billing_cycle', opt.value)}
+                  style={{flex:1,textAlign:'left',padding:'10px 12px',borderRadius:8,cursor:'pointer',
+                    border:`1px solid ${(form.billing_cycle||'per_invoice')===opt.value?'var(--orange)':'var(--border)'}`,
+                    background:(form.billing_cycle||'per_invoice')===opt.value?'rgba(243,111,74,.08)':'transparent'}}>
+                  <div style={{fontSize:12,fontWeight:700,color:(form.billing_cycle||'per_invoice')===opt.value?'var(--orange)':'var(--cream)'}}>{opt.label}</div>
+                  <div style={{fontSize:10,color:'var(--cream-30)',marginTop:2,lineHeight:1.4}}>{opt.desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
           <Btn onClick={save} disabled={saving} size="lg" style={{justifyContent:'center',marginTop:4}}>
             {saving ? 'Saving…' : 'Save Partner'}
           </Btn>

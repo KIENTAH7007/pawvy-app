@@ -16,6 +16,7 @@ import Partners       from './pages/Partners';
 import Costs          from './pages/Costs';
 import Reports        from './pages/Reports';
 import Consignment    from './pages/Consignment';
+import Invoices       from './pages/Invoices';
 
 /* ── Nav config ─────────────────────────────────────────────────── */
 const NAV = [
@@ -217,7 +218,7 @@ export default function App() {
             <Route path="/inventory"     element={<Inventory />} />
             <Route path="/consignment"   element={<Consignment />} />
             <Route path="/products"      element={<Products />} />
-            <Route path="/invoices"      element={<div style={{color:'var(--cream)',padding:20}}>Invoices — coming in Phase 3</div>} />
+            <Route path="/invoices"      element={<Invoices />} />
             <Route path="/partners"      element={<Partners />} />
             <Route path="/costs"         element={<Costs />} />
             <Route path="/reports"       element={<Reports />} />

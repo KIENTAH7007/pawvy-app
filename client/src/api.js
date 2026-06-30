@@ -26,6 +26,20 @@ const qs = (q) => q ? '?' + new URLSearchParams(q) : '';
 export const brandsApi    = { getAll: () => api.get('/brands'), create: (b) => api.post('/brands',b), update: (id,b) => api.put(`/brands/${id}`,b) };
 export const productsApi  = { getAll: (q) => api.get(`/products${qs(q)}`), get: (id) => api.get(`/products/${id}`), create: (p) => api.post('/products',p), update: (id,p) => api.put(`/products/${id}`,p), delete: (id) => api.delete(`/products/${id}`) };
 export const partnersApi  = { getAll: (q) => api.get(`/partners${qs(q)}`), get: (id) => api.get(`/partners/${id}`), create: (p) => api.post('/partners',p), update: (id,p) => api.put(`/partners/${id}`,p) };
+export const invoicesApi = {
+  list:            (q)    => api.get(`/invoices${qs(q)}`),
+  get:             (id)   => api.get(`/invoices/${id}`),
+  uninvoiced:      (partner_id, q) => api.get(`/invoices/uninvoiced/${partner_id}${qs(q)}`),
+  availableForDO:  (partner_id, q) => api.get(`/invoices/available-for-do/${partner_id}${qs(q)}`),
+  generateInvoice: (data) => api.post('/invoices/generate-invoice', data),
+  generateDO:      (data) => api.post('/invoices/generate-do', data),
+  soaPreview:      (partner_id, q) => api.get(`/invoices/soa-preview/${partner_id}${qs(q)}`),
+  generateSOA:     (data) => api.post('/invoices/generate-soa', data),
+  markPaid:        (id)   => api.patch(`/invoices/${id}/pay`, {}),
+  markUnpaid:      (id)   => api.patch(`/invoices/${id}/unpay`, {}),
+  monitoring:      ()     => api.get('/invoices/monitoring'),
+  delete:          (id)   => api.delete(`/invoices/${id}`),
+};
 export const consignmentApi = {
   partners:       ()           => api.get('/consignment/partners'),
   onHand:         (partner_id) => api.get(`/consignment/on-hand/${partner_id}`),
@@ -47,7 +61,6 @@ export const inventoryApi = { getAll: (q) => api.get(`/inventory${qs(q)}`), set:
 export const reportsApi   = { pnl: (q) => api.get(`/reports/pnl${qs(q)}`), trend: (q) => api.get(`/reports/trend${qs(q)}`), partners: (q) => api.get(`/reports/partners${qs(q)}`), allChannels: (q) => api.get(`/reports/all-channels${qs(q)}`) };
 export const partnerReportApi = { top: (q) => api.get(`/reports/partners${qs(q)}`) };
 export const adjApi       = { getAll: (q) => api.get(`/adjustments${qs(q)}`), create: (d) => api.post('/adjustments',d) };
-export const invoicesApi  = { getAll: (q) => api.get(`/invoices${qs(q)}`), get: (id) => api.get(`/invoices/${id}`), create: (d) => api.post('/invoices',d) };
 
 export const brandSkuApi = { detail: (q) => api.get(`/reports/brand-sku${qs(q)}`), };
 

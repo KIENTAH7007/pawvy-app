@@ -207,6 +207,7 @@ module.exports = function(db) {
     const count_id = countResult.lastID;
     let invoiceTotal = 0;
     const invoiceLines = [];
+    const newSaleIds = [];
     for (const item of items) {
       const oh              = onHandMap[item.product_id] || { on_hand:0, consignment_price:0, unit_cost:0 };
       const qty_on_hand     = oh.on_hand;
@@ -219,18 +220,59 @@ module.exports = function(db) {
         [count_id, item.product_id, qty_on_hand, qty_counted, qty_discrepancy, cPrice, uCost]
       );
       if (qty_discrepancy > 0) {
-        db.run(`INSERT INTO sales (date,product_id,partner_id,channel,market,qty,unit_cost,unit_price,platform_fee_pct,platform_fee_amt,notes) VALUES (?,?,?,?,?,?,?,?,0,0,?)`,
+        const saleResult = db.run(`INSERT INTO sales (date,product_id,partner_id,channel,market,qty,unit_cost,unit_price,platform_fee_pct,platform_fee_amt,notes) VALUES (?,?,?,?,?,?,?,?,0,0,?)`,
           [date, item.product_id, partner_id, 'Consignment Sale', 'SG', qty_discrepancy, uCost, cPrice, `Stock count – count_id ${count_id}`]);
+        newSaleIds.push(saleResult.lastID);
         invoiceTotal += qty_discrepancy * cPrice;
         invoiceLines.push({ product_id: item.product_id, qty: qty_discrepancy, unit_price: cPrice, line_total: qty_discrepancy * cPrice });
       }
     }
-    res.status(201).json({ ok:true, count_id, invoice_total: parseFloat(invoiceTotal.toFixed(2)), lines_invoiced: invoiceLines.length, invoice_lines: invoiceLines });
+
+    // Per requirement: invoice every stock count automatically (only when there IS a discrepancy)
+    let invoice = null;
+    if (newSaleIds.length > 0) {
+      const issueDate = date;
+      const dueDate = (() => { const d = new Date(issueDate); d.setDate(d.getDate()+7); return d.toISOString().slice(0,10); })();
+      const lastInv = db.queryOne(`SELECT invoice_number FROM invoices WHERE type='Invoice' AND invoice_number LIKE ? ORDER BY id DESC LIMIT 1`, [`INV-${issueDate.replace(/-/g,'')}-%`]);
+      const seq = lastInv ? (parseInt(lastInv.invoice_number.split('-')[2]) + 1) : 1;
+      const invoice_number = `INV-${issueDate.replace(/-/g,'')}-${String(seq).padStart(3,'0')}`;
+
+      const invResult = db.run(`
+        INSERT INTO invoices (invoice_number, type, partner_id, date, due_date, market, currency, subtotal, discount, shipping, total, status, notes)
+        VALUES (?,?,?,?,?,?,?,?,0,0,?,?,?)
+      `, [invoice_number, 'Invoice', partner_id, issueDate, dueDate, 'SG', 'SGD',
+          parseFloat(invoiceTotal.toFixed(2)), parseFloat(invoiceTotal.toFixed(2)), 'Unpaid', `Auto-generated from stock count #${count_id}`]);
+      const invoiceId = invResult.lastID;
+
+      // Link each newly created sale row to this invoice + add invoice_items for PDF rendering
+      newSaleIds.forEach((saleId, idx) => {
+        const line = invoiceLines[idx];
+        const prod = db.queryOne(`SELECT p.item_series, p.variation, b.name AS brand_name FROM products p JOIN brands b ON b.id=p.brand_id WHERE p.id=?`, [line.product_id]);
+        db.run('UPDATE sales SET invoice_id = ? WHERE id = ?', [invoiceId, saleId]);
+        db.run(
+          'INSERT INTO invoice_items (invoice_id, product_id, description, qty, unit_price, line_total) VALUES (?,?,?,?,?,?)',
+          [invoiceId, line.product_id, `${prod.brand_name} ${prod.item_series}${prod.variation?' · '+prod.variation:''}`, line.qty, line.unit_price, parseFloat(line.line_total.toFixed(2))]
+        );
+      });
+
+      invoice = db.queryOne('SELECT * FROM invoices WHERE id = ?', [invoiceId]);
+    }
+
+    res.status(201).json({ ok:true, count_id, invoice_total: parseFloat(invoiceTotal.toFixed(2)), lines_invoiced: invoiceLines.length, invoice_lines: invoiceLines, invoice });
   });
 
   router.delete('/counts/:id', (req, res) => {
     const count = db.queryOne('SELECT * FROM consignment_counts WHERE id = ?', [req.params.id]);
     if (!count) return res.status(404).json({ error: 'Not found' });
+
+    // Find the auto-generated invoice (matched via the note we stamp on creation) and void it too
+    const linkedInvoice = db.queryOne(`SELECT * FROM invoices WHERE notes LIKE ?`, [`%stock count #${req.params.id}%`]);
+    if (linkedInvoice) {
+      db.run('UPDATE sales SET invoice_id = NULL WHERE invoice_id = ?', [linkedInvoice.id]);
+      db.run('DELETE FROM invoice_items WHERE invoice_id = ?', [linkedInvoice.id]);
+      db.run('DELETE FROM invoices WHERE id = ?', [linkedInvoice.id]);
+    }
+
     db.run(`UPDATE sales SET voided=1, updated_at=CURRENT_TIMESTAMP WHERE notes LIKE ? AND partner_id=?`, [`%count_id ${req.params.id}%`, count.partner_id]);
     db.run('DELETE FROM consignment_counts WHERE id = ?', [req.params.id]);
     res.json({ ok: true });

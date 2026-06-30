@@ -23,7 +23,7 @@ async function startServer() {
   app.use('/api/costs',       require('./routes/costs')(db));
   app.use('/api/reports',     require('./routes/reports')(db));
   app.use('/api/adjustments', adj(db));
-  app.use('/api/invoices',    adj.invoicesRouter(db));
+  app.use('/api/invoices',    require('./routes/invoices')(db));
 
   // Serve React frontend — check multiple locations
   const candidates = [
