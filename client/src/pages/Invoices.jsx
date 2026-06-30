@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { FileText, Truck, FileSpreadsheet, AlertCircle, CheckCircle, Clock, Trash2, Printer } from 'lucide-react';
 import { invoicesApi, consignmentApi, partnersApi } from '../api';
 import { Page, Card, Select, Input, Btn, Badge, Modal } from '../components/ui';
-import { sgd, pawvyHeaderHtml, pawvyAddressBlockHtml, pawvyFooterHtml, openPdfWindow } from '../utils/pawvyPdf';
+import { sgd, pawvyHeaderHtml, pawvyAddressBlockHtml, pawvyFooterHtml, pawvyPaymentInstructionsHtml, openPdfWindow } from '../utils/pawvyPdf';
 
 const today = () => new Date().toISOString().slice(0,10);
 
@@ -22,13 +22,19 @@ function localDocNum(prefix) {
 // ── PDF: Invoice ──────────────────────────────────────────────────
 function generateInvoicePDF(invoice) {
   const date = new Date(invoice.date).toLocaleDateString('en-SG', { day:'numeric', month:'long', year:'numeric' });
-  const rows = (invoice.items||[]).map((it, idx) => `
+  const rows = (invoice.items||[]).map((it, idx) => {
+    // Brand-aware rows (product-linked lines) vs plain description (legacy/non-product lines)
+    const brand = it.brand_name || '—';
+    const desc  = it.item_series ? `${it.item_series}${it.variation ? ' · '+it.variation : ''}` : it.description;
+    return `
     <tr style="background:${idx%2===0?'#fff':'#f8f9fc'}">
-      <td style="padding:8px 12px;border-bottom:1px solid #e8ecf0">${it.description}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #e8ecf0">${brand}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #e8ecf0">${desc}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #e8ecf0;text-align:right">${it.qty}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #e8ecf0;text-align:right">${parseFloat(it.unit_price).toFixed(2)}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #e8ecf0;text-align:right;font-weight:600">${parseFloat(it.line_total).toFixed(2)}</td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${invoice.invoice_number}</title>
   <style>
@@ -48,6 +54,7 @@ function generateInvoicePDF(invoice) {
   <div style="padding:24px 32px">
     <table style="width:100%;border-collapse:collapse;font-size:12px">
       <thead><tr style="background:#14213d">
+        <th style="padding:10px 12px;text-align:left;color:#fff;font-weight:700;font-size:11px">Brand</th>
         <th style="padding:10px 12px;text-align:left;color:#fff;font-weight:700;font-size:11px">Description</th>
         <th style="padding:10px 12px;text-align:right;color:#fff;font-weight:700;font-size:11px">Qty</th>
         <th style="padding:10px 12px;text-align:right;color:#fff;font-weight:700;font-size:11px">Unit Price</th>
@@ -71,9 +78,7 @@ function generateInvoicePDF(invoice) {
     </div>
   </div>
 
-  <div style="padding:0 32px 24px;font-size:11px;color:#666;line-height:1.8">
-    Please make payment via PayNow UEN <strong>T23LP0163A</strong> or bank transfer to UOB Account <strong>7723687857</strong>.
-  </div>
+  ${pawvyPaymentInstructionsHtml()}
 
   ${pawvyFooterHtml()}
   </body></html>`;
@@ -83,12 +88,17 @@ function generateInvoicePDF(invoice) {
 // ── PDF: Delivery Order (no pricing shown) ──────────────────────────
 function generateDOPDF(doc) {
   const date = new Date(doc.date).toLocaleDateString('en-SG', { day:'numeric', month:'long', year:'numeric' });
-  const rows = (doc.items||[]).map((it, idx) => `
+  const rows = (doc.items||[]).map((it, idx) => {
+    const brand = it.brand_name || '—';
+    const desc  = it.item_series ? `${it.item_series}${it.variation ? ' · '+it.variation : ''}` : it.description;
+    return `
     <tr style="background:${idx%2===0?'#fff':'#f8f9fc'}">
-      <td style="padding:8px 12px;border-bottom:1px solid #e8ecf0">${it.description}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #e8ecf0">${brand}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #e8ecf0">${desc}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #e8ecf0;text-align:right;font-weight:700;font-size:14px">${it.qty}</td>
-      <td style="padding:8px 12px;border-bottom:1px solid #e8ecf0"></td>
-    </tr>`).join('');
+      <td style="padding:8px 12px;border-bottom:1px solid #e8ecf0;text-align:right;font-weight:700;font-size:14px">${it.qty}</td>
+    </tr>`;
+  }).join('');
 
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${doc.invoice_number}</title>
   <style>
@@ -103,9 +113,10 @@ function generateDOPDF(doc) {
   <div style="padding:24px 32px">
     <table style="width:100%;border-collapse:collapse;font-size:12px">
       <thead><tr style="background:#14213d">
+        <th style="padding:10px 12px;text-align:left;color:#fff;font-weight:700;font-size:11px">Brand</th>
         <th style="padding:10px 12px;text-align:left;color:#fff;font-weight:700;font-size:11px">Description</th>
+        <th style="padding:10px 12px;text-align:right;color:#fff;font-weight:700;font-size:11px">Qty Ordered</th>
         <th style="padding:10px 12px;text-align:right;color:#fff;font-weight:700;font-size:11px">Qty Delivered</th>
-        <th style="padding:10px 12px;text-align:left;color:#fff;font-weight:700;font-size:11px;width:160px">Received By / Sign</th>
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>
@@ -113,6 +124,11 @@ function generateDOPDF(doc) {
 
   <div style="padding:0 32px 24px;font-size:11px;color:#666;line-height:1.8">
     ¹ All products are verified and received by consignee at the point of delivery.
+  </div>
+
+  <div style="padding:0 32px 32px">
+    <div style="font-size:13px;color:#222">Checked and verified by:</div>
+    <div style="border-bottom:1px solid #222;width:320px;height:40px;margin-top:6px"></div>
   </div>
 
   ${pawvyFooterHtml()}
@@ -430,9 +446,12 @@ function GenerateSOAModal({ open, onClose, partners, onGenerated }) {
   }, [open]);
 
   function periodRange(monthStr) {
+    // Avoid toISOString() here — it converts to UTC and can shift the date backwards
+    // by one day in timezones ahead of UTC (e.g. SGT), silently excluding the last day's invoices.
     const [y,m] = monthStr.split('-').map(Number);
     const start = `${monthStr}-01`;
-    const end   = new Date(y, m, 0).toISOString().slice(0,10);
+    const lastDay = new Date(y, m, 0).getDate();
+    const end = `${monthStr}-${String(lastDay).padStart(2,'0')}`;
     return { start, end };
   }
 
