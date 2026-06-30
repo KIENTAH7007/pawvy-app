@@ -18,8 +18,9 @@ const PROFIT_EXPR = `ROUND(
   - COALESCE(s.shipping_cost,0),
 2)`;
 
-module.exports = function(db) {
+module.exports = function(db, inventoryRouter) {
   const router = Router();
+
 
   // GET sales with rich joined data + computed profit
   router.get('/', (req, res) => {
@@ -168,6 +169,12 @@ module.exports = function(db) {
       WHERE s.id = ?
     `, [result.lastID]);
 
+    // Inventory: every sale fulfills from Home stock — EXCEPT 'Consignment Sale',
+    // which is just the invoicing event for stock already deducted at placement time.
+    if (inventoryRouter?._recordMovement && channel !== 'Consignment Sale') {
+      inventoryRouter._recordMovement({ date, product_id, location: 'Home', type: 'Sale', qty_change: -parseInt(qty), reference: `sale_${result.lastID}` });
+    }
+
     res.status(201).json(sale);
   });
 
@@ -200,9 +207,18 @@ module.exports = function(db) {
 
   // PATCH void a sale (soft delete with audit trail)
   router.patch('/:id/void', (req, res) => {
-    const sale = db.queryOne('SELECT id, voided FROM sales WHERE id = ?', [req.params.id]);
+    const sale = db.queryOne('SELECT * FROM sales WHERE id = ?', [req.params.id]);
     if (!sale) return res.status(404).json({ error: 'Sale not found' });
+    if (sale.voided) return res.json({ ok: true, id: req.params.id, voided: true }); // already voided — no double reversal
     db.run('UPDATE sales SET voided = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [req.params.id]);
+
+    // Inventory: reverse the original deduction (stock effectively never left)
+    if (inventoryRouter?._recordMovement && sale.channel !== 'Consignment Sale') {
+      inventoryRouter._recordMovement({
+        date: new Date().toISOString().slice(0,10), product_id: sale.product_id, location: 'Home',
+        type: 'Sale Reversal', qty_change: sale.qty, reference: `sale_${sale.id}_void`,
+      });
+    }
     res.json({ ok: true, id: req.params.id, voided: true });
   });
 

@@ -1,0 +1,1754 @@
+[
+  {
+    "barcode": "6942018230199",
+    "item_series": "3019 SkipDawg",
+    "variation": "Neon Glow Ball",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 6
+  },
+  {
+    "barcode": "6942018241089",
+    "item_series": "4108 GiGwi Plush Friendz",
+    "variation": "Dinosaur Backpack",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "6942018241102",
+    "item_series": "4110 GiGwi Plush Friendz",
+    "variation": "Fox Backpack",
+    "brand": "GiGwi",
+    "storhub_qty": 8,
+    "home_qty": 4
+  },
+  {
+    "barcode": "6942018241621",
+    "item_series": "4162 GiGwi Tennis Ball Originals",
+    "variation": "Size S Orange",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 15
+  },
+  {
+    "barcode": "6942018241638",
+    "item_series": "4163 GiGwi Tennis Ball Originals",
+    "variation": "Size S Pineapple",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 11
+  },
+  {
+    "barcode": "6942018241669",
+    "item_series": "4166 GiGwi Tennis Ball Originals",
+    "variation": "Size M Pineapple",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "6942018241676",
+    "item_series": "4167 GiGwi Tennis Ball Originals",
+    "variation": "Size M Mangosteen",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 6
+  },
+  {
+    "barcode": "6942018241720",
+    "item_series": "4172 GiGwi Suppa Puppa",
+    "variation": "Elephant with Squeaker",
+    "brand": "GiGwi",
+    "storhub_qty": 8,
+    "home_qty": 4
+  },
+  {
+    "barcode": "6942018241775",
+    "item_series": "4177 GiGwi Suppa Puppa",
+    "variation": "Bell Pepper",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 5
+  },
+  {
+    "barcode": "6942018242574",
+    "item_series": "4257 GiGwi Tug Hercules",
+    "variation": "Corn with Squeaker",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 5
+  },
+  {
+    "barcode": "6942018242635",
+    "item_series": "4263 GiGiw Suppa Puppa",
+    "variation": "Dinosaur with Squeaker",
+    "brand": "GiGwi",
+    "storhub_qty": 4,
+    "home_qty": 2
+  },
+  {
+    "barcode": "6942018260752",
+    "item_series": "6075 GiGiw Plush Friendz",
+    "variation": "Raccoon with Sponge Squeaker",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "846295061186",
+    "item_series": "6118 GiGwi Tennis Ball Originals",
+    "variation": "Size M",
+    "brand": "GiGwi",
+    "storhub_qty": 96,
+    "home_qty": 47
+  },
+  {
+    "barcode": "846295061193",
+    "item_series": "6119 GiGwi Tennis Ball Originals",
+    "variation": "Size S",
+    "brand": "GiGwi",
+    "storhub_qty": 96,
+    "home_qty": 50
+  },
+  {
+    "barcode": "846295061209",
+    "item_series": "6120 GiGwi Tennis Ball Originals",
+    "variation": "Size XS",
+    "brand": "GiGwi",
+    "storhub_qty": 26,
+    "home_qty": 17
+  },
+  {
+    "barcode": "846295061346",
+    "item_series": "6134 GiGwi Plush Friendz Embroidery",
+    "variation": "Owl",
+    "brand": "GiGwi",
+    "storhub_qty": 48,
+    "home_qty": 7
+  },
+  {
+    "barcode": "846295061360",
+    "item_series": "6136 GiGwi Plush Friendz Embroidery",
+    "variation": "Lion",
+    "brand": "GiGwi",
+    "storhub_qty": 30,
+    "home_qty": 4
+  },
+  {
+    "barcode": "846295061889",
+    "item_series": "6188 GiGwi Johnny Stick",
+    "variation": "Red, Extra Durable",
+    "brand": "GiGwi",
+    "storhub_qty": 12,
+    "home_qty": 3
+  },
+  {
+    "barcode": "846295061902",
+    "item_series": "6190 GiGwi Johnny Stick",
+    "variation": "Purple/Blue",
+    "brand": "GiGwi",
+    "storhub_qty": 32,
+    "home_qty": 13
+  },
+  {
+    "barcode": "846295061919",
+    "item_series": "6191 GiGwi Johnny Stick",
+    "variation": "Blue/Orange",
+    "brand": "GiGwi",
+    "storhub_qty": 40,
+    "home_qty": 15
+  },
+  {
+    "barcode": "846295061933",
+    "item_series": "6193 GiGwi Signature Ball",
+    "variation": "Red/Purple, S",
+    "brand": "GiGwi",
+    "storhub_qty": 24,
+    "home_qty": 28
+  },
+  {
+    "barcode": "846295061940",
+    "item_series": "6194 GiGwi Signature Ball",
+    "variation": "Blue/Orange, M",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "846295061957",
+    "item_series": "6195 GiGwi Signature Ball",
+    "variation": "Purple/Blue, L",
+    "brand": "GiGwi",
+    "storhub_qty": 35,
+    "home_qty": 16
+  },
+  {
+    "barcode": "846295062015",
+    "item_series": "6201 GiGwi Crazy Ball",
+    "variation": "Green",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "846295062022",
+    "item_series": "6202 GiGwi Crazy Ball",
+    "variation": "Orange",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "846295062220",
+    "item_series": "6222 GiGwi Plush Friendz with Refillable Squeaker",
+    "variation": "Dog",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 4
+  },
+  {
+    "barcode": "846295062275",
+    "item_series": "6227 GiGwi Plush Friendz with Refillable Squeaker",
+    "variation": "Elephant",
+    "brand": "GiGwi",
+    "storhub_qty": 46,
+    "home_qty": 8
+  },
+  {
+    "barcode": "846295062855",
+    "item_series": "6285 GiGwi Plush Friendz with Rope",
+    "variation": "Elephant",
+    "brand": "GiGwi",
+    "storhub_qty": 23,
+    "home_qty": 1
+  },
+  {
+    "barcode": "846295062909",
+    "item_series": "6290 GiGwi Tennis Ball Originals",
+    "variation": "Size L",
+    "brand": "GiGwi",
+    "storhub_qty": 12,
+    "home_qty": 4
+  },
+  {
+    "barcode": "846295062947",
+    "item_series": "6294 GiGwi Signature Ball",
+    "variation": "Blue/Orange, S",
+    "brand": "GiGwi",
+    "storhub_qty": 72,
+    "home_qty": 34
+  },
+  {
+    "barcode": "846295062954",
+    "item_series": "6295 GiGwi Signature Ball",
+    "variation": "Purple/Blue, S",
+    "brand": "GiGwi",
+    "storhub_qty": 48,
+    "home_qty": 39
+  },
+  {
+    "barcode": "846295062961",
+    "item_series": "6296 GiGwi Signature Ball",
+    "variation": "Red/Purple, M",
+    "brand": "GiGwi",
+    "storhub_qty": 48,
+    "home_qty": 39
+  },
+  {
+    "barcode": "846295062978",
+    "item_series": "6297 GiGwi Signature Ball",
+    "variation": "Purple/Blue, M",
+    "brand": "GiGwi",
+    "storhub_qty": 96,
+    "home_qty": 16
+  },
+  {
+    "barcode": "846295062985",
+    "item_series": "6298 GiGwi Signature Ball",
+    "variation": "Red/Purple, L",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 4
+  },
+  {
+    "barcode": "846295062992",
+    "item_series": "6299 GiGwi Signature Ball",
+    "variation": "Blue/Orange, L",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 12
+  },
+  {
+    "barcode": "846295064095",
+    "item_series": "6409 GiGwi Signature Ball Combo",
+    "variation": "Size S (3 pcs)",
+    "brand": "GiGwi",
+    "storhub_qty": 16,
+    "home_qty": 26
+  },
+  {
+    "barcode": "846295064101",
+    "item_series": "6410 GiGwi Signature Ball Combo",
+    "variation": "Size M (2 pcs)",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 15
+  },
+  {
+    "barcode": "846295064118",
+    "item_series": "6411 GiGwi Signature Ball Combo",
+    "variation": "Size L (2 pcs)",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 13
+  },
+  {
+    "barcode": "846295065290",
+    "item_series": "6529 GiGwi Plush Friendz with Crunchy Neck",
+    "variation": "Dog",
+    "brand": "GiGwi",
+    "storhub_qty": 44,
+    "home_qty": 4
+  },
+  {
+    "barcode": "846295065313",
+    "item_series": "6531 GiGwi Plush Friendz with Crunchy Neck",
+    "variation": "Rabbit",
+    "brand": "GiGwi",
+    "storhub_qty": 13,
+    "home_qty": 2
+  },
+  {
+    "barcode": "846295066259",
+    "item_series": "6625 GiGwi Plush Friendz with Crunchy Neck",
+    "variation": "Duck",
+    "brand": "GiGwi",
+    "storhub_qty": 59,
+    "home_qty": 3
+  },
+  {
+    "barcode": "846295067027",
+    "item_series": "6702 GiGwi Suppa Puppa",
+    "variation": "Blue/Purple, Cat",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "846295067034",
+    "item_series": "6703 GiGwi Suppa Puppa",
+    "variation": "Pink/Purple, Fox",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 8
+  },
+  {
+    "barcode": "846295067089",
+    "item_series": "6708 GiGwi Suppa Puppa",
+    "variation": "Blue/Purple, Bear",
+    "brand": "GiGwi",
+    "storhub_qty": 45,
+    "home_qty": 4
+  },
+  {
+    "barcode": "846295067102",
+    "item_series": "6710 GiGwi Suppa Puppa",
+    "variation": "Blue/Purple, Hippo",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 11
+  },
+  {
+    "barcode": "846295067119",
+    "item_series": "6711 GiGwi Suppa Puppa",
+    "variation": "Pink/Purple, Hippo",
+    "brand": "GiGwi",
+    "storhub_qty": 34,
+    "home_qty": 3
+  },
+  {
+    "barcode": "6942018267577",
+    "item_series": "6757 GiGwi Suppa Puppa",
+    "variation": "Elephant Cloth",
+    "brand": "GiGwi",
+    "storhub_qty": 39,
+    "home_qty": 3
+  },
+  {
+    "barcode": "6942018267966",
+    "item_series": "6796 GiGwi Wiry Plush Friendz",
+    "variation": "Monkey",
+    "brand": "GiGwi",
+    "storhub_qty": 18,
+    "home_qty": 3
+  },
+  {
+    "barcode": "6942018267973",
+    "item_series": "6797 GiGwi Wiry Plush Friendz",
+    "variation": "Elephant",
+    "brand": "GiGwi",
+    "storhub_qty": 35,
+    "home_qty": 2
+  },
+  {
+    "barcode": "6942018267980",
+    "item_series": "6798 GiGwi Wiry Plush Friendz",
+    "variation": "Squirrel",
+    "brand": "GiGwi",
+    "storhub_qty": 14,
+    "home_qty": 3
+  },
+  {
+    "barcode": "6942018268086",
+    "item_series": "6808 GiGwi Rock Zoo",
+    "variation": "Pig",
+    "brand": "GiGwi",
+    "storhub_qty": 41,
+    "home_qty": 1
+  },
+  {
+    "barcode": "6942018268093",
+    "item_series": "6809 GiGwi Rock Zoo",
+    "variation": "Rabbit",
+    "brand": "GiGwi",
+    "storhub_qty": 48,
+    "home_qty": 3
+  },
+  {
+    "barcode": "6942018268109",
+    "item_series": "6810 GiGwi Rock Zoo",
+    "variation": "Monkey",
+    "brand": "GiGwi",
+    "storhub_qty": 40,
+    "home_qty": 4
+  },
+  {
+    "barcode": "6942018269045",
+    "item_series": "6904 GiGwi Pop-pals",
+    "variation": "Size S Ball",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "6942018269632",
+    "item_series": "6963 GiGwi Foodzy Friendz",
+    "variation": "Hamburger & French Fries",
+    "brand": "GiGwi",
+    "storhub_qty": 56,
+    "home_qty": 3
+  },
+  {
+    "barcode": "6942018269649",
+    "item_series": "6964 GiGwi Foodzy Friendz",
+    "variation": "Hot Dog & Root Beer",
+    "brand": "GiGwi",
+    "storhub_qty": 36,
+    "home_qty": 3
+  },
+  {
+    "barcode": "6942018269656",
+    "item_series": "6965 GiGwi Foodzy Friendz",
+    "variation": "Pizza & Ice Cream",
+    "brand": "GiGwi",
+    "storhub_qty": 48,
+    "home_qty": 2
+  },
+  {
+    "barcode": "6942018269663",
+    "item_series": "6966 GiGwi Foodzy Friendz",
+    "variation": "Chicken Snack Bag",
+    "brand": "GiGwi",
+    "storhub_qty": 78,
+    "home_qty": 6
+  },
+  {
+    "barcode": "6942018269670",
+    "item_series": "6967 GiGwi Foodzy Friendz",
+    "variation": "Pork Snack Bag",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "6942018269687",
+    "item_series": "6968 GiGwi Foodzy Friendz",
+    "variation": "Beef Snack Bag",
+    "brand": "GiGwi",
+    "storhub_qty": 10,
+    "home_qty": 2
+  },
+  {
+    "barcode": "6942018269694",
+    "item_series": "6969 GiGwi Plush Friendz",
+    "variation": "Strawberry Rabbit",
+    "brand": "GiGwi",
+    "storhub_qty": 24,
+    "home_qty": 2
+  },
+  {
+    "barcode": "6942018269700",
+    "item_series": "6970 GiGwi Plush Friendz",
+    "variation": "Avocado Frog",
+    "brand": "GiGwi",
+    "storhub_qty": 12,
+    "home_qty": 3
+  },
+  {
+    "barcode": "6942018269717",
+    "item_series": "6971 GiGwi Plush Friendz",
+    "variation": "Pineapple Dog",
+    "brand": "GiGwi",
+    "storhub_qty": 11,
+    "home_qty": 5
+  },
+  {
+    "barcode": "846295069830",
+    "item_series": "6983 GiGwi Suppa Puppa",
+    "variation": "Green, Alligator",
+    "brand": "GiGwi",
+    "storhub_qty": 31,
+    "home_qty": 9
+  },
+  {
+    "barcode": "846295069847",
+    "item_series": "6984 GiGwi Suppa Puppa",
+    "variation": "Yellow, Dino",
+    "brand": "GiGwi",
+    "storhub_qty": 17,
+    "home_qty": 1
+  },
+  {
+    "barcode": "846295069854",
+    "item_series": "6985 GiGwi Suppa Puppa",
+    "variation": "Pink, Hippo",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "846295071857",
+    "item_series": "7185 GiGwi Eco Line Feather Teaser",
+    "variation": "Crinkles & Silvervine",
+    "brand": "GiGwi",
+    "storhub_qty": 21,
+    "home_qty": 4
+  },
+  {
+    "barcode": "6942018273240",
+    "item_series": "7324 GiGwi Snuffle Mat",
+    "variation": "Fast Food",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 4
+  },
+  {
+    "barcode": "6942018273516",
+    "item_series": "7351 GiGwi Meow Than 1",
+    "variation": "Mushroom Cap with Stem",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "6942018273530",
+    "item_series": "7353 GiGwi Meow Than 1",
+    "variation": "Frog with Legume",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "6942018274155",
+    "item_series": "7415 GiGwi Rookie Hunter",
+    "variation": "Bee with Beehive",
+    "brand": "GiGwi",
+    "storhub_qty": 18,
+    "home_qty": 5
+  },
+  {
+    "barcode": "6942018274162",
+    "item_series": "7416 GiGwi Rookie Hunter",
+    "variation": "Caterpillar with Apple",
+    "brand": "GiGwi",
+    "storhub_qty": 8,
+    "home_qty": 9
+  },
+  {
+    "barcode": "846295074568",
+    "item_series": "7456 GiGwi Thirst for Catnip",
+    "variation": "Caterpillar",
+    "brand": "GiGwi",
+    "storhub_qty": 10,
+    "home_qty": 4
+  },
+  {
+    "barcode": "846295074599",
+    "item_series": "7459 GiGwi Shinning Friends",
+    "variation": "Firefly",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 26
+  },
+  {
+    "barcode": "846295074704",
+    "item_series": "7470 GiGwi Interative Toy",
+    "variation": "Bee",
+    "brand": "GiGwi",
+    "storhub_qty": 8,
+    "home_qty": 11
+  },
+  {
+    "barcode": "846295074711",
+    "item_series": "7471 GiGwi Finger Teaser",
+    "variation": "Flamingo",
+    "brand": "GiGwi",
+    "storhub_qty": 6,
+    "home_qty": 6
+  },
+  {
+    "barcode": "846295075190",
+    "item_series": "7519 GiGwi with Silvervine Ring",
+    "variation": "Raccoon",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "846295075275",
+    "item_series": "7527 GiGwi with Leatherette",
+    "variation": "Duck",
+    "brand": "GiGwi",
+    "storhub_qty": 23,
+    "home_qty": 8
+  },
+  {
+    "barcode": "846295080088",
+    "item_series": "8008 GiGwi Suppa Puppa with TPR",
+    "variation": "Rabbit",
+    "brand": "GiGwi",
+    "storhub_qty": 77,
+    "home_qty": 6
+  },
+  {
+    "barcode": "846295080095",
+    "item_series": "8009 GiGwi Suppa Puppa with TPR",
+    "variation": "Monkey",
+    "brand": "GiGwi",
+    "storhub_qty": 27,
+    "home_qty": 13
+  },
+  {
+    "barcode": "6942018280545",
+    "item_series": "8054 GiGwi Foodzy Friendz Tough",
+    "variation": "French Fries with Ketchup",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "6942018280569",
+    "item_series": "8056 GiGwi Foodzy Friendz Tough",
+    "variation": "Ice Cream with Sun",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "846295081283",
+    "item_series": "8128 GiGwi Egg Wobble",
+    "variation": "Duck",
+    "brand": "GiGwi",
+    "storhub_qty": 41,
+    "home_qty": 4
+  },
+  {
+    "barcode": "846295081306",
+    "item_series": "8130 GiGwi Egg Wobble",
+    "variation": "Cock",
+    "brand": "GiGwi",
+    "storhub_qty": 43,
+    "home_qty": 5
+  },
+  {
+    "barcode": "846295081320",
+    "item_series": "8132 GiGwi Egg Wobble",
+    "variation": "Dino",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 4
+  },
+  {
+    "barcode": "846295083775",
+    "item_series": "8377 GiGwi Suppa Puppa",
+    "variation": "Racoon",
+    "brand": "GiGwi",
+    "storhub_qty": 64,
+    "home_qty": 7
+  },
+  {
+    "barcode": "846295083782",
+    "item_series": "8378 GiGwi Suppa Puppa",
+    "variation": "Lion",
+    "brand": "GiGwi",
+    "storhub_qty": 96,
+    "home_qty": 3
+  },
+  {
+    "barcode": "846295084550",
+    "item_series": "8455 GiGwi Wooden Antler",
+    "variation": "Extra Small",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 3
+  },
+  {
+    "barcode": "846295084567",
+    "item_series": "8456 GiGwi Wooden Antler",
+    "variation": "Small",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 12
+  },
+  {
+    "barcode": "846295084574",
+    "item_series": "8457 GiGwi Wooden Antler",
+    "variation": "Medium",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 14
+  },
+  {
+    "barcode": "846295084611",
+    "item_series": "8461 GiGwi Shaking Fun",
+    "variation": "Fox",
+    "brand": "GiGwi",
+    "storhub_qty": 48,
+    "home_qty": 5
+  },
+  {
+    "barcode": "846295084628",
+    "item_series": "8462 GiGwi Shaking Fun",
+    "variation": "Crocodile",
+    "brand": "GiGwi",
+    "storhub_qty": 24,
+    "home_qty": 4
+  },
+  {
+    "barcode": "846295084635",
+    "item_series": "8463 GiGwi Shaking Fun",
+    "variation": "Lion",
+    "brand": "GiGwi",
+    "storhub_qty": 36,
+    "home_qty": 3
+  },
+  {
+    "barcode": "846295084673",
+    "item_series": "8467 SkipDawg",
+    "variation": "Whistling Ball",
+    "brand": "GiGwi",
+    "storhub_qty": 11,
+    "home_qty": 5
+  },
+  {
+    "barcode": "846295084758",
+    "item_series": "8474 GiGwi Tug Hercules",
+    "variation": "Blue Raccoon with Rope",
+    "brand": "GiGwi",
+    "storhub_qty": 28,
+    "home_qty": 2
+  },
+  {
+    "barcode": "846295084772",
+    "item_series": "8477 GiGwi Wooden Antler",
+    "variation": "Large",
+    "brand": "GiGwi",
+    "storhub_qty": 30,
+    "home_qty": 7
+  },
+  {
+    "barcode": "846295084802",
+    "item_series": "8480 GiGwi Wild Hunter",
+    "variation": "Dragon",
+    "brand": "GiGwi",
+    "storhub_qty": 4,
+    "home_qty": 1
+  },
+  {
+    "barcode": "846295084819",
+    "item_series": "8481 GiGwi Wild Hunter",
+    "variation": "Lion",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "846295084826",
+    "item_series": "8482 GiGwi Wild Hunter",
+    "variation": "Crocodile",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "846295084864",
+    "item_series": "8486 GiGwi S Bone",
+    "variation": "Medium",
+    "brand": "GiGwi",
+    "storhub_qty": 10,
+    "home_qty": 4
+  },
+  {
+    "barcode": "846295084895",
+    "item_series": "8489 GiGwi Bulb",
+    "variation": "Red, Size M",
+    "brand": "GiGwi",
+    "storhub_qty": 19,
+    "home_qty": 5
+  },
+  {
+    "barcode": "846295084918",
+    "item_series": "8491 GiGwi Multi-sounds Bone",
+    "variation": "-",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 22
+  },
+  {
+    "barcode": "846295084932",
+    "item_series": "8493 GiGwi Jumball",
+    "variation": "Basketball",
+    "brand": "GiGwi",
+    "storhub_qty": 24,
+    "home_qty": 4
+  },
+  {
+    "barcode": "846295085083",
+    "item_series": "8508 GiGwi Bulb",
+    "variation": "Blue, Size S",
+    "brand": "GiGwi",
+    "storhub_qty": 19,
+    "home_qty": 2
+  },
+  {
+    "barcode": "846295085090",
+    "item_series": "8509 GiGwi Bulb",
+    "variation": "Purple, Size L",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 1
+  },
+  {
+    "barcode": "846295085137",
+    "item_series": "8513 GiGwi Toothbrush Stick",
+    "variation": "-",
+    "brand": "GiGwi",
+    "storhub_qty": 10,
+    "home_qty": 10
+  },
+  {
+    "barcode": "846295085168",
+    "item_series": "8516 GiGwi Pop-pals",
+    "variation": "Size L Ball",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 14
+  },
+  {
+    "barcode": "6942018241751",
+    "item_series": "4175 GiGwi Pop-pals",
+    "variation": "Size M Ball",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 3
+  },
+  {
+    "barcode": "846295085342",
+    "item_series": "8534 GiGwi X-Mas Tale",
+    "variation": "Reindeer",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "846295085625",
+    "item_series": "8562 GiGwi Hide N' Seek",
+    "variation": "Fast Food Bag",
+    "brand": "GiGwi",
+    "storhub_qty": 18,
+    "home_qty": 3
+  },
+  {
+    "barcode": "846295085649",
+    "item_series": "8564 GiGwi Plush Friendz with TPR Ring",
+    "variation": "Elephant",
+    "brand": "GiGwi",
+    "storhub_qty": 14,
+    "home_qty": 4
+  },
+  {
+    "barcode": "846295085717",
+    "item_series": "8571 GiGwi Pop-pals",
+    "variation": "Flying Disc",
+    "brand": "GiGwi",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "850044407026",
+    "item_series": "PFA-G001 Puzzle Feeder Accessory",
+    "variation": "Green",
+    "brand": "Puzzle Feeder",
+    "storhub_qty": 0,
+    "home_qty": 5
+  },
+  {
+    "barcode": "850044407002",
+    "item_series": "PF-G001 Puzzle Feeder",
+    "variation": "Green",
+    "brand": "Puzzle Feeder",
+    "storhub_qty": 20,
+    "home_qty": 3
+  },
+  {
+    "barcode": "850044407057",
+    "item_series": "PF-P001 Puzzle Feeder",
+    "variation": "Pink",
+    "brand": "Puzzle Feeder",
+    "storhub_qty": 7,
+    "home_qty": 1
+  },
+  {
+    "barcode": "850044407002",
+    "item_series": "PFS-Pur001 Puzzle Feeder Swirl",
+    "variation": "Purple",
+    "brand": "Puzzle Feeder",
+    "storhub_qty": 8,
+    "home_qty": 1
+  },
+  {
+    "barcode": "850044407033",
+    "item_series": "PLBA-Y001 Puzzle Lick Bowl Accessory",
+    "variation": "Yellow",
+    "brand": "Puzzle Feeder",
+    "storhub_qty": 0,
+    "home_qty": 10
+  },
+  {
+    "barcode": "850044407064",
+    "item_series": "PLB-B001 Puzzle Lick Bowl",
+    "variation": "Blue",
+    "brand": "Puzzle Feeder",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "850044407019",
+    "item_series": "PLB-Y001 Puzzle Lick Bowl",
+    "variation": "Yellow",
+    "brand": "Puzzle Feeder",
+    "storhub_qty": 0,
+    "home_qty": 12
+  },
+  {
+    "barcode": "850044407446",
+    "item_series": "PMF-W001 Puzzle Mat Flex",
+    "variation": "Wave - Pink",
+    "brand": "Puzzle Feeder",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "850044407378",
+    "item_series": "PM-CA001 Puzzle Mat Enrich Feeder",
+    "variation": "CA - Pink",
+    "brand": "Puzzle Feeder",
+    "storhub_qty": 0,
+    "home_qty": 3
+  },
+  {
+    "barcode": "850044407392",
+    "item_series": "PM-TX001 Puzzle Mat Enrich Feeder",
+    "variation": "TX - Purple",
+    "brand": "Puzzle Feeder",
+    "storhub_qty": 0,
+    "home_qty": 2
+  },
+  {
+    "barcode": "850044407132",
+    "item_series": "PM-G001 Puzzle Mat",
+    "variation": "Green",
+    "brand": "Puzzle Feeder",
+    "storhub_qty": 0,
+    "home_qty": 5
+  },
+  {
+    "barcode": "850044407187",
+    "item_series": "PD-P001 Puzzle Digger Cat",
+    "variation": "Pink",
+    "brand": "Puzzle Feeder",
+    "storhub_qty": 0,
+    "home_qty": 2
+  },
+  {
+    "barcode": "850044407408",
+    "item_series": "PLP-G001 Puzzle Lickpop",
+    "variation": "Green",
+    "brand": "Puzzle Feeder",
+    "storhub_qty": 8,
+    "home_qty": 5
+  },
+  {
+    "barcode": "850044407347",
+    "item_series": "PTLXL-001 Puzzle Tumbler",
+    "variation": "L/XL Pink/Cyan",
+    "brand": "Puzzle Feeder",
+    "storhub_qty": 13,
+    "home_qty": 1
+  },
+  {
+    "barcode": "850044407354",
+    "item_series": "PTSM-001 Puzzle Tumbler",
+    "variation": "S/M Green/Orange",
+    "brand": "Puzzle Feeder",
+    "storhub_qty": 18,
+    "home_qty": 0
+  },
+  {
+    "barcode": "850044407255",
+    "item_series": "SPF-G001 Puzzle Feeder Lite",
+    "variation": "Green",
+    "brand": "Puzzle Feeder",
+    "storhub_qty": 25,
+    "home_qty": -3
+  },
+  {
+    "barcode": "850044407262",
+    "item_series": "SPLB-O001 Puzzle Lick Bowl Lite",
+    "variation": "Orange",
+    "brand": "Puzzle Feeder",
+    "storhub_qty": 18,
+    "home_qty": 1
+  },
+  {
+    "barcode": "8057438754762",
+    "item_series": "SR1150 Salmoil Recipe 1 Kidney Wellness",
+    "variation": "150ml",
+    "brand": "Salmoil",
+    "storhub_qty": 0,
+    "home_qty": 68
+  },
+  {
+    "barcode": "8057438752218",
+    "item_series": "SR1250 Salmoil Recipe 1 Kidney Wellness",
+    "variation": "250ml",
+    "brand": "Salmoil",
+    "storhub_qty": 0,
+    "home_qty": 13
+  },
+  {
+    "barcode": "8057438752225",
+    "item_series": "SR1500 Salmoil Recipe 1 Kidney Wellness",
+    "variation": "500ml",
+    "brand": "Salmoil",
+    "storhub_qty": 0,
+    "home_qty": 6
+  },
+  {
+    "barcode": "8057438753123",
+    "item_series": "SR2150 Salmoil Recipe 2 Gut Wellness",
+    "variation": "150ml",
+    "brand": "Salmoil",
+    "storhub_qty": 0,
+    "home_qty": 73
+  },
+  {
+    "barcode": "8057438752249",
+    "item_series": "SR2250 Salmoil Recipe 2 Gut Wellness",
+    "variation": "250ml",
+    "brand": "Salmoil",
+    "storhub_qty": 0,
+    "home_qty": 28
+  },
+  {
+    "barcode": "8057438752256",
+    "item_series": "SR2500 Salmoil Recipe 2 Gut Wellness",
+    "variation": "500ml",
+    "brand": "Salmoil",
+    "storhub_qty": 0,
+    "home_qty": 13
+  },
+  {
+    "barcode": "8057438753130",
+    "item_series": "SR3150 Salmoil Recipe 3 100% Vegan",
+    "variation": "150ml",
+    "brand": "Salmoil",
+    "storhub_qty": 0,
+    "home_qty": 3
+  },
+  {
+    "barcode": "8057438752270",
+    "item_series": "SR3250 Salmoil Recipe 3 100% Vegan",
+    "variation": "250ml",
+    "brand": "Salmoil",
+    "storhub_qty": 0,
+    "home_qty": 8
+  },
+  {
+    "barcode": "8057438752140",
+    "item_series": "SR3500 Salmoil Recipe 3 100% Vegan",
+    "variation": "500ml",
+    "brand": "Salmoil",
+    "storhub_qty": 0,
+    "home_qty": 13
+  },
+  {
+    "barcode": "8057438753093",
+    "item_series": "SR4150 Salmoil Recipe 4 Odor Control",
+    "variation": "150ml",
+    "brand": "Salmoil",
+    "storhub_qty": 0,
+    "home_qty": 40
+  },
+  {
+    "barcode": "8057438754649",
+    "item_series": "SR4250 Salmoil Recipe 4 Odor Control",
+    "variation": "250ml",
+    "brand": "Salmoil",
+    "storhub_qty": 0,
+    "home_qty": 15
+  },
+  {
+    "barcode": "8057438754656",
+    "item_series": "SR4500 Salmoil Recipe 4 Odor Control",
+    "variation": "500ml",
+    "brand": "Salmoil",
+    "storhub_qty": 0,
+    "home_qty": 7
+  },
+  {
+    "barcode": "8057438753024",
+    "item_series": "SR5150 Salmoil Recipe 5 Skin & Coat",
+    "variation": "150ml",
+    "brand": "Salmoil",
+    "storhub_qty": 0,
+    "home_qty": 94
+  },
+  {
+    "barcode": "8057438754588",
+    "item_series": "SR5250 Salmoil Recipe 5 Skin & Coat",
+    "variation": "250ml",
+    "brand": "Salmoil",
+    "storhub_qty": 0,
+    "home_qty": 12
+  },
+  {
+    "barcode": "8057438754670",
+    "item_series": "SR5500 Salmoil Recipe 5 Skin & Coat",
+    "variation": "500ml",
+    "brand": "Salmoil",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "8057438753031",
+    "item_series": "SR6150 Salmoil Recipe 6 Joint Wellness",
+    "variation": "150ml",
+    "brand": "Salmoil",
+    "storhub_qty": 0,
+    "home_qty": 45
+  },
+  {
+    "barcode": "8057438754687",
+    "item_series": "SR6250 Salmoil Recipe 6 Joint Wellness",
+    "variation": "250ml",
+    "brand": "Salmoil",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "8057438754694",
+    "item_series": "SR6500 Salmoil Recipe 6 Joint Wellness",
+    "variation": "500ml",
+    "brand": "Salmoil",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "8809990478460",
+    "item_series": "EFDF-P125",
+    "variation": "FD Pollack 125g",
+    "brand": "East Sea Brother",
+    "storhub_qty": 52,
+    "home_qty": 18
+  },
+  {
+    "barcode": "8809990478477",
+    "item_series": "EFDF-S115",
+    "variation": "FD Salmon 115g",
+    "brand": "East Sea Brother",
+    "storhub_qty": 37,
+    "home_qty": 15
+  },
+  {
+    "barcode": "8809990478484",
+    "item_series": "EFDF-C125",
+    "variation": "FD Capelin 125g",
+    "brand": "East Sea Brother",
+    "storhub_qty": 0,
+    "home_qty": 32
+  },
+  {
+    "barcode": "8809990478491",
+    "item_series": "EFDF-FF110",
+    "variation": "FD FlatFish 110g",
+    "brand": "East Sea Brother",
+    "storhub_qty": 20,
+    "home_qty": 6
+  },
+  {
+    "barcode": null,
+    "item_series": "EFDF-Y185",
+    "variation": "FD Yellowtail 185g",
+    "brand": "East Sea Brother",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "8809954140013",
+    "item_series": "EFDF-SL100",
+    "variation": "FD Sandlance 100g",
+    "brand": "East Sea Brother",
+    "storhub_qty": 0,
+    "home_qty": 17
+  },
+  {
+    "barcode": "8809990478408",
+    "item_series": "EPHD-CF15",
+    "variation": "PHD Codfish 15g",
+    "brand": "East Sea Brother",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "8809990478415",
+    "item_series": "EPHD-S28",
+    "variation": "PHD Salmon 28g",
+    "brand": "East Sea Brother",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "8809990478439",
+    "item_series": "EPHD-Y25",
+    "variation": "PHD Yellowtail 25g",
+    "brand": "East Sea Brother",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "8809990478446",
+    "item_series": "EPHD-MF28",
+    "variation": "PHD MixedFish 28g",
+    "brand": "East Sea Brother",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "8809990478453",
+    "item_series": "EPHD-T21",
+    "variation": "PHD Trout 21g",
+    "brand": "East Sea Brother",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "8809954140075",
+    "item_series": "EPHD-C30",
+    "variation": "PHD Capelin 30g",
+    "brand": "East Sea Brother",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "8809954140068",
+    "item_series": "EPHD-SL30",
+    "variation": "PHD Sandlance 30g",
+    "brand": "East Sea Brother",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "8809954140136",
+    "item_series": "EPHD-R30",
+    "variation": "PHD Ray 30g",
+    "brand": "East Sea Brother",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "8809954140020",
+    "item_series": "EFDH-P60",
+    "variation": "Half FD Pollack 60g",
+    "brand": "East Sea Brother",
+    "storhub_qty": 40,
+    "home_qty": 10
+  },
+  {
+    "barcode": "8809954140037",
+    "item_series": "EFDH-S55",
+    "variation": "Half FD Salmon 55g",
+    "brand": "East Sea Brother",
+    "storhub_qty": 21,
+    "home_qty": 5
+  },
+  {
+    "barcode": "8809954140044",
+    "item_series": "EFDH-FF55",
+    "variation": "Half FlatFish 55g",
+    "brand": "East Sea Brother",
+    "storhub_qty": 21,
+    "home_qty": 7
+  },
+  {
+    "barcode": "8809954140099",
+    "item_series": "EFDH-PS70",
+    "variation": "Half FD Pollack Stick 70g",
+    "brand": "East Sea Brother",
+    "storhub_qty": 8,
+    "home_qty": 5
+  },
+  {
+    "barcode": "8809954140112",
+    "item_series": "EFDH-GM70",
+    "variation": "Half FD Green Lipped Mussel 70g",
+    "brand": "East Sea Brother",
+    "storhub_qty": 0,
+    "home_qty": 24
+  },
+  {
+    "barcode": "850028916629",
+    "item_series": "B0101Mi Better Bone",
+    "variation": "Soft Classic Mini",
+    "brand": "Better Bone",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "850028916612",
+    "item_series": "B0102Mi Better Bone",
+    "variation": "Soft Beef Mini",
+    "brand": "Better Bone",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "850028916018",
+    "item_series": "B0101S Better Bone",
+    "variation": "Soft Classic Small",
+    "brand": "Better Bone",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "850028916476",
+    "item_series": "B0102S Better Bone",
+    "variation": "Soft Beef Small",
+    "brand": "Better Bone",
+    "storhub_qty": 0,
+    "home_qty": 4
+  },
+  {
+    "barcode": "850028916001",
+    "item_series": "B0101L Better Bone",
+    "variation": "Soft Classic Large",
+    "brand": "Better Bone",
+    "storhub_qty": 0,
+    "home_qty": 15
+  },
+  {
+    "barcode": "850028916469",
+    "item_series": "B0102L Better Bone",
+    "variation": "Soft Beef Large",
+    "brand": "Better Bone",
+    "storhub_qty": 0,
+    "home_qty": 2
+  },
+  {
+    "barcode": "850028916636",
+    "item_series": "B0201Mi Better Bone",
+    "variation": "Medium Classic Mini",
+    "brand": "Better Bone",
+    "storhub_qty": 0,
+    "home_qty": 5
+  },
+  {
+    "barcode": "850028916643",
+    "item_series": "B0202Mi Better Bone",
+    "variation": "Medium Beef Mini",
+    "brand": "Better Bone",
+    "storhub_qty": 0,
+    "home_qty": 8
+  },
+  {
+    "barcode": "850028916599",
+    "item_series": "B0201S Better Bone",
+    "variation": "Medium Classic Small",
+    "brand": "Better Bone",
+    "storhub_qty": 6,
+    "home_qty": 9
+  },
+  {
+    "barcode": "850028916582",
+    "item_series": "B0202S Better Bone",
+    "variation": "Medium Beef Small",
+    "brand": "Better Bone",
+    "storhub_qty": 0,
+    "home_qty": 1
+  },
+  {
+    "barcode": "850028916803",
+    "item_series": "B0203S Better Bone",
+    "variation": "Medium Venison Small",
+    "brand": "Better Bone",
+    "storhub_qty": 12,
+    "home_qty": 7
+  },
+  {
+    "barcode": "850028916568",
+    "item_series": "B0201L Better Bone",
+    "variation": "Medium Classic Large",
+    "brand": "Better Bone",
+    "storhub_qty": 6,
+    "home_qty": 15
+  },
+  {
+    "barcode": "850028916575",
+    "item_series": "B0202L Better Bone",
+    "variation": "Medium Beef Large",
+    "brand": "Better Bone",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "850028916773",
+    "item_series": "B0203L Better Bone",
+    "variation": "Medium Venison Large",
+    "brand": "Better Bone",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "850028916650",
+    "item_series": "B0301Mi Better Bone",
+    "variation": "Hard Classic Mini",
+    "brand": "Better Bone",
+    "storhub_qty": 0,
+    "home_qty": 2
+  },
+  {
+    "barcode": "850028916667",
+    "item_series": "B0302Mi Better Bone",
+    "variation": "Hard Beef Mini",
+    "brand": "Better Bone",
+    "storhub_qty": 0,
+    "home_qty": 7
+  },
+  {
+    "barcode": "850028916025",
+    "item_series": "B0301S Better Bone",
+    "variation": "Hard Classic Small",
+    "brand": "Better Bone",
+    "storhub_qty": 0,
+    "home_qty": 13
+  },
+  {
+    "barcode": "850028916094",
+    "item_series": "B0302S Better Bone",
+    "variation": "Hard Beef Small",
+    "brand": "Better Bone",
+    "storhub_qty": 6,
+    "home_qty": 16
+  },
+  {
+    "barcode": "850028916797",
+    "item_series": "B0303S Better Bone",
+    "variation": "Hard Venison Small",
+    "brand": "Better Bone",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "850028916032",
+    "item_series": "B0301L Better Bone",
+    "variation": "Hard Classic Large",
+    "brand": "Better Bone",
+    "storhub_qty": 12,
+    "home_qty": 14
+  },
+  {
+    "barcode": "850028916087",
+    "item_series": "B0302L Better Bone",
+    "variation": "Hard Beef Large",
+    "brand": "Better Bone",
+    "storhub_qty": 0,
+    "home_qty": 11
+  },
+  {
+    "barcode": "850028916780",
+    "item_series": "B0303L Better Bone",
+    "variation": "Hard Venison Large",
+    "brand": "Better Bone",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "5060518440977",
+    "item_series": "L0101 Lillidale Supplement",
+    "variation": "ProHealth 200g",
+    "brand": "Lillidale",
+    "storhub_qty": 74,
+    "home_qty": -13
+  },
+  {
+    "barcode": "5060518441455",
+    "item_series": "L0102 Lillidale Supplement",
+    "variation": "ProHealth 500g",
+    "brand": "Lillidale",
+    "storhub_qty": 41,
+    "home_qty": -1
+  },
+  {
+    "barcode": "5060518442018",
+    "item_series": "L0103 Lillidale Supplement",
+    "variation": "ProHealth 2000g",
+    "brand": "Lillidale",
+    "storhub_qty": 3,
+    "home_qty": 2
+  },
+  {
+    "barcode": "5060518440922",
+    "item_series": "L0111 Lillidale Supplement",
+    "variation": "ProJoint 200g",
+    "brand": "Lillidale",
+    "storhub_qty": 12,
+    "home_qty": 4
+  },
+  {
+    "barcode": "5060518440267",
+    "item_series": "L0112 Lillidale Supplement",
+    "variation": "ProJoint 500g",
+    "brand": "Lillidale",
+    "storhub_qty": 21,
+    "home_qty": 3
+  },
+  {
+    "barcode": "5060518440434",
+    "item_series": "L0113 Lillidale Supplement",
+    "variation": "ProJoint 2000g",
+    "brand": "Lillidale",
+    "storhub_qty": 1,
+    "home_qty": 2
+  },
+  {
+    "barcode": "5060518440946",
+    "item_series": "L0114 Lillidale Supplement",
+    "variation": "ProJoint 200g Cat",
+    "brand": "Lillidale",
+    "storhub_qty": 0,
+    "home_qty": -1
+  },
+  {
+    "barcode": "5060518442230",
+    "item_series": "L0121 Lillidale Supplement",
+    "variation": "Plaque Guard 60g",
+    "brand": "Lillidale",
+    "storhub_qty": 54,
+    "home_qty": 7
+  },
+  {
+    "barcode": "5060518441905",
+    "item_series": "L0201 Lillidale Grooming",
+    "variation": "Itchy Wash 50ml",
+    "brand": "Lillidale",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "5060518440632",
+    "item_series": "L0202 Lillidale Grooming",
+    "variation": "Itchy Wash 250ml",
+    "brand": "Lillidale",
+    "storhub_qty": 0,
+    "home_qty": -3
+  },
+  {
+    "barcode": "5060518440670",
+    "item_series": "L0203 Lillidale Grooming",
+    "variation": "Itchy Wash Conc. 5L (Groomer)",
+    "brand": "Lillidale",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "5060518441899",
+    "item_series": "L0211 Lillidale Grooming",
+    "variation": "Stinky Wash 50ml",
+    "brand": "Lillidale",
+    "storhub_qty": 0,
+    "home_qty": -9
+  },
+  {
+    "barcode": "5060518440663",
+    "item_series": "L0212 Lillidale Grooming",
+    "variation": "Stinky Wash 250ml",
+    "brand": "Lillidale",
+    "storhub_qty": 0,
+    "home_qty": 2
+  },
+  {
+    "barcode": "5060518440687",
+    "item_series": "L0213 Lillidale Grooming",
+    "variation": "Stinky Wash Conc. 5L (Groomer)",
+    "brand": "Lillidale",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "5060518441929",
+    "item_series": "L0221 Lillidale Grooming",
+    "variation": "Stinky Spray 50ml",
+    "brand": "Lillidale",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "5060518440656",
+    "item_series": "L0222 Lillidale Grooming",
+    "variation": "Stinky Spray 250ml",
+    "brand": "Lillidale",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "5060518441912",
+    "item_series": "L0231 Lillidale Grooming",
+    "variation": "Lazy Wash 50ml",
+    "brand": "Lillidale",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "5060518440649",
+    "item_series": "L0232 Lillidale Grooming",
+    "variation": "Lazy Wash 200ml",
+    "brand": "Lillidale",
+    "storhub_qty": 30,
+    "home_qty": 31
+  },
+  {
+    "barcode": "5060518441608",
+    "item_series": "L0233 Lillidale Grooming",
+    "variation": "Lazy Wash 200ml Cat",
+    "brand": "Lillidale",
+    "storhub_qty": 0,
+    "home_qty": 17
+  },
+  {
+    "barcode": "5060518441622",
+    "item_series": "L0241 Lillidale Grooming",
+    "variation": "Paw & Nose Balm 30g",
+    "brand": "Lillidale",
+    "storhub_qty": 21,
+    "home_qty": 4
+  },
+  {
+    "barcode": "5060518440397",
+    "item_series": "L0251 Lillidale Grooming",
+    "variation": "Sunblock Powder 35g",
+    "brand": "Lillidale",
+    "storhub_qty": 0,
+    "home_qty": 2
+  },
+  {
+    "barcode": "5060518440335",
+    "item_series": "L0261 Lillidale Grooming",
+    "variation": "Skin Ointment 125g",
+    "brand": "Lillidale",
+    "storhub_qty": 9,
+    "home_qty": 5
+  },
+  {
+    "barcode": "5060518440342",
+    "item_series": "L0271 Lillidale Grooming",
+    "variation": "Wound Cream 100g",
+    "brand": "Lillidale",
+    "storhub_qty": 4,
+    "home_qty": 5
+  },
+  {
+    "barcode": "5060518441479",
+    "item_series": "L0301 Lillidale HOCl",
+    "variation": "Sanitising Spray 65ml",
+    "brand": "Lillidale",
+    "storhub_qty": 0,
+    "home_qty": 0
+  },
+  {
+    "barcode": "5060518441950",
+    "item_series": "L0302 Lillidale HOCl",
+    "variation": "Sanitising Spray 500ml",
+    "brand": "Lillidale",
+    "storhub_qty": 58,
+    "home_qty": 2
+  },
+  {
+    "barcode": null,
+    "item_series": "L0311 Lillidale HOCl",
+    "variation": "Ear Cleaner 65ml",
+    "brand": "Lillidale",
+    "storhub_qty": 0,
+    "home_qty": -2
+  },
+  {
+    "barcode": "5060518441493",
+    "item_series": "L0312 Lillidale HOCl",
+    "variation": "Ear Cleaner 250ml",
+    "brand": "Lillidale",
+    "storhub_qty": 29,
+    "home_qty": 3
+  },
+  {
+    "barcode": "5060518442339",
+    "item_series": "L0313 Lillidale HOCl",
+    "variation": "Ear Cleaner 2.5L (Groomer)",
+    "brand": "Lillidale",
+    "storhub_qty": 6,
+    "home_qty": 6
+  },
+  {
+    "barcode": "5060518441486",
+    "item_series": "L0321 Lillidale HOCl",
+    "variation": "Eye Cleanser 65ml",
+    "brand": "Lillidale",
+    "storhub_qty": 50,
+    "home_qty": 15
+  },
+  {
+    "barcode": "5060518441462",
+    "item_series": "L0331 Lillidale HOCl",
+    "variation": "Wound Care 65ml",
+    "brand": "Lillidale",
+    "storhub_qty": 0,
+    "home_qty": 4
+  },
+  {
+    "barcode": "5060518441943",
+    "item_series": "L0341 Lillidale HOCl",
+    "variation": "Dental Care 250ml",
+    "brand": "Lillidale",
+    "storhub_qty": 44,
+    "home_qty": 5
+  }
+]

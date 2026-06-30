@@ -262,6 +262,25 @@ function createSchema() {
       receipt_ref TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`,
+    `CREATE TABLE IF NOT EXISTS inventory_movements (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      date DATE NOT NULL,
+      product_id INTEGER NOT NULL REFERENCES products(id),
+      location TEXT NOT NULL,
+      type TEXT NOT NULL,
+      qty_change INTEGER NOT NULL,
+      reference TEXT,
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS inventory_levels (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      product_id INTEGER NOT NULL REFERENCES products(id),
+      location TEXT NOT NULL,
+      qty INTEGER NOT NULL DEFAULT 0,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(product_id, location)
+    )`,
     `CREATE TABLE IF NOT EXISTS inventory_adjustments (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       date DATE NOT NULL,
@@ -276,6 +295,9 @@ function createSchema() {
   ];
 
   tables.forEach(sql => db.run(sql));
+
+  // Phase 4: Inventory write-off location tracking
+  try { db.run("ALTER TABLE inventory_adjustments ADD COLUMN location TEXT DEFAULT 'Home'"); } catch(e) {}
 
   // Phase 3: Invoice / Delivery Order / SOA support columns
   [

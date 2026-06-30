@@ -40,6 +40,19 @@ export const invoicesApi = {
   monitoring:      ()     => api.get('/invoices/monitoring'),
   delete:          (id)   => api.delete(`/invoices/${id}`),
 };
+export const inventoryApi = {
+  levels:        (q)    => api.get(`/inventory/levels${qs(q)}`),
+  movements:     (product_id) => api.get(`/inventory/movements/${product_id}`),
+  restock:       (data) => api.post('/inventory/restock', data),
+  transfer:      (data) => api.post('/inventory/transfer', data),
+  writeoff:      (data) => api.post('/inventory/writeoff', data),
+  adjustment:    (data) => api.post('/inventory/adjustment', data),
+  importOpening: ()     => api.post('/inventory/import-opening', {}),
+};
+export const forecastApi = {
+  restockRecommendations: (q) => api.get(`/forecast/restock-recommendations${qs(q)}`),
+};
+
 export const consignmentApi = {
   partners:       ()           => api.get('/consignment/partners'),
   onHand:         (partner_id) => api.get(`/consignment/on-hand/${partner_id}`),
@@ -57,7 +70,6 @@ export const consignmentApi = {
 }; 
 export const salesApi = { getAll: (q) => api.get(`/sales${qs(q)}`), summary: (q) => api.get(`/sales/summary${qs(q)}`), create: (s) => api.post('/sales',s), update: (id,s) => api.put(`/sales/${id}`,s), delete: (id) => api.delete(`/sales/${id}`), void: (id) => api.patch(`/sales/${id}/void`, {}) };
 export const costsApi     = { getAll: (q) => api.get(`/costs${qs(q)}`), summary: (q) => api.get(`/costs/summary${qs(q)}`), create: (c) => api.post('/costs',c), update: (id,c) => api.put(`/costs/${id}`,c), delete: (id) => api.delete(`/costs/${id}`) };
-export const inventoryApi = { getAll: (q) => api.get(`/inventory${qs(q)}`), set: (d) => api.post('/inventory/set',d), adjust: (d) => api.post('/inventory/adjust',d) };
 export const reportsApi   = { pnl: (q) => api.get(`/reports/pnl${qs(q)}`), trend: (q) => api.get(`/reports/trend${qs(q)}`), partners: (q) => api.get(`/reports/partners${qs(q)}`), allChannels: (q) => api.get(`/reports/all-channels${qs(q)}`) };
 export const partnerReportApi = { top: (q) => api.get(`/reports/partners${qs(q)}`) };
 export const adjApi       = { getAll: (q) => api.get(`/adjustments${qs(q)}`), create: (d) => api.post('/adjustments',d) };

@@ -170,10 +170,16 @@ module.exports = function(db) {
       'INSERT INTO consignment_placements (partner_id,product_id,date,qty,unit_cost,consignment_price,notes) VALUES (?,?,?,?,?,?,?)',
       [partner_id, product_id, date, parseInt(qty), parseFloat(cost||0), parseFloat(price||0), notes||null]
     );
+    // Inventory: stock physically left Home warehouse for the partner
+    if (recordMovement) recordMovement({ date, product_id, location: 'Home', type: 'Consignment Placement', qty_change: -parseInt(qty), reference: `placement_${result.lastID}` });
     res.status(201).json({ id: result.lastID, ok: true });
   });
 
   router.delete('/placements/:id', (req, res) => {
+    const placement = db.queryOne('SELECT * FROM consignment_placements WHERE id = ?', [req.params.id]);
+    if (placement && recordMovement) {
+      recordMovement({ date: new Date().toISOString().slice(0,10), product_id: placement.product_id, location: 'Home', type: 'Placement Reversal', qty_change: placement.qty, reference: `placement_${placement.id}_void` });
+    }
     db.run('DELETE FROM consignment_placements WHERE id = ?', [req.params.id]);
     res.json({ ok: true });
   });
@@ -186,10 +192,16 @@ module.exports = function(db) {
       'INSERT INTO consignment_returns (partner_id,product_id,date,qty,notes) VALUES (?,?,?,?,?)',
       [partner_id, product_id, date, parseInt(qty), notes||null]
     );
+    // Inventory: stock physically came back to Home warehouse
+    if (recordMovement) recordMovement({ date, product_id, location: 'Home', type: 'Consignment Return', qty_change: parseInt(qty), reference: `return_${result.lastID}` });
     res.status(201).json({ id: result.lastID, ok: true });
   });
 
   router.delete('/returns/:id', (req, res) => {
+    const ret = db.queryOne('SELECT * FROM consignment_returns WHERE id = ?', [req.params.id]);
+    if (ret && recordMovement) {
+      recordMovement({ date: new Date().toISOString().slice(0,10), product_id: ret.product_id, location: 'Home', type: 'Return Reversal', qty_change: -ret.qty, reference: `return_${ret.id}_void` });
+    }
     db.run('DELETE FROM consignment_returns WHERE id = ?', [req.params.id]);
     res.json({ ok: true });
   });
@@ -292,6 +304,14 @@ module.exports = function(db) {
     }
     res.status(201).json({ ok:true, items_snapshotted: items.length, date, period_label });
   });
+
+  // Inventory hook — injected after both routers exist (avoids circular require)
+  let recordMovement = null;
+  router._setInventoryHook = (fn) => { recordMovement = fn; };
+
+  // Expose for cross-route reuse (Phase 4 inventory aggregation)
+  router._getOnHand = getOnHand;
+  router._getConsignmentPartnerIds = () => db.query("SELECT id FROM partners WHERE model='Consignment' AND is_active=1").map(p => p.id);
 
   return router;
 };

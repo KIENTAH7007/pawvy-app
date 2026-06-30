@@ -14,12 +14,17 @@ async function startServer() {
   const db  = await init();
   const adj = require('./routes/adjustments');
 
-  app.use('/api/consignment', require('./routes/consignment')(db));
+  const consignmentRouter = require('./routes/consignment')(db);
+  const inventoryRouter   = require('./routes/inventory')(db, consignmentRouter);
+  consignmentRouter._setInventoryHook(inventoryRouter._recordMovement); // resolve circular dependency
+
+  app.use('/api/consignment', consignmentRouter);
   app.use('/api/brands',      require('./routes/brands')(db));
   app.use('/api/products',    require('./routes/products')(db));
   app.use('/api/partners',    require('./routes/partners')(db));
-  app.use('/api/sales',       require('./routes/sales')(db));
-  app.use('/api/inventory',   require('./routes/inventory')(db));
+  app.use('/api/sales',       require('./routes/sales')(db, inventoryRouter));
+  app.use('/api/inventory',   inventoryRouter);
+  app.use('/api/forecast',    require('./routes/forecast')(db));
   app.use('/api/costs',       require('./routes/costs')(db));
   app.use('/api/reports',     require('./routes/reports')(db));
   app.use('/api/adjustments', adj(db));

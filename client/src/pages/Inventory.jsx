@@ -1,28 +1,533 @@
-import React, { useState, useEffect } from 'react';
-import { inventoryApi, brandsApi } from '../api';
-import { Page, Table, Badge, Select, fmt } from '../components/ui';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Plus, ArrowLeftRight, Trash2, AlertTriangle, CheckCircle, Upload, Clock, X } from 'lucide-react';
+import { inventoryApi, forecastApi, brandsApi, productsApi } from '../api';
+import { Page, Card, Select, Input, Btn, Badge, Modal } from '../components/ui';
+
+const today = () => new Date().toISOString().slice(0,10);
+const sgd = v => `SGD ${parseFloat(v||0).toFixed(2)}`;
+
+function useIsMobile() {
+  const [m, setM] = useState(window.innerWidth < 768);
+  useEffect(() => { const h = () => setM(window.innerWidth < 768); window.addEventListener('resize',h); return ()=>window.removeEventListener('resize',h); }, []);
+  return m;
+}
+
+// ── Product picker shared by all action modals ──────────────────────
+function ProductPicker({ value, onChange }) {
+  const [products, setProducts] = useState([]);
+  useEffect(() => { productsApi.getAll({ active:'true' }).then(setProducts); }, []);
+  return (
+    <Select label="Product / SKU" value={value} onChange={e=>onChange(e.target.value, products.find(p=>String(p.id)===e.target.value))}>
+      <option value="">— Select product —</option>
+      {products.map(p=>(
+        <option key={p.id} value={p.id}>{p.brand_name} · {p.item_series}{p.variation?' · '+p.variation:''}</option>
+      ))}
+    </Select>
+  );
+}
+
+// ── Restock Modal ────────────────────────────────────────────────────
+function RestockModal({ open, onClose, onSaved }) {
+  const [productId, setProductId] = useState('');
+  const [product, setProduct]     = useState(null);
+  const [qty, setQty]             = useState('');
+  const [unitCost, setUnitCost]   = useState('');
+  const [date, setDate]           = useState(today());
+  const [notes, setNotes]         = useState('');
+  const [saving, setSaving]       = useState(false);
+  const [error, setError]         = useState('');
+
+  useEffect(() => { if (open) { setProductId(''); setProduct(null); setQty(''); setUnitCost(''); setDate(today()); setNotes(''); setError(''); } }, [open]);
+
+  async function save() {
+    if (!productId || !qty || parseInt(qty)<=0) { setError('Select a product and enter qty > 0.'); return; }
+    setSaving(true); setError('');
+    try {
+      await inventoryApi.restock({ product_id: productId, qty: parseInt(qty), unit_cost: unitCost||undefined, date, notes: notes||null });
+      onSaved();
+    } catch(e) { setError(e.message); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <Modal open={open} title="RESTOCK IN" onClose={onClose} width={480}>
+      <div style={{display:'flex',flexDirection:'column',gap:14}}>
+        <div style={{fontSize:11,color:'var(--cream-30)',background:'rgba(245,242,235,.04)',borderRadius:6,padding:'8px 12px'}}>
+          New stock always lands at <strong style={{color:'var(--orange)'}}>Storhub</strong>. Transfer to Home when ready to fulfil orders.
+        </div>
+        <ProductPicker value={productId} onChange={(id,p)=>{setProductId(id);setProduct(p);if(p)setUnitCost(p.unit_cost||'');}}/>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+          <Input label="Qty Received" type="number" min="1" value={qty} onChange={e=>setQty(e.target.value)} placeholder="0"/>
+          <Input label="Unit Cost (SGD)" type="text" inputMode="decimal" value={unitCost} onChange={e=>setUnitCost(e.target.value)} placeholder="0.00"/>
+        </div>
+        <Input label="Date" type="date" value={date} onChange={e=>setDate(e.target.value)} style={{width:180}}/>
+        <Input label="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="e.g. PO #1234, supplier invoice ref"/>
+        {error && <div style={{color:'#f87171',fontSize:12}}>{error}</div>}
+        <div style={{display:'flex',gap:10}}>
+          <Btn onClick={save} disabled={saving} size="lg" style={{flex:1,justifyContent:'center'}}>
+            {saving?'Saving…':<><Plus size={14}/> Confirm Restock</>}
+          </Btn>
+          <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ── Transfer Modal ────────────────────────────────────────────────────
+function TransferModal({ open, onClose, onSaved }) {
+  const [productId, setProductId] = useState('');
+  const [direction, setDirection] = useState('storhub_to_home');
+  const [qty, setQty]             = useState('');
+  const [date, setDate]           = useState(today());
+  const [notes, setNotes]         = useState('');
+  const [saving, setSaving]       = useState(false);
+  const [error, setError]         = useState('');
+
+  useEffect(() => { if (open) { setProductId(''); setDirection('storhub_to_home'); setQty(''); setDate(today()); setNotes(''); setError(''); } }, [open]);
+
+  async function save() {
+    if (!productId || !qty || parseInt(qty)<=0) { setError('Select a product and enter qty > 0.'); return; }
+    setSaving(true); setError('');
+    try {
+      await inventoryApi.transfer({ product_id: productId, qty: parseInt(qty), direction, date, notes: notes||null });
+      onSaved();
+    } catch(e) { setError(e.message); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <Modal open={open} title="TRANSFER STOCK" onClose={onClose} width={480}>
+      <div style={{display:'flex',flexDirection:'column',gap:14}}>
+        <ProductPicker value={productId} onChange={(id)=>setProductId(id)}/>
+        <div>
+          <div style={{fontSize:11,fontWeight:600,color:'var(--cream-60)',letterSpacing:.5,textTransform:'uppercase',marginBottom:6}}>Direction</div>
+          <div style={{display:'flex',gap:8}}>
+            {[['storhub_to_home','Storhub → Home'],['home_to_storhub','Home → Storhub']].map(([val,label])=>(
+              <button key={val} onClick={()=>setDirection(val)}
+                style={{flex:1,padding:'10px 12px',borderRadius:8,cursor:'pointer',fontSize:12,fontWeight:700,
+                  border:`1px solid ${direction===val?'var(--orange)':'var(--border)'}`,
+                  background:direction===val?'rgba(243,111,74,.08)':'transparent',
+                  color:direction===val?'var(--orange)':'var(--cream-60)'}}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+          <Input label="Qty" type="number" min="1" value={qty} onChange={e=>setQty(e.target.value)} placeholder="0"/>
+          <Input label="Date" type="date" value={date} onChange={e=>setDate(e.target.value)}/>
+        </div>
+        <Input label="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="e.g. Restocking for partner orders"/>
+        {error && <div style={{color:'#f87171',fontSize:12}}>{error}</div>}
+        <div style={{display:'flex',gap:10}}>
+          <Btn onClick={save} disabled={saving} size="lg" style={{flex:1,justifyContent:'center'}}>
+            {saving?'Saving…':<><ArrowLeftRight size={14}/> Confirm Transfer</>}
+          </Btn>
+          <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ── Write-off Modal ────────────────────────────────────────────────────
+function WriteoffModal({ open, onClose, onSaved }) {
+  const [productId, setProductId] = useState('');
+  const [location, setLocation]   = useState('Home');
+  const [qty, setQty]             = useState('');
+  const [reason, setReason]       = useState('Damaged');
+  const [date, setDate]           = useState(today());
+  const [notes, setNotes]         = useState('');
+  const [saving, setSaving]       = useState(false);
+  const [error, setError]         = useState('');
+
+  useEffect(() => { if (open) { setProductId(''); setLocation('Home'); setQty(''); setReason('Damaged'); setDate(today()); setNotes(''); setError(''); } }, [open]);
+
+  async function save() {
+    if (!productId || !qty || parseInt(qty)<=0) { setError('Select a product and enter qty > 0.'); return; }
+    setSaving(true); setError('');
+    try {
+      await inventoryApi.writeoff({ product_id: productId, location, qty: parseInt(qty), reason, date, notes: notes||null });
+      onSaved();
+    } catch(e) { setError(e.message); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <Modal open={open} title="RECORD WRITE-OFF" onClose={onClose} width={480}>
+      <div style={{display:'flex',flexDirection:'column',gap:14}}>
+        <div style={{fontSize:11,color:'#fbbf24',background:'rgba(251,191,36,.08)',border:'1px solid rgba(251,191,36,.3)',borderRadius:6,padding:'8px 12px'}}>
+          This permanently removes stock and records the cost as a loss in your P&L.
+        </div>
+        <ProductPicker value={productId} onChange={(id)=>setProductId(id)}/>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+          <Select label="Location" value={location} onChange={e=>setLocation(e.target.value)}>
+            <option value="Home">Home</option>
+            <option value="Storhub">Storhub</option>
+          </Select>
+          <Input label="Qty" type="number" min="1" value={qty} onChange={e=>setQty(e.target.value)} placeholder="0"/>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+          <Select label="Reason" value={reason} onChange={e=>setReason(e.target.value)}>
+            {['Damaged','Expired','Lost','Other'].map(r=><option key={r} value={r}>{r}</option>)}
+          </Select>
+          <Input label="Date" type="date" value={date} onChange={e=>setDate(e.target.value)}/>
+        </div>
+        <Input label="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="e.g. Water damage from storage"/>
+        {error && <div style={{color:'#f87171',fontSize:12}}>{error}</div>}
+        <div style={{display:'flex',gap:10}}>
+          <Btn onClick={save} disabled={saving} size="lg"
+            style={{flex:1,justifyContent:'center',background:'rgba(248,113,113,.15)',color:'#f87171',border:'1px solid rgba(248,113,113,.4)'}}>
+            {saving?'Saving…':<><Trash2 size={14}/> Confirm Write-off</>}
+          </Btn>
+          <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ── Adjustment Modal ────────────────────────────────────────────────────
+function AdjustmentModal({ open, onClose, onSaved }) {
+  const [productId, setProductId] = useState('');
+  const [location, setLocation]   = useState('Home');
+  const [currentQty, setCurrentQty] = useState(null);
+  const [actualQty, setActualQty] = useState('');
+  const [notes, setNotes]         = useState('');
+  const [saving, setSaving]       = useState(false);
+  const [error, setError]         = useState('');
+  const [levels, setLevels]       = useState([]);
+
+  useEffect(() => { if (open) { setProductId(''); setLocation('Home'); setCurrentQty(null); setActualQty(''); setNotes(''); setError(''); inventoryApi.levels().then(setLevels); } }, [open]);
+
+  useEffect(() => {
+    if (!productId) { setCurrentQty(null); return; }
+    const row = levels.find(l => String(l.product_id) === String(productId));
+    setCurrentQty(row ? (location==='Home'?row.home_qty:row.storhub_qty) : 0);
+  }, [productId, location, levels]);
+
+  async function save() {
+    if (!productId || actualQty === '') { setError('Select a product and enter the actual count.'); return; }
+    setSaving(true); setError('');
+    try {
+      await inventoryApi.adjustment({ product_id: productId, location, actual_qty: parseInt(actualQty), notes: notes||null });
+      onSaved();
+    } catch(e) { setError(e.message); }
+    finally { setSaving(false); }
+  }
+
+  const delta = currentQty !== null && actualQty !== '' ? parseInt(actualQty) - currentQty : null;
+
+  return (
+    <Modal open={open} title="STOCK ADJUSTMENT" onClose={onClose} width={480}>
+      <div style={{display:'flex',flexDirection:'column',gap:14}}>
+        <div style={{fontSize:11,color:'var(--cream-30)',background:'rgba(245,242,235,.04)',borderRadius:6,padding:'8px 12px'}}>
+          Use this to correct discrepancies after a physical count — enter the actual quantity you counted, the system logs the difference.
+        </div>
+        <ProductPicker value={productId} onChange={(id)=>setProductId(id)}/>
+        <Select label="Location" value={location} onChange={e=>setLocation(e.target.value)}>
+          <option value="Home">Home</option>
+          <option value="Storhub">Storhub</option>
+        </Select>
+        {currentQty !== null && (
+          <div style={{fontSize:12,color:'var(--cream-60)'}}>System shows: <strong style={{color:'var(--cream)'}}>{currentQty}</strong> units</div>
+        )}
+        <Input label="Actual Counted Qty" type="number" min="0" value={actualQty} onChange={e=>setActualQty(e.target.value)} placeholder="0"/>
+        {delta !== null && delta !== 0 && (
+          <div style={{fontSize:12,color:delta>0?'#7fc93e':'#f87171'}}>
+            {delta>0?`+${delta} will be added`:`${delta} will be removed`}
+          </div>
+        )}
+        <Input label="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="e.g. Physical count June 2026"/>
+        {error && <div style={{color:'#f87171',fontSize:12}}>{error}</div>}
+        <div style={{display:'flex',gap:10}}>
+          <Btn onClick={save} disabled={saving} size="lg" style={{flex:1,justifyContent:'center'}}>
+            {saving?'Saving…':<><CheckCircle size={14}/> Confirm Adjustment</>}
+          </Btn>
+          <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ── Opening Stock Import Modal ────────────────────────────────────────
+function ImportModal({ open, onClose, onSaved }) {
+  const [running, setRunning] = useState(false);
+  const [result, setResult]   = useState(null);
+
+  useEffect(() => { if (open) { setResult(null); } }, [open]);
+
+  async function run() {
+    setRunning(true);
+    try { setResult(await inventoryApi.importOpening()); }
+    finally { setRunning(false); }
+  }
+
+  return (
+    <Modal open={open} title="IMPORT OPENING STOCK" onClose={onClose} width={560}>
+      <div style={{display:'flex',flexDirection:'column',gap:14}}>
+        {!result ? (
+          <>
+            <div style={{fontSize:12,color:'var(--cream-60)',lineHeight:1.7}}>
+              Imports your 2026 baseline stock count (219 SKUs from your tracking file) by matching barcodes to your Products & Pricing catalogue. Safe to run — already-imported products are automatically skipped, so this can't double-count.
+            </div>
+            <Btn onClick={run} disabled={running} size="lg" style={{justifyContent:'center'}}>
+              {running?'Importing…':<><Upload size={14}/> Run Import</>}
+            </Btn>
+          </>
+        ) : (
+          <>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10}}>
+              <div style={{background:'rgba(127,201,62,.1)',borderRadius:8,padding:'12px',textAlign:'center'}}>
+                <div style={{fontSize:22,fontWeight:700,color:'#7fc93e'}}>{result.matched_count}</div>
+                <div style={{fontSize:10,color:'var(--cream-30)'}}>Matched</div>
+              </div>
+              <div style={{background:'rgba(251,191,36,.1)',borderRadius:8,padding:'12px',textAlign:'center'}}>
+                <div style={{fontSize:22,fontWeight:700,color:'#fbbf24'}}>{result.unmatched_count}</div>
+                <div style={{fontSize:10,color:'var(--cream-30)'}}>Unmatched</div>
+              </div>
+              <div style={{background:'rgba(245,242,235,.06)',borderRadius:8,padding:'12px',textAlign:'center'}}>
+                <div style={{fontSize:22,fontWeight:700,color:'var(--cream-30)'}}>{result.skipped_count}</div>
+                <div style={{fontSize:10,color:'var(--cream-30)'}}>Already Done</div>
+              </div>
+            </div>
+            {result.unmatched_count > 0 && (
+              <div>
+                <div style={{fontSize:11,fontWeight:700,color:'#fbbf24',marginBottom:8}}>Unmatched SKUs (need manual entry via Stock Adjustment):</div>
+                <div style={{maxHeight:160,overflowY:'auto',border:'1px solid var(--border)',borderRadius:8}}>
+                  {result.unmatched.map((u,i)=>(
+                    <div key={i} style={{padding:'6px 12px',fontSize:11,color:'var(--cream-60)',borderBottom:'1px solid rgba(245,242,235,.04)'}}>
+                      {u.brand} · {u.item_series}{u.variation?' · '+u.variation:''} {u.barcode?`(${u.barcode})`:'(no barcode)'}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            <Btn onClick={()=>{onSaved();onClose();}} size="lg" style={{justifyContent:'center'}}>Done</Btn>
+          </>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+// ── Movement History Drawer ────────────────────────────────────────────
+function MovementHistoryModal({ open, onClose, product }) {
+  const [movements, setMovements] = useState([]);
+  const [loading, setLoading]     = useState(false);
+
+  useEffect(() => {
+    if (open && product) {
+      setLoading(true);
+      inventoryApi.movements(product.product_id).then(d=>{setMovements(d);setLoading(false);});
+    }
+  }, [open, product]);
+
+  const typeColor = {
+    'Opening Stock':'var(--cream-30)', 'Restock In':'#7fc93e', 'Transfer In':'#378ADD', 'Transfer Out':'#378ADD',
+    'Sale':'#f87171', 'Sale Reversal':'#7fc93e', 'Consignment Placement':'#fbbf24', 'Placement Reversal':'#7fc93e',
+    'Consignment Return':'#7fc93e', 'Return Reversal':'#f87171', 'Write-off':'#f87171', 'Adjustment':'#7F77DD',
+  };
+
+  return (
+    <Modal open={open} title={`MOVEMENT HISTORY — ${product?.item_series||''}`} onClose={onClose} width={640}>
+      {loading ? <div style={{padding:30,textAlign:'center',color:'var(--cream-30)',fontSize:12}}>Loading…</div>
+      : movements.length === 0 ? <div style={{padding:30,textAlign:'center',color:'var(--cream-30)',fontSize:12}}>No movements recorded yet.</div>
+      : (
+        <div style={{maxHeight:420,overflowY:'auto'}}>
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+            <thead><tr style={{position:'sticky',top:0,background:'var(--navy)'}}>
+              {['Date','Type','Location','Qty','Notes'].map(h=>(
+                <th key={h} style={{padding:'8px 10px',textAlign:h==='Qty'?'right':'left',fontSize:9.5,fontWeight:700,letterSpacing:.7,textTransform:'uppercase',color:'var(--cream-30)',borderBottom:'1px solid var(--border)'}}>{h}</th>
+              ))}
+            </tr></thead>
+            <tbody>
+              {movements.map((m,i)=>(
+                <tr key={i} style={{borderBottom:'1px solid rgba(245,242,235,.04)'}}>
+                  <td style={{padding:'7px 10px',color:'var(--cream-60)',whiteSpace:'nowrap'}}>{m.date}</td>
+                  <td style={{padding:'7px 10px',color:typeColor[m.type]||'var(--cream)'}}>{m.type}</td>
+                  <td style={{padding:'7px 10px',color:'var(--cream-60)'}}>{m.location}</td>
+                  <td style={{padding:'7px 10px',textAlign:'right',fontWeight:700,color:m.qty_change>=0?'#7fc93e':'#f87171'}}>{m.qty_change>0?'+':''}{m.qty_change}</td>
+                  <td style={{padding:'7px 10px',color:'var(--cream-30)',fontSize:11}}>{m.notes||'—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+// ── Main Inventory Page ────────────────────────────────────────────────
 export default function Inventory() {
-  const [rows,setRows]=useState([]);const [brands,setBrands]=useState([]);const [fb,setFb]=useState('');
-  const load=()=>inventoryApi.getAll(fb?{brand_id:fb}:{}).then(setRows);
-  useEffect(()=>{brandsApi.getAll().then(setBrands);},[]);
-  useEffect(()=>{load();},[fb]);
-  const cols=[
-    {key:'brand_name',label:'Brand',render:(v,r)=><Badge color={r.brand_color}>{v}</Badge>},
-    {key:'item_series',label:'Product'},{key:'variation',label:'Variation',render:v=>v||'—'},
-    {key:'location',label:'Location'},{key:'partner_name',label:'Partner',render:v=>v||'—'},
-    {key:'qty',label:'Qty',align:'right',render:v=><span style={{fontWeight:700,color:v<=0?'#f87171':v<=5?'#fbbf24':'#7fc93e'}}>{v}</span>},
-    {key:'updated_at',label:'Updated',render:v=>fmt.date(v)},
-  ];
-  return(
-    <Page title="INVENTORY" subtitle="Stock levels by product and location">
-      <div style={{display:'flex',gap:10}}>
-        <Select label="Brand" value={fb} onChange={e=>setFb(e.target.value)} style={{width:180}}>
-          <option value="">All brands</option>{brands.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
+  const isMobile = useIsMobile();
+  const [tab, setTab]           = useState('levels'); // levels | restock
+  const [levels, setLevels]     = useState([]);
+  const [recs, setRecs]         = useState(null);
+  const [brands, setBrands]     = useState([]);
+  const [filterBrand, setFB]    = useState('');
+  const [loading, setLoading]   = useState(false);
+  const [modal, setModal]       = useState(null);
+  const [historyProduct, setHistoryProduct] = useState(null);
+
+  const loadLevels = useCallback(() => {
+    setLoading(true);
+    inventoryApi.levels(filterBrand?{brand_id:filterBrand}:{}).then(d=>{setLevels(d);setLoading(false);});
+  }, [filterBrand]);
+
+  const loadRecs = useCallback(() => {
+    setLoading(true);
+    forecastApi.restockRecommendations(filterBrand?{brand_id:filterBrand}:{}).then(d=>{setRecs(d);setLoading(false);});
+  }, [filterBrand]);
+
+  useEffect(() => { brandsApi.getAll().then(setBrands); }, []);
+  useEffect(() => { tab==='levels' ? loadLevels() : loadRecs(); }, [tab, loadLevels, loadRecs]);
+
+  const reload = () => { setModal(null); tab==='levels'?loadLevels():loadRecs(); };
+
+  const totalWarehouse   = levels.reduce((s,l)=>s+l.warehouse_total,0);
+  const totalConsignment = levels.reduce((s,l)=>s+l.consignment_qty,0);
+  const lowStockCount    = recs?.items.filter(i=>i.needs_reorder).length || 0;
+
+  return (
+    <Page title="INVENTORY" subtitle="Stock levels, movements, and restock planning"
+      action={
+        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+          <Btn onClick={()=>setModal('restock')}><Plus size={14}/> Restock In</Btn>
+          <Btn variant="secondary" onClick={()=>setModal('transfer')}><ArrowLeftRight size={14}/> Transfer</Btn>
+          <Btn variant="ghost" onClick={()=>setModal('writeoff')} style={{color:'#f87171',borderColor:'rgba(248,113,113,.3)'}}><Trash2 size={14}/> Write-off</Btn>
+          <Btn variant="ghost" onClick={()=>setModal('adjustment')}><CheckCircle size={14}/> Adjust</Btn>
+        </div>
+      }>
+
+      {/* Import banner — only meaningful before baseline is set, but harmless to always show as an option */}
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',background:'rgba(243,111,74,.06)',border:'1px solid rgba(243,111,74,.2)',borderRadius:8,padding:'10px 16px',flexWrap:'wrap',gap:8}}>
+        <span style={{fontSize:12,color:'var(--cream-60)'}}>Haven't set your opening stock baseline yet? Import your 2026 tracking file data in one click.</span>
+        <Btn size="sm" variant="ghost" onClick={()=>setModal('import')}><Upload size={12}/> Import Opening Stock</Btn>
+      </div>
+
+      {/* KPIs */}
+      <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr 1fr':'repeat(4,1fr)',gap:10}}>
+        {[
+          { label:'Warehouse Units', value:totalWarehouse, color:'var(--cream)' },
+          { label:'Consignment Units', value:totalConsignment, color:'#378ADD' },
+          { label:'SKUs Tracked', value:levels.length, color:'var(--cream-60)' },
+          { label:'Need Reorder', value:lowStockCount, color: lowStockCount>0?'#f87171':'#7fc93e' },
+        ].map(k=>(
+          <div key={k.label} style={{background:'var(--navy)',border:'1px solid var(--border)',borderRadius:8,padding:'14px 16px'}}>
+            <div style={{fontSize:10,fontWeight:700,letterSpacing:.7,textTransform:'uppercase',color:'var(--cream-30)',marginBottom:6}}>{k.label}</div>
+            <div style={{fontSize:22,fontFamily:"'Bebas Neue',sans-serif",letterSpacing:1,color:k.color}}>{k.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Filters + Tabs */}
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',flexWrap:'wrap',gap:12}}>
+        <div style={{display:'flex',gap:2,borderBottom:'1px solid var(--border)'}}>
+          {[['levels','Stock Levels'],['restock','Restock Recommendations']].map(([key,label])=>(
+            <button key={key} onClick={()=>setTab(key)}
+              style={{padding:'8px 16px',fontSize:12,fontWeight:600,border:'none',cursor:'pointer',background:'none',
+                color:tab===key?'var(--orange)':'var(--cream-30)',borderBottom:`2px solid ${tab===key?'var(--orange)':'transparent'}`,marginBottom:-1}}>
+              {label}
+            </button>
+          ))}
+        </div>
+        <Select label="Brand" value={filterBrand} onChange={e=>setFB(e.target.value)} style={{width:180}}>
+          <option value="">All brands</option>
+          {brands.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
         </Select>
       </div>
-      <div style={{background:'var(--navy)',border:'1px solid var(--border)',borderRadius:'var(--radius)',overflow:'hidden'}}>
-        <Table cols={cols} rows={rows} emptyMsg="No inventory records yet — add products and set stock levels"/>
-      </div>
+
+      {loading ? <div style={{padding:40,textAlign:'center',color:'var(--cream-30)',fontSize:12}}>Loading…</div>
+
+      : tab === 'levels' ? (
+        <div style={{background:'var(--navy)',border:'1px solid var(--border)',borderRadius:'var(--radius)'}}>
+          {levels.length === 0
+            ? <div style={{padding:40,textAlign:'center',color:'var(--cream-30)',fontSize:12}}>No stock data yet. Run the opening stock import or add a Restock entry to get started.</div>
+            : <div style={{overflowX:'auto'}}>
+                <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:760}}>
+                  <thead><tr>
+                    {['Brand','Product','Storhub','Home','Warehouse','Consignment','Total Stock'].map(h=>(
+                      <th key={h} style={{padding:'9px 12px',textAlign:['Storhub','Home','Warehouse','Consignment','Total Stock'].includes(h)?'right':'left',fontSize:9.5,fontWeight:700,letterSpacing:.7,textTransform:'uppercase',color:'var(--cream-30)',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap'}}>{h}</th>
+                    ))}
+                  </tr></thead>
+                  <tbody>
+                    {levels.map(l=>(
+                      <tr key={l.product_id} style={{borderBottom:'1px solid rgba(245,242,235,.04)',cursor:'pointer'}}
+                        onClick={()=>setHistoryProduct(l)}
+                        onMouseEnter={e=>e.currentTarget.style.background='rgba(245,242,235,.03)'}
+                        onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                        <td style={{padding:'9px 12px'}}><Badge color={l.brand_color}>{l.brand_name}</Badge></td>
+                        <td style={{padding:'9px 12px',color:'var(--cream)'}}>{l.item_series}{l.variation?' · '+l.variation:''}</td>
+                        <td style={{padding:'9px 12px',textAlign:'right',color:'var(--cream-60)'}}>{l.storhub_qty}</td>
+                        <td style={{padding:'9px 12px',textAlign:'right',color:'var(--cream-60)'}}>{l.home_qty}</td>
+                        <td style={{padding:'9px 12px',textAlign:'right',fontWeight:700,color:'var(--cream)'}}>{l.warehouse_total}</td>
+                        <td style={{padding:'9px 12px',textAlign:'right',color:'#378ADD'}}>{l.consignment_qty}</td>
+                        <td style={{padding:'9px 12px',textAlign:'right'}}>
+                          <span style={{fontWeight:700,fontSize:14,color:l.total_stock>0?'var(--orange)':'#f87171'}}>{l.total_stock}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+          }
+        </div>
+
+      ) : (
+        <div style={{background:'var(--navy)',border:'1px solid var(--border)',borderRadius:'var(--radius)'}}>
+          {!recs || recs.items.length === 0
+            ? <div style={{padding:40,textAlign:'center',color:'var(--cream-30)',fontSize:12}}>No sales data yet to forecast from.</div>
+            : <>
+                <div style={{padding:'10px 16px',fontSize:11,color:'var(--cream-30)',borderBottom:'1px solid var(--border)'}}>
+                  Velocity based on trailing {recs.trailing_days} days · Reorder flagged when stock covers less than {recs.lead_time_days} days (your supplier lead time) · Recommended qty covers the next {recs.cover_days} days
+                </div>
+                <div style={{overflowX:'auto'}}>
+                  <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:820}}>
+                    <thead><tr>
+                      {['Brand','Product','Stock','Daily Velocity','Days Left','Status','Order Qty','Est. Cost'].map(h=>(
+                        <th key={h} style={{padding:'9px 12px',textAlign:['Stock','Daily Velocity','Days Left','Order Qty','Est. Cost'].includes(h)?'right':'left',fontSize:9.5,fontWeight:700,letterSpacing:.7,textTransform:'uppercase',color:'var(--cream-30)',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap'}}>{h}</th>
+                      ))}
+                    </tr></thead>
+                    <tbody>
+                      {recs.items.map(item=>(
+                        <tr key={item.product_id} style={{borderBottom:'1px solid rgba(245,242,235,.04)',background:item.needs_reorder?'rgba(248,113,113,.04)':'transparent'}}>
+                          <td style={{padding:'9px 12px'}}><Badge color={item.brand_color}>{item.brand_name}</Badge></td>
+                          <td style={{padding:'9px 12px',color:'var(--cream)'}}>{item.item_series}{item.variation?' · '+item.variation:''}</td>
+                          <td style={{padding:'9px 12px',textAlign:'right',color:'var(--cream-60)'}}>{item.warehouse_total}</td>
+                          <td style={{padding:'9px 12px',textAlign:'right',color:'var(--cream-60)'}}>{item.daily_velocity>0?item.daily_velocity.toFixed(2):'—'}/day</td>
+                          <td style={{padding:'9px 12px',textAlign:'right',fontWeight:700,color:item.days_remaining===null?'var(--cream-30)':item.days_remaining<recs.lead_time_days?'#f87171':'var(--cream)'}}>
+                            {item.days_remaining===null?'—':`${item.days_remaining}d`}
+                          </td>
+                          <td style={{padding:'9px 12px'}}>
+                            {item.needs_reorder
+                              ? <Badge color="#f87171"><AlertTriangle size={10}/> Reorder</Badge>
+                              : <Badge color="#7fc93e">OK</Badge>
+                            }
+                          </td>
+                          <td style={{padding:'9px 12px',textAlign:'right',fontWeight:700,color:item.recommended_qty>0?'var(--orange)':'var(--cream-30)'}}>
+                            {item.recommended_qty>0?item.recommended_qty:'—'}
+                          </td>
+                          <td style={{padding:'9px 12px',textAlign:'right',color:'var(--cream-60)'}}>{item.recommended_qty>0?sgd(item.estimated_cost):'—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+          }
+        </div>
+      )}
+
+      <RestockModal open={modal==='restock'} onClose={()=>setModal(null)} onSaved={reload}/>
+      <TransferModal open={modal==='transfer'} onClose={()=>setModal(null)} onSaved={reload}/>
+      <WriteoffModal open={modal==='writeoff'} onClose={()=>setModal(null)} onSaved={reload}/>
+      <AdjustmentModal open={modal==='adjustment'} onClose={()=>setModal(null)} onSaved={reload}/>
+      <ImportModal open={modal==='import'} onClose={()=>setModal(null)} onSaved={reload}/>
+      <MovementHistoryModal open={!!historyProduct} product={historyProduct} onClose={()=>setHistoryProduct(null)}/>
     </Page>
   );
 }
