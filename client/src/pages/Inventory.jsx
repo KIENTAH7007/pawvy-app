@@ -13,59 +13,103 @@ function useIsMobile() {
 }
 
 // ── Product picker shared by all action modals ──────────────────────
-function ProductPicker({ value, onChange }) {
+// ── Shared brand+product line picker (used by all multi-line modals) ──
+function useProductCatalog() {
   const [products, setProducts] = useState([]);
-  useEffect(() => { productsApi.getAll({ active:'true' }).then(setProducts); }, []);
+  const [brands, setBrands]     = useState([]);
+  useEffect(() => {
+    productsApi.getAll({ active:'true' }).then(setProducts);
+    brandsApi.getAll().then(setBrands);
+  }, []);
+  return { products, brands };
+}
+
+function BrandProductSelect({ brands, products, brandId, productId, onBrandChange, onProductChange }) {
+  const filtered = brandId ? products.filter(p => String(p.brand_id) === String(brandId)) : products;
   return (
-    <Select label="Product / SKU" value={value} onChange={e=>onChange(e.target.value, products.find(p=>String(p.id)===e.target.value))}>
-      <option value="">— Select product —</option>
-      {products.map(p=>(
-        <option key={p.id} value={p.id}>{p.brand_name} · {p.item_series}{p.variation?' · '+p.variation:''}</option>
-      ))}
-    </Select>
+    <>
+      <Select value={brandId} onChange={e=>{onBrandChange(e.target.value);onProductChange('');}}>
+        <option value="">All brands</option>
+        {brands.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
+      </Select>
+      <Select value={productId} onChange={e=>onProductChange(e.target.value)}>
+        <option value="">— Select product —</option>
+        {filtered.map(p=><option key={p.id} value={p.id}>{p.item_series}{p.variation?' · '+p.variation:''}</option>)}
+      </Select>
+    </>
   );
 }
 
-// ── Restock Modal ────────────────────────────────────────────────────
+// ── Restock Modal (multi-line) ──────────────────────────────────────
 function RestockModal({ open, onClose, onSaved }) {
-  const [productId, setProductId] = useState('');
-  const [product, setProduct]     = useState(null);
-  const [qty, setQty]             = useState('');
-  const [unitCost, setUnitCost]   = useState('');
-  const [date, setDate]           = useState(today());
-  const [notes, setNotes]         = useState('');
-  const [saving, setSaving]       = useState(false);
-  const [error, setError]         = useState('');
+  const { products, brands } = useProductCatalog();
+  const [lines, setLines]   = useState([{ brand_id:'', product_id:'', qty:'', unit_cost:'' }]);
+  const [date, setDate]     = useState(today());
+  const [notes, setNotes]   = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError]   = useState('');
 
-  useEffect(() => { if (open) { setProductId(''); setProduct(null); setQty(''); setUnitCost(''); setDate(today()); setNotes(''); setError(''); } }, [open]);
+  useEffect(() => { if (open) { setLines([{ brand_id:'', product_id:'', qty:'', unit_cost:'' }]); setDate(today()); setNotes(''); setError(''); } }, [open]);
+
+  function updateLine(idx, key, val) {
+    setLines(prev => {
+      const next = prev.map((l,i)=> i===idx ? { ...l, [key]: val } : l);
+      if (key === 'product_id') {
+        const prod = products.find(p => String(p.id)===String(val));
+        if (prod && !next[idx].unit_cost) next[idx].unit_cost = String(prod.unit_cost ?? '');
+      }
+      return next;
+    });
+  }
+  const addLine    = () => setLines(p=>[...p,{ brand_id:'', product_id:'', qty:'', unit_cost:'' }]);
+  const removeLine = (idx) => setLines(p=>p.filter((_,i)=>i!==idx));
 
   async function save() {
-    if (!productId || !qty || parseInt(qty)<=0) { setError('Select a product and enter qty > 0.'); return; }
+    const valid = lines.filter(l=>l.product_id && l.qty && parseInt(l.qty)>0);
+    if (!valid.length) { setError('Add at least one product with qty > 0.'); return; }
     setSaving(true); setError('');
     try {
-      await inventoryApi.restock({ product_id: productId, qty: parseInt(qty), unit_cost: unitCost||undefined, date, notes: notes||null });
+      for (const l of valid) {
+        await inventoryApi.restock({ product_id: l.product_id, qty: parseInt(l.qty), unit_cost: l.unit_cost||undefined, date, notes: notes||null });
+      }
       onSaved();
     } catch(e) { setError(e.message); }
     finally { setSaving(false); }
   }
 
   return (
-    <Modal open={open} title="RESTOCK IN" onClose={onClose} width={480}>
+    <Modal open={open} title="RESTOCK IN" onClose={onClose} width={700}>
       <div style={{display:'flex',flexDirection:'column',gap:14}}>
         <div style={{fontSize:11,color:'var(--cream-30)',background:'rgba(245,242,235,.04)',borderRadius:6,padding:'8px 12px'}}>
           New stock always lands at <strong style={{color:'var(--orange)'}}>Storhub</strong>. Transfer to Home when ready to fulfil orders.
         </div>
-        <ProductPicker value={productId} onChange={(id,p)=>{setProductId(id);setProduct(p);if(p)setUnitCost(p.unit_cost||'');}}/>
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-          <Input label="Qty Received" type="number" min="1" value={qty} onChange={e=>setQty(e.target.value)} placeholder="0"/>
-          <Input label="Unit Cost (SGD)" type="text" inputMode="decimal" value={unitCost} onChange={e=>setUnitCost(e.target.value)} placeholder="0.00"/>
-        </div>
         <Input label="Date" type="date" value={date} onChange={e=>setDate(e.target.value)} style={{width:180}}/>
+
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1.4fr 70px 100px 28px',gap:8,padding:'0 2px'}}>
+          {['Brand','Product / SKU','Qty','Unit Cost'].map(h=>(
+            <div key={h} style={{fontSize:9,fontWeight:700,letterSpacing:.7,textTransform:'uppercase',color:'var(--cream-30)'}}>{h}</div>
+          ))}
+        </div>
+        {lines.map((line, idx) => (
+          <div key={idx} style={{display:'grid',gridTemplateColumns:'1fr 1.4fr 70px 100px 28px',gap:8,alignItems:'flex-start'}}>
+            <BrandProductSelect brands={brands} products={products}
+              brandId={line.brand_id} productId={line.product_id}
+              onBrandChange={v=>updateLine(idx,'brand_id',v)} onProductChange={v=>updateLine(idx,'product_id',v)}/>
+            <Input type="number" min="1" value={line.qty} onChange={e=>updateLine(idx,'qty',e.target.value)} placeholder="0"/>
+            <input type="text" inputMode="decimal" value={line.unit_cost} onChange={e=>updateLine(idx,'unit_cost',e.target.value)} placeholder="0.00"
+              style={{background:'var(--navy-light)',border:'1px solid var(--border)',borderRadius:7,padding:'9px 12px',color:'var(--cream)',fontSize:13,outline:'none',width:'100%'}}/>
+            <button onClick={()=>removeLine(idx)} disabled={lines.length===1}
+              style={{background:'none',border:'none',color:'rgba(248,113,113,.6)',cursor:'pointer',padding:'8px 0',display:'flex',alignItems:'center'}}>
+              <Trash2 size={14}/>
+            </button>
+          </div>
+        ))}
+        <Btn size="sm" variant="ghost" onClick={addLine}><Plus size={12}/> Add another product</Btn>
         <Input label="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="e.g. PO #1234, supplier invoice ref"/>
         {error && <div style={{color:'#f87171',fontSize:12}}>{error}</div>}
         <div style={{display:'flex',gap:10}}>
           <Btn onClick={save} disabled={saving} size="lg" style={{flex:1,justifyContent:'center'}}>
-            {saving?'Saving…':<><Plus size={14}/> Confirm Restock</>}
+            {saving?'Saving…':<><Plus size={14}/> Confirm Restock ({lines.filter(l=>l.product_id&&l.qty).length})</>}
           </Btn>
           <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
         </div>
@@ -74,32 +118,40 @@ function RestockModal({ open, onClose, onSaved }) {
   );
 }
 
-// ── Transfer Modal ────────────────────────────────────────────────────
+// ── Transfer Modal (multi-line) ──────────────────────────────────────
 function TransferModal({ open, onClose, onSaved }) {
-  const [productId, setProductId] = useState('');
+  const { products, brands } = useProductCatalog();
   const [direction, setDirection] = useState('storhub_to_home');
-  const [qty, setQty]             = useState('');
-  const [date, setDate]           = useState(today());
-  const [notes, setNotes]         = useState('');
-  const [saving, setSaving]       = useState(false);
-  const [error, setError]         = useState('');
+  const [lines, setLines]   = useState([{ brand_id:'', product_id:'', qty:'' }]);
+  const [date, setDate]     = useState(today());
+  const [notes, setNotes]   = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError]   = useState('');
 
-  useEffect(() => { if (open) { setProductId(''); setDirection('storhub_to_home'); setQty(''); setDate(today()); setNotes(''); setError(''); } }, [open]);
+  useEffect(() => { if (open) { setLines([{ brand_id:'', product_id:'', qty:'' }]); setDirection('storhub_to_home'); setDate(today()); setNotes(''); setError(''); } }, [open]);
+
+  function updateLine(idx, key, val) {
+    setLines(prev => prev.map((l,i)=> i===idx ? { ...l, [key]: val } : l));
+  }
+  const addLine    = () => setLines(p=>[...p,{ brand_id:'', product_id:'', qty:'' }]);
+  const removeLine = (idx) => setLines(p=>p.filter((_,i)=>i!==idx));
 
   async function save() {
-    if (!productId || !qty || parseInt(qty)<=0) { setError('Select a product and enter qty > 0.'); return; }
+    const valid = lines.filter(l=>l.product_id && l.qty && parseInt(l.qty)>0);
+    if (!valid.length) { setError('Add at least one product with qty > 0.'); return; }
     setSaving(true); setError('');
     try {
-      await inventoryApi.transfer({ product_id: productId, qty: parseInt(qty), direction, date, notes: notes||null });
+      for (const l of valid) {
+        await inventoryApi.transfer({ product_id: l.product_id, qty: parseInt(l.qty), direction, date, notes: notes||null });
+      }
       onSaved();
     } catch(e) { setError(e.message); }
     finally { setSaving(false); }
   }
 
   return (
-    <Modal open={open} title="TRANSFER STOCK" onClose={onClose} width={480}>
+    <Modal open={open} title="TRANSFER STOCK" onClose={onClose} width={680}>
       <div style={{display:'flex',flexDirection:'column',gap:14}}>
-        <ProductPicker value={productId} onChange={(id)=>setProductId(id)}/>
         <div>
           <div style={{fontSize:11,fontWeight:600,color:'var(--cream-60)',letterSpacing:.5,textTransform:'uppercase',marginBottom:6}}>Direction</div>
           <div style={{display:'flex',gap:8}}>
@@ -114,15 +166,31 @@ function TransferModal({ open, onClose, onSaved }) {
             ))}
           </div>
         </div>
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-          <Input label="Qty" type="number" min="1" value={qty} onChange={e=>setQty(e.target.value)} placeholder="0"/>
-          <Input label="Date" type="date" value={date} onChange={e=>setDate(e.target.value)}/>
+        <Input label="Date" type="date" value={date} onChange={e=>setDate(e.target.value)} style={{width:180}}/>
+
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1.4fr 70px 28px',gap:8,padding:'0 2px'}}>
+          {['Brand','Product / SKU','Qty'].map(h=>(
+            <div key={h} style={{fontSize:9,fontWeight:700,letterSpacing:.7,textTransform:'uppercase',color:'var(--cream-30)'}}>{h}</div>
+          ))}
         </div>
+        {lines.map((line, idx) => (
+          <div key={idx} style={{display:'grid',gridTemplateColumns:'1fr 1.4fr 70px 28px',gap:8,alignItems:'flex-start'}}>
+            <BrandProductSelect brands={brands} products={products}
+              brandId={line.brand_id} productId={line.product_id}
+              onBrandChange={v=>updateLine(idx,'brand_id',v)} onProductChange={v=>updateLine(idx,'product_id',v)}/>
+            <Input type="number" min="1" value={line.qty} onChange={e=>updateLine(idx,'qty',e.target.value)} placeholder="0"/>
+            <button onClick={()=>removeLine(idx)} disabled={lines.length===1}
+              style={{background:'none',border:'none',color:'rgba(248,113,113,.6)',cursor:'pointer',padding:'8px 0',display:'flex',alignItems:'center'}}>
+              <Trash2 size={14}/>
+            </button>
+          </div>
+        ))}
+        <Btn size="sm" variant="ghost" onClick={addLine}><Plus size={12}/> Add another product</Btn>
         <Input label="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="e.g. Restocking for partner orders"/>
         {error && <div style={{color:'#f87171',fontSize:12}}>{error}</div>}
         <div style={{display:'flex',gap:10}}>
           <Btn onClick={save} disabled={saving} size="lg" style={{flex:1,justifyContent:'center'}}>
-            {saving?'Saving…':<><ArrowLeftRight size={14}/> Confirm Transfer</>}
+            {saving?'Saving…':<><ArrowLeftRight size={14}/> Confirm Transfer ({lines.filter(l=>l.product_id&&l.qty).length})</>}
           </Btn>
           <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
         </div>
@@ -131,55 +199,75 @@ function TransferModal({ open, onClose, onSaved }) {
   );
 }
 
-// ── Write-off Modal ────────────────────────────────────────────────────
+// ── Write-off Modal (multi-line) ──────────────────────────────────────
 function WriteoffModal({ open, onClose, onSaved }) {
-  const [productId, setProductId] = useState('');
-  const [location, setLocation]   = useState('Home');
-  const [qty, setQty]             = useState('');
-  const [reason, setReason]       = useState('Damaged');
-  const [date, setDate]           = useState(today());
-  const [notes, setNotes]         = useState('');
-  const [saving, setSaving]       = useState(false);
-  const [error, setError]         = useState('');
+  const { products, brands } = useProductCatalog();
+  const [lines, setLines]   = useState([{ brand_id:'', product_id:'', location:'Home', qty:'', reason:'Damaged' }]);
+  const [date, setDate]     = useState(today());
+  const [notes, setNotes]   = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError]   = useState('');
 
-  useEffect(() => { if (open) { setProductId(''); setLocation('Home'); setQty(''); setReason('Damaged'); setDate(today()); setNotes(''); setError(''); } }, [open]);
+  useEffect(() => { if (open) { setLines([{ brand_id:'', product_id:'', location:'Home', qty:'', reason:'Damaged' }]); setDate(today()); setNotes(''); setError(''); } }, [open]);
+
+  function updateLine(idx, key, val) {
+    setLines(prev => prev.map((l,i)=> i===idx ? { ...l, [key]: val } : l));
+  }
+  const addLine    = () => setLines(p=>[...p,{ brand_id:'', product_id:'', location:'Home', qty:'', reason:'Damaged' }]);
+  const removeLine = (idx) => setLines(p=>p.filter((_,i)=>i!==idx));
 
   async function save() {
-    if (!productId || !qty || parseInt(qty)<=0) { setError('Select a product and enter qty > 0.'); return; }
+    const valid = lines.filter(l=>l.product_id && l.qty && parseInt(l.qty)>0);
+    if (!valid.length) { setError('Add at least one product with qty > 0.'); return; }
     setSaving(true); setError('');
     try {
-      await inventoryApi.writeoff({ product_id: productId, location, qty: parseInt(qty), reason, date, notes: notes||null });
+      for (const l of valid) {
+        await inventoryApi.writeoff({ product_id: l.product_id, location: l.location, qty: parseInt(l.qty), reason: l.reason, date, notes: notes||null });
+      }
       onSaved();
     } catch(e) { setError(e.message); }
     finally { setSaving(false); }
   }
 
   return (
-    <Modal open={open} title="RECORD WRITE-OFF" onClose={onClose} width={480}>
+    <Modal open={open} title="RECORD WRITE-OFF" onClose={onClose} width={760}>
       <div style={{display:'flex',flexDirection:'column',gap:14}}>
         <div style={{fontSize:11,color:'#fbbf24',background:'rgba(251,191,36,.08)',border:'1px solid rgba(251,191,36,.3)',borderRadius:6,padding:'8px 12px'}}>
           This permanently removes stock and records the cost as a loss in your P&L.
         </div>
-        <ProductPicker value={productId} onChange={(id)=>setProductId(id)}/>
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-          <Select label="Location" value={location} onChange={e=>setLocation(e.target.value)}>
-            <option value="Home">Home</option>
-            <option value="Storhub">Storhub</option>
-          </Select>
-          <Input label="Qty" type="number" min="1" value={qty} onChange={e=>setQty(e.target.value)} placeholder="0"/>
+        <Input label="Date" type="date" value={date} onChange={e=>setDate(e.target.value)} style={{width:180}}/>
+
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1.2fr 90px 60px 110px 28px',gap:8,padding:'0 2px'}}>
+          {['Brand','Product / SKU','Location','Qty','Reason'].map(h=>(
+            <div key={h} style={{fontSize:9,fontWeight:700,letterSpacing:.7,textTransform:'uppercase',color:'var(--cream-30)'}}>{h}</div>
+          ))}
         </div>
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-          <Select label="Reason" value={reason} onChange={e=>setReason(e.target.value)}>
-            {['Damaged','Expired','Lost','Other'].map(r=><option key={r} value={r}>{r}</option>)}
-          </Select>
-          <Input label="Date" type="date" value={date} onChange={e=>setDate(e.target.value)}/>
-        </div>
+        {lines.map((line, idx) => (
+          <div key={idx} style={{display:'grid',gridTemplateColumns:'1fr 1.2fr 90px 60px 110px 28px',gap:8,alignItems:'flex-start'}}>
+            <BrandProductSelect brands={brands} products={products}
+              brandId={line.brand_id} productId={line.product_id}
+              onBrandChange={v=>updateLine(idx,'brand_id',v)} onProductChange={v=>updateLine(idx,'product_id',v)}/>
+            <Select value={line.location} onChange={e=>updateLine(idx,'location',e.target.value)}>
+              <option value="Home">Home</option>
+              <option value="Storhub">Storhub</option>
+            </Select>
+            <Input type="number" min="1" value={line.qty} onChange={e=>updateLine(idx,'qty',e.target.value)} placeholder="0"/>
+            <Select value={line.reason} onChange={e=>updateLine(idx,'reason',e.target.value)}>
+              {['Damaged','Expired','Lost','Other'].map(r=><option key={r} value={r}>{r}</option>)}
+            </Select>
+            <button onClick={()=>removeLine(idx)} disabled={lines.length===1}
+              style={{background:'none',border:'none',color:'rgba(248,113,113,.6)',cursor:'pointer',padding:'8px 0',display:'flex',alignItems:'center'}}>
+              <Trash2 size={14}/>
+            </button>
+          </div>
+        ))}
+        <Btn size="sm" variant="ghost" onClick={addLine}><Plus size={12}/> Add another product</Btn>
         <Input label="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="e.g. Water damage from storage"/>
         {error && <div style={{color:'#f87171',fontSize:12}}>{error}</div>}
         <div style={{display:'flex',gap:10}}>
           <Btn onClick={save} disabled={saving} size="lg"
             style={{flex:1,justifyContent:'center',background:'rgba(248,113,113,.15)',color:'#f87171',border:'1px solid rgba(248,113,113,.4)'}}>
-            {saving?'Saving…':<><Trash2 size={14}/> Confirm Write-off</>}
+            {saving?'Saving…':<><Trash2 size={14}/> Confirm Write-off ({lines.filter(l=>l.product_id&&l.qty).length})</>}
           </Btn>
           <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
         </div>
@@ -188,62 +276,80 @@ function WriteoffModal({ open, onClose, onSaved }) {
   );
 }
 
-// ── Adjustment Modal ────────────────────────────────────────────────────
+// ── Adjustment Modal (multi-line) ──────────────────────────────────────
 function AdjustmentModal({ open, onClose, onSaved }) {
-  const [productId, setProductId] = useState('');
-  const [location, setLocation]   = useState('Home');
-  const [currentQty, setCurrentQty] = useState(null);
-  const [actualQty, setActualQty] = useState('');
-  const [notes, setNotes]         = useState('');
-  const [saving, setSaving]       = useState(false);
-  const [error, setError]         = useState('');
-  const [levels, setLevels]       = useState([]);
+  const { products, brands } = useProductCatalog();
+  const [levels, setLevels] = useState([]);
+  const [lines, setLines]   = useState([{ brand_id:'', product_id:'', location:'Home', actual_qty:'' }]);
+  const [notes, setNotes]   = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError]   = useState('');
 
-  useEffect(() => { if (open) { setProductId(''); setLocation('Home'); setCurrentQty(null); setActualQty(''); setNotes(''); setError(''); inventoryApi.levels().then(setLevels); } }, [open]);
+  useEffect(() => { if (open) { setLines([{ brand_id:'', product_id:'', location:'Home', actual_qty:'' }]); setNotes(''); setError(''); inventoryApi.levels().then(setLevels); } }, [open]);
 
-  useEffect(() => {
-    if (!productId) { setCurrentQty(null); return; }
-    const row = levels.find(l => String(l.product_id) === String(productId));
-    setCurrentQty(row ? (location==='Home'?row.home_qty:row.storhub_qty) : 0);
-  }, [productId, location, levels]);
+  function updateLine(idx, key, val) {
+    setLines(prev => prev.map((l,i)=> i===idx ? { ...l, [key]: val } : l));
+  }
+  const addLine    = () => setLines(p=>[...p,{ brand_id:'', product_id:'', location:'Home', actual_qty:'' }]);
+  const removeLine = (idx) => setLines(p=>p.filter((_,i)=>i!==idx));
+
+  function currentQty(productId, location) {
+    const row = levels.find(l => String(l.product_id)===String(productId));
+    if (!row) return null;
+    return location==='Home' ? row.home_qty : row.storhub_qty;
+  }
 
   async function save() {
-    if (!productId || actualQty === '') { setError('Select a product and enter the actual count.'); return; }
+    const valid = lines.filter(l=>l.product_id && l.actual_qty!=='');
+    if (!valid.length) { setError('Add at least one product with an actual count.'); return; }
     setSaving(true); setError('');
     try {
-      await inventoryApi.adjustment({ product_id: productId, location, actual_qty: parseInt(actualQty), notes: notes||null });
+      for (const l of valid) {
+        await inventoryApi.adjustment({ product_id: l.product_id, location: l.location, actual_qty: parseInt(l.actual_qty), notes: notes||null });
+      }
       onSaved();
     } catch(e) { setError(e.message); }
     finally { setSaving(false); }
   }
 
-  const delta = currentQty !== null && actualQty !== '' ? parseInt(actualQty) - currentQty : null;
-
   return (
-    <Modal open={open} title="STOCK ADJUSTMENT" onClose={onClose} width={480}>
+    <Modal open={open} title="STOCK ADJUSTMENT" onClose={onClose} width={760}>
       <div style={{display:'flex',flexDirection:'column',gap:14}}>
         <div style={{fontSize:11,color:'var(--cream-30)',background:'rgba(245,242,235,.04)',borderRadius:6,padding:'8px 12px'}}>
           Use this to correct discrepancies after a physical count — enter the actual quantity you counted, the system logs the difference.
         </div>
-        <ProductPicker value={productId} onChange={(id)=>setProductId(id)}/>
-        <Select label="Location" value={location} onChange={e=>setLocation(e.target.value)}>
-          <option value="Home">Home</option>
-          <option value="Storhub">Storhub</option>
-        </Select>
-        {currentQty !== null && (
-          <div style={{fontSize:12,color:'var(--cream-60)'}}>System shows: <strong style={{color:'var(--cream)'}}>{currentQty}</strong> units</div>
-        )}
-        <Input label="Actual Counted Qty" type="number" min="0" value={actualQty} onChange={e=>setActualQty(e.target.value)} placeholder="0"/>
-        {delta !== null && delta !== 0 && (
-          <div style={{fontSize:12,color:delta>0?'#7fc93e':'#f87171'}}>
-            {delta>0?`+${delta} will be added`:`${delta} will be removed`}
-          </div>
-        )}
+
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1.2fr 90px 70px 90px 28px',gap:8,padding:'0 2px'}}>
+          {['Brand','Product / SKU','Location','System','Actual'].map(h=>(
+            <div key={h} style={{fontSize:9,fontWeight:700,letterSpacing:.7,textTransform:'uppercase',color:'var(--cream-30)'}}>{h}</div>
+          ))}
+        </div>
+        {lines.map((line, idx) => {
+          const sysQty = line.product_id ? currentQty(line.product_id, line.location) : null;
+          return (
+            <div key={idx} style={{display:'grid',gridTemplateColumns:'1fr 1.2fr 90px 70px 90px 28px',gap:8,alignItems:'flex-start'}}>
+              <BrandProductSelect brands={brands} products={products}
+                brandId={line.brand_id} productId={line.product_id}
+                onBrandChange={v=>updateLine(idx,'brand_id',v)} onProductChange={v=>updateLine(idx,'product_id',v)}/>
+              <Select value={line.location} onChange={e=>updateLine(idx,'location',e.target.value)}>
+                <option value="Home">Home</option>
+                <option value="Storhub">Storhub</option>
+              </Select>
+              <div style={{padding:'9px 0',fontSize:13,color:'var(--cream-30)',textAlign:'center'}}>{sysQty===null?'—':sysQty}</div>
+              <Input type="number" min="0" value={line.actual_qty} onChange={e=>updateLine(idx,'actual_qty',e.target.value)} placeholder="0"/>
+              <button onClick={()=>removeLine(idx)} disabled={lines.length===1}
+                style={{background:'none',border:'none',color:'rgba(248,113,113,.6)',cursor:'pointer',padding:'8px 0',display:'flex',alignItems:'center'}}>
+                <Trash2 size={14}/>
+              </button>
+            </div>
+          );
+        })}
+        <Btn size="sm" variant="ghost" onClick={addLine}><Plus size={12}/> Add another product</Btn>
         <Input label="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="e.g. Physical count June 2026"/>
         {error && <div style={{color:'#f87171',fontSize:12}}>{error}</div>}
         <div style={{display:'flex',gap:10}}>
           <Btn onClick={save} disabled={saving} size="lg" style={{flex:1,justifyContent:'center'}}>
-            {saving?'Saving…':<><CheckCircle size={14}/> Confirm Adjustment</>}
+            {saving?'Saving…':<><CheckCircle size={14}/> Confirm Adjustment ({lines.filter(l=>l.product_id&&l.actual_qty!=='').length})</>}
           </Btn>
           <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
         </div>
@@ -251,6 +357,7 @@ function AdjustmentModal({ open, onClose, onSaved }) {
     </Modal>
   );
 }
+
 
 // ── Opening Stock Import Modal ────────────────────────────────────────
 function ImportModal({ open, onClose, onSaved }) {
