@@ -91,17 +91,19 @@ export default function EventSale() {
       for (const l of valid) {
         const i = lines.indexOf(l);
         const c = calcs[i];
-        // Fix #5: save unit_price = netPrice (already discounted).
-        // platform_fee_amt = 0 because discount is already in the price.
-        // Do NOT double-store the discount as platform_fee_amt.
+        // Fix: save unit_price = full RRP (price before discount), and store the
+        // discount as platform_fee_amt — same pattern as B2B sales. This lets the
+        // Sales Ledger display "Disc" for Event Sale lines instead of hiding it.
+        // Revenue/profit formulas already subtract platform_fee_amt, so the math
+        // works out identically to the old netPrice approach.
         await salesApi.create({
           date, product_id: l.product_id, partner_id: null,
           channel: 'Event Sale', market: 'SG',
           qty:              parseInt(l.qty),
           unit_cost:        c.cost,
-          unit_price:       c.netPrice,
-          platform_fee_pct: 0,
-          platform_fee_amt: 0,
+          unit_price:       c.price,                              // full RRP, not net
+          platform_fee_pct: c.disc,                                // discount % for display
+          platform_fee_amt: parseFloat((c.qty * c.discAmt).toFixed(2)), // total discount $ for the line
           notes: c.disc > 0
             ? `Event discount ${c.disc}% off RRP SGD ${c.price.toFixed(2)}`
             : null,

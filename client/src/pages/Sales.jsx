@@ -46,33 +46,29 @@ export default function Sales() {
     load();
   }
 
-  // Build all indicators for the Discount/Fee column
-  function discountDisplay(s) {
-    const items = [];
+  // Discount / Fee column — separate from shipping for clarity
+  function discountCell(s) {
     const discAmt = parseFloat(s.platform_fee_amt || 0);
+    if (discAmt === 0) return null;
+    const isMarket = MARKETPLACE.includes(s.channel);
+    return {
+      label: isMarket ? `Fee ${parseFloat(s.platform_fee_pct||0).toFixed(0)}%` : `Disc${s.platform_fee_pct ? ` ${parseFloat(s.platform_fee_pct).toFixed(0)}%` : ''}`,
+      text: `− ${fmt.sgd(discAmt)}`,
+      color: isMarket ? 'var(--cream-30)' : '#fbbf24',
+    };
+  }
+
+  // Shipping column — separate from discount for clarity
+  function shippingCell(s) {
     const shipCharged = parseFloat(s.shipping_charged || 0);
+    if (shipCharged === 0) return null;
     const shipCost = parseFloat(s.shipping_cost || 0);
-
-    if (discAmt > 0) {
-      const isMarket = MARKETPLACE.includes(s.channel);
-      items.push({
-        label: isMarket ? `Fee ${parseFloat(s.platform_fee_pct||0).toFixed(0)}%` : 'Disc',
-        text: `− ${fmt.sgd(discAmt)}`,
-        color: isMarket ? 'var(--cream-30)' : '#fbbf24',
-      });
-    }
-
-    if (shipCharged > 0) {
-      const shipProfit = shipCharged - shipCost;
-      items.push({
-        label: 'Ship',
-        text: `+ ${fmt.sgd(shipCharged)}`,
-        sub: shipCost > 0 ? `profit ${fmt.sgd(shipProfit)}` : null,
-        color: '#7fc93e',
-      });
-    }
-
-    return items;
+    const shipProfit = shipCharged - shipCost;
+    return {
+      text: `+ ${fmt.sgd(shipCharged)}`,
+      sub: shipCost > 0 ? `net ${fmt.sgd(shipProfit)}` : null,
+      color: '#7fc93e',
+    };
   }
 
   return (
@@ -133,11 +129,11 @@ export default function Sales() {
             ? <div style={{padding:40,textAlign:'center',color:'var(--cream-30)',fontSize:12}}>No sales match filters</div>
             : (
               <div style={{overflowX:'auto'}}>
-                <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:980}}>
+                <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:1080}}>
                   <thead>
                     <tr>
-                      {['Date','Brand','Product','Channel','Partner','Mkt','Qty','List Price','Discount/Fee','Revenue','Profit',''].map(h=>(
-                        <th key={h} style={{padding:'9px 10px',textAlign:['Qty','List Price','Discount/Fee','Revenue','Profit'].includes(h)?'right':'left',fontSize:9.5,fontWeight:700,letterSpacing:.7,textTransform:'uppercase',color:'var(--cream-30)',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap'}}>{h}</th>
+                      {['Date','Brand','Product','Channel','Partner','Mkt','Qty','List Price','Discount/Fee','Shipping','Revenue','Profit',''].map(h=>(
+                        <th key={h} style={{padding:'9px 10px',textAlign:['Qty','List Price','Discount/Fee','Shipping','Revenue','Profit'].includes(h)?'right':'left',fontSize:9.5,fontWeight:700,letterSpacing:.7,textTransform:'uppercase',color:'var(--cream-30)',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap'}}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -164,17 +160,24 @@ export default function Sales() {
                           <td style={{padding:'8px 10px',textAlign:'right',color:'var(--cream-60)'}}>{fmt.sgd(s.unit_price)}</td>
                           <td style={{padding:'8px 10px',textAlign:'right'}}>
                             {(() => {
-                              const items = discountDisplay(s);
-                              if (items.length === 0) return <span style={{color:'var(--cream-30)'}}>—</span>;
+                              const d = discountCell(s);
+                              if (!d) return <span style={{color:'var(--cream-30)'}}>—</span>;
                               return (
-                                <div style={{display:'flex',flexDirection:'column',gap:2,alignItems:'flex-end'}}>
-                                  {items.map((item, i) => (
-                                    <span key={i} style={{fontSize:11,color:item.color}}>
-                                      {item.text}
-                                      <span style={{color:'var(--cream-30)',marginLeft:4,fontSize:10}}>{item.label}</span>
-                                      {item.sub && <span style={{color:'var(--cream-30)',marginLeft:4,fontSize:9,display:'block'}}>{item.sub}</span>}
-                                    </span>
-                                  ))}
+                                <span style={{fontSize:11,color:d.color}}>
+                                  {d.text}
+                                  <span style={{color:'var(--cream-30)',marginLeft:4,fontSize:10}}>{d.label}</span>
+                                </span>
+                              );
+                            })()}
+                          </td>
+                          <td style={{padding:'8px 10px',textAlign:'right'}}>
+                            {(() => {
+                              const sh = shippingCell(s);
+                              if (!sh) return <span style={{color:'var(--cream-30)'}}>—</span>;
+                              return (
+                                <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end'}}>
+                                  <span style={{fontSize:11,color:sh.color}}>{sh.text}</span>
+                                  {sh.sub && <span style={{fontSize:9,color:'var(--cream-30)'}}>{sh.sub}</span>}
                                 </div>
                               );
                             })()}
