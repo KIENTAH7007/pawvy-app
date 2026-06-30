@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Trash2 } from 'lucide-react';
 import { costsApi } from '../api';
 import { Page, Table, Badge, Btn, Modal, FormRow, Input, Select, KpiCard, fmt } from '../components/ui';
 const CATS = ['Marketing','Storage','Delivery','Event','Platform Fee','Packaging','Other'];
@@ -17,12 +18,25 @@ export default function Costs() {
     try{await costsApi.create(form);load();setModal(false);setForm({date:new Date().toISOString().slice(0,10),market:'SG'});}
     finally{setSaving(false);}
   }
+  async function remove(id){
+    if(!window.confirm('Delete this cost entry? This cannot be undone.'))return;
+    await costsApi.delete(id);
+    load();
+  }
   const cols=[
     {key:'date',label:'Date',render:v=>fmt.date(v)},
     {key:'category',label:'Category',render:v=><Badge color={CAT_C[v]||'#888'}>{v}</Badge>},
     {key:'description',label:'Description'},{key:'market',label:'Mkt'},
     {key:'receipt_ref',label:'Ref',render:v=>v||'—'},
     {key:'amount',label:'Amount',align:'right',render:v=><span style={{fontWeight:700,color:'#f87171'}}>SGD {parseFloat(v).toFixed(2)}</span>},
+    {key:'actions',label:'',align:'right',render:(_,row)=>(
+      <button onClick={e=>{e.stopPropagation();remove(row.id);}} title="Delete"
+        style={{background:'none',border:'none',color:'rgba(248,113,113,.5)',cursor:'pointer',padding:4,display:'inline-flex',alignItems:'center'}}
+        onMouseEnter={e=>e.currentTarget.style.color='#f87171'}
+        onMouseLeave={e=>e.currentTarget.style.color='rgba(248,113,113,.5)'}>
+        <Trash2 size={13}/>
+      </button>
+    )},
   ];
   return(
     <Page title="OPERATING COSTS" subtitle="Marketing, storage, delivery, events and other expenses"
