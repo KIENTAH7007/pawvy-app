@@ -179,9 +179,7 @@ function generateSOAPDF(soa) {
     </div>
   </div>
 
-  <div style="padding:0 32px 24px;font-size:11px;color:#666;line-height:1.8">
-    Please make payment via PayNow UEN <strong>T23LP0163A</strong> or bank transfer to UOB Account <strong>7723687857</strong>.
-  </div>
+  ${pawvyPaymentInstructionsHtml()}
 
   ${pawvyFooterHtml()}
   </body></html>`;
@@ -195,6 +193,7 @@ function GenerateInvoiceModal({ open, onClose, partners, onGenerated }) {
   const [partnerId, setPartnerId] = useState('');
   const [dateFrom, setDateFrom]   = useState('');
   const [dateTo, setDateTo]       = useState(today());
+  const [invoiceDate, setInvoiceDate] = useState(today());
   const [sales, setSales]         = useState([]);
   const [selected, setSelected]   = useState(new Set());
   const [notes, setNotes]         = useState('');
@@ -204,7 +203,7 @@ function GenerateInvoiceModal({ open, onClose, partners, onGenerated }) {
   const [result, setResult]       = useState(null);
 
   useEffect(() => {
-    if (open) { setPartnerId(''); setSales([]); setSelected(new Set()); setNotes(''); setError(''); setResult(null); setDateFrom(''); setDateTo(today()); }
+    if (open) { setPartnerId(''); setSales([]); setSelected(new Set()); setNotes(''); setError(''); setResult(null); setDateFrom(''); setDateTo(today()); setInvoiceDate(today()); }
   }, [open]);
 
   useEffect(() => {
@@ -229,7 +228,7 @@ function GenerateInvoiceModal({ open, onClose, partners, onGenerated }) {
     if (selected.size === 0) { setError('Select at least one order line.'); return; }
     setSaving(true); setError('');
     try {
-      const res = await invoicesApi.generateInvoice({ partner_id: partnerId, sale_ids: [...selected], notes: notes||null });
+      const res = await invoicesApi.generateInvoice({ partner_id: partnerId, sale_ids: [...selected], notes: notes||null, invoice_date: invoiceDate });
       setResult(res);
     } catch(e) { setError(e.message); }
     finally { setSaving(false); }
@@ -262,6 +261,10 @@ function GenerateInvoiceModal({ open, onClose, partners, onGenerated }) {
           </Select>
           <Input label="From" type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} style={{width:160}}/>
           <Input label="To"   type="date" value={dateTo}   onChange={e=>setDateTo(e.target.value)}   style={{width:160}}/>
+          <Input label="Invoice Date" type="date" value={invoiceDate} onChange={e=>setInvoiceDate(e.target.value)} style={{width:160}}/>
+        </div>
+        <div style={{fontSize:10,color:'var(--cream-30)',marginTop:-8}}>
+          Invoice Date defaults to today. Due date and SOA period grouping are based on this date — back-date it if you want the invoice to align with an earlier order date.
         </div>
 
         {!partnerId ? (

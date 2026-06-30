@@ -132,7 +132,7 @@ module.exports = function(db) {
 
   // ── POST generate Invoice from selected sale rows ───────────────
   router.post('/generate-invoice', (req, res) => {
-    const { partner_id, sale_ids, notes } = req.body;
+    const { partner_id, sale_ids, notes, invoice_date } = req.body;
     if (!partner_id || !sale_ids?.length) return res.status(400).json({ error: 'partner_id and sale_ids required' });
 
     const sales = db.query(`
@@ -148,7 +148,9 @@ module.exports = function(db) {
     const shipping = sales.reduce((s, row) => s + (row.shipping_charged || 0), 0);
     const total    = parseFloat((subtotal - discount + shipping).toFixed(2));
 
-    const issueDate = new Date().toISOString().slice(0,10);
+    // Defaults to today (standard practice: invoice date = when issued), but can be
+    // explicitly back-dated by the user to match the underlying order date if preferred.
+    const issueDate = invoice_date || new Date().toISOString().slice(0,10);
     const due_date  = addDays(issueDate, 7);
     const invoice_number = generateDocNumber('Invoice');
 
@@ -173,7 +175,7 @@ module.exports = function(db) {
 
   // ── POST generate Delivery Order from selected sale rows ────────
   router.post('/generate-do', (req, res) => {
-    const { partner_id, sale_ids, notes } = req.body;
+    const { partner_id, sale_ids, notes, do_date } = req.body;
     if (!partner_id || !sale_ids?.length) return res.status(400).json({ error: 'partner_id and sale_ids required' });
 
     const sales = db.query(`
@@ -184,7 +186,7 @@ module.exports = function(db) {
 
     if (sales.length === 0) return res.status(400).json({ error: 'No eligible sales found (already on a DO or mismatched partner)' });
 
-    const issueDate = new Date().toISOString().slice(0,10);
+    const issueDate = do_date || new Date().toISOString().slice(0,10);
     const do_number = generateDocNumber('Delivery Order');
 
     const result = db.run(`
