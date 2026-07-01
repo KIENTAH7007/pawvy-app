@@ -7,7 +7,6 @@ const s = {
     border: '1px solid var(--border)',
     borderRadius: 'var(--radius)',
     overflow: 'hidden',
-    boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
   },
   cardHead: {
     padding: '12px 16px',
@@ -171,28 +170,15 @@ export function Table({ cols, rows, keyField = 'id', onRowClick, emptyMsg = 'No 
 
 /* ── KPI Card ──────────────────────────────────────────────────── */
 export function KpiCard({ label, value, sub, featured, trend, trendUp }) {
-  // Featured card always stays dark navy — hardcoded so it doesn't flip with the light theme
-  const featuredStyle = featured ? {
-    background: '#14213d',
-    border: '1px solid var(--orange)',
-    borderRadius: 'var(--radius)',
-    padding: '14px 16px',
-    boxShadow: '0 1px 4px rgba(0,0,0,0.12)',
-  } : {
-    background: 'var(--navy)',
-    border: '1px solid var(--border)',
-    borderRadius: 'var(--radius)',
-    padding: '14px 16px',
-    boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
-  };
   return (
-    <div style={featuredStyle}>
-      <div style={{ fontSize:9, fontWeight:700, letterSpacing:1.2, textTransform:'uppercase',
-        color: featured ? 'rgba(245,242,235,0.45)' : 'var(--cream-30)', marginBottom:8 }}>{label}</div>
-      <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:28, letterSpacing:.5, lineHeight:1,
-        color: featured ? 'var(--orange)' : 'var(--cream)' }}>{value}</div>
-      {sub   && <div style={{ fontSize:10, marginTop:5,
-        color: featured ? 'rgba(245,242,235,0.4)' : 'var(--cream-30)' }}>{sub}</div>}
+    <div style={{
+      background: featured ? 'var(--navy)' : 'var(--navy-light)',
+      border: featured ? `1px solid var(--orange)` : '1px solid var(--border)',
+      borderRadius: 'var(--radius)', padding: '14px 16px',
+    }}>
+      <div style={{ fontSize:9, fontWeight:700, letterSpacing:1.2, textTransform:'uppercase', color:'var(--cream-30)', marginBottom:8 }}>{label}</div>
+      <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:28, color: featured ? 'var(--orange)' : 'var(--cream)', letterSpacing:.5, lineHeight:1 }}>{value}</div>
+      {sub   && <div style={{ fontSize:10, color:'var(--cream-30)', marginTop:5 }}>{sub}</div>}
       {trend && (
         <div style={{ marginTop:6, display:'inline-flex', alignItems:'center', gap:4, fontSize:10, fontWeight:700,
           padding:'2px 8px', borderRadius:4,
