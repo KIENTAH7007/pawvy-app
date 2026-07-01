@@ -170,8 +170,8 @@ function Topbar({ onMenuToggle }) {
         {['SG','MY','AU'].map((m,i) => (
           <span key={m} style={{
             fontSize:9, fontWeight:700, padding:'3px 8px', borderRadius:3, letterSpacing:.5,
-            background: i===0 ? 'var(--navy-light)' : 'transparent',
-            color: i===0 ? 'var(--cream)' : 'var(--cream-30)',
+            background: i===0 ? '#14213d' : 'transparent',
+            color: i===0 ? '#f5f2eb' : 'var(--cream-30)',
             border: '1px solid var(--border)',
           }}>{m}</span>
         ))}
@@ -207,7 +207,7 @@ export default function App() {
         <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)}/>
       )}
 
-      <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden', background:'#0c1726' }}>
+      <div className="main-content" style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
         <Topbar onMenuToggle={toggleSidebar}/>
         <main style={{ flex:1, overflowY:'auto', padding: isMobile ? '14px 12px' : 24 }}>
           <Routes>
