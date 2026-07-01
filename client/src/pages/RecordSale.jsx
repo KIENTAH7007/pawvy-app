@@ -101,7 +101,7 @@ export default function RecordSale() {
   const [saved,     setSaved]     = useState(false);
   const [error,     setError]     = useState('');
 
-  useEffect(() => { brandsApi.getAll().then(setBrands); partnersApi.getAll().then(setPartners); }, []);
+  useEffect(() => { brandsApi.getAll().then(setBrands); partnersApi.getAll({ active_only:'true' }).then(setPartners); }, []);
   useEffect(() => { setFeePct(PLATFORM_FEES[channel] || 0); }, [channel]);
 
   const selectedPartner = partners.find(p => String(p.id) === String(partnerId));

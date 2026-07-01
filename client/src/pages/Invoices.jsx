@@ -574,7 +574,7 @@ export default function Invoices() {
   const [modal, setModal]           = useState(null);
   const [monitoring, setMonitoring] = useState(null);
 
-  const loadPartners = useCallback(() => partnersApi.getAll().then(setPartners), []);
+  const loadPartners = useCallback(() => partnersApi.getAll({ active_only:'true' }).then(setPartners), []);
   const loadDocs = useCallback(() => {
     setLoading(true);
     const q = {};

@@ -296,6 +296,10 @@ function createSchema() {
 
   tables.forEach(sql => db.run(sql));
 
+  // Partner tier (VIP / Active / Non-active) — safe to run multiple times
+  try { db.run("ALTER TABLE partners ADD COLUMN tier TEXT DEFAULT 'Active'"); } catch(e) {}
+  db.run("UPDATE partners SET tier = 'Active' WHERE tier IS NULL");
+
   // Phase 4: Inventory write-off location tracking
   try { db.run("ALTER TABLE inventory_adjustments ADD COLUMN location TEXT DEFAULT 'Home'"); } catch(e) {}
 

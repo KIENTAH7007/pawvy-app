@@ -17,7 +17,7 @@ export default function Sales() {
 
   useEffect(() => {
     brandsApi.getAll().then(setBrands);
-    partnersApi.getAll().then(setPartners);
+    partnersApi.getAll({ active_only:'true' }).then(setPartners);
   }, []);
 
   const load = (f = filters) => {

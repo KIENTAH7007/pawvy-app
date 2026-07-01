@@ -2,7 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { partnersApi } from '../api';
 import { Page, Badge, Btn, Modal, FormRow, Input, Select } from '../components/ui';
 
-const MODEL_COLORS = { Inventory:'#f36f4a', Consignment:'#378ADD', Commission:'#7F77DD', None:'#555', Pickup:'#1D9E75' };
+const MODEL_COLORS  = { Inventory:'#f36f4a', Consignment:'#378ADD', Commission:'#7F77DD', None:'#555', Pickup:'#1D9E75' };
+const TIER_CONFIG   = {
+  VIP:        { color:'#F59E0B', bg:'rgba(245,158,11,.12)',  label:'⭐ VIP'       },
+  Active:     { color:'#7fc93e', bg:'rgba(127,201,62,.1)',   label:'Active'        },
+  'Non-active':{ color:'#888',   bg:'rgba(136,136,136,.1)',  label:'Non-active'    },
+};
 const DISCOUNT_LABELS = {
   standard_rebate: 'Standard rebate',
   hybrid:          'Hybrid (Pawpy model)',
@@ -12,12 +17,25 @@ const DISCOUNT_LABELS = {
   none:            'No discount',
 };
 
+function TierBadge({ tier }) {
+  const cfg = TIER_CONFIG[tier] || TIER_CONFIG['Active'];
+  return (
+    <span style={{
+      fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:10,
+      color: cfg.color, background: cfg.bg, whiteSpace:'nowrap',
+    }}>
+      {cfg.label}
+    </span>
+  );
+}
+
 export default function Partners() {
   const [partners, setPartners] = useState([]);
   const [search,   setSearch]   = useState('');
   const [filterModel, setFM]    = useState('');
+  const [filterTier,  setFT]    = useState('');
   const [modal,    setModal]    = useState(false);
-  const [form,     setForm]     = useState({ market: 'SG', discount_type: 'standard_rebate', discount_value: 0, discount_threshold: 0 });
+  const [form,     setForm]     = useState({ market:'SG', discount_type:'standard_rebate', discount_value:0, discount_threshold:0, tier:'Active' });
   const [saving,   setSaving]   = useState(false);
 
   const load = () => partnersApi.getAll().then(setPartners);
@@ -31,6 +49,7 @@ export default function Partners() {
       discount_type:      p.discount_type      || 'standard_rebate',
       discount_value:     p.discount_value      || 0,
       discount_threshold: p.discount_threshold  || 0,
+      tier:               p.tier               || 'Active',
     });
     setModal(true);
   }
@@ -47,32 +66,59 @@ export default function Partners() {
   const visible = partners.filter(p => {
     const matchSearch = !search || p.company_name.toLowerCase().includes(search.toLowerCase());
     const matchModel  = !filterModel || p.model === filterModel;
-    return matchSearch && matchModel;
+    const matchTier   = !filterTier  || (p.tier||'Active') === filterTier;
+    return matchSearch && matchModel && matchTier;
   });
 
-  const showDiscountValue = ['fixed_pct', 'threshold_pct', 'hybrid'].includes(form.discount_type);
-  const showThreshold     = ['threshold_pct', 'hybrid'].includes(form.discount_type);
+  // Count by tier for the filter pills
+  const tierCounts = partners.reduce((acc, p) => {
+    const t = p.tier || 'Active';
+    acc[t] = (acc[t]||0) + 1;
+    return acc;
+  }, {});
+
+  const showDiscountValue = ['fixed_pct','threshold_pct','hybrid'].includes(form.discount_type);
+  const showThreshold     = ['threshold_pct','hybrid'].includes(form.discount_type);
 
   return (
     <Page title="PARTNERS" subtitle={`${visible.length} of ${partners.length} partners`}
-      action={<Btn onClick={() => { setForm({ market:'SG', discount_type:'standard_rebate', discount_value:0, discount_threshold:0 }); setModal(true); }}>
+      action={<Btn onClick={() => { setForm({ market:'SG', discount_type:'standard_rebate', discount_value:0, discount_threshold:0, tier:'Active' }); setModal(true); }}>
         <span style={{fontSize:16}}>+</span> Add Partner
       </Btn>}>
 
+      {/* Filters */}
       <div style={{display:'flex',gap:8,alignItems:'flex-end',flexWrap:'wrap'}}>
         <Input label="Search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Partner name…" style={{width:240}}/>
         <Select label="Model" value={filterModel} onChange={e=>setFM(e.target.value)} style={{width:160}}>
           <option value="">All models</option>
           {['Inventory','Consignment','Commission','Pickup','None'].map(m=><option key={m} value={m}>{m}</option>)}
         </Select>
+
+        {/* Tier filter pills */}
+        <div style={{display:'flex',flexDirection:'column',gap:4}}>
+          <div style={{fontSize:11,fontWeight:600,color:'var(--cream-60)',letterSpacing:.5,textTransform:'uppercase'}}>Tier</div>
+          <div style={{display:'flex',gap:5}}>
+            {[['','All'],['VIP','VIP'],['Active','Active'],['Non-active','Non-active']].map(([val,label])=>(
+              <button key={val} onClick={()=>setFT(val)}
+                style={{padding:'5px 12px',borderRadius:20,fontSize:11,fontWeight:600,cursor:'pointer',
+                  border:`1px solid ${filterTier===val?'var(--orange)':'var(--border)'}`,
+                  background:filterTier===val?'rgba(243,111,74,.1)':'transparent',
+                  color:filterTier===val?'var(--orange)':'var(--cream-60)'}}>
+                {label}
+                {val && tierCounts[val] ? <span style={{marginLeft:4,opacity:.6}}>({tierCounts[val]})</span> : null}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
+      {/* Table */}
       <div style={{background:'var(--navy)',border:'1px solid var(--border)',borderRadius:'var(--radius)'}}>
         <div style={{overflowX:'auto'}}>
-          <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:800}}>
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:860}}>
             <thead>
               <tr>
-                {['Partner','Type','Model','Discount','Market','PIC'].map(h=>(
+                {['Tier','Partner','Type','Model','Discount','Market','PIC'].map(h=>(
                   <th key={h} style={{padding:'9px 12px',textAlign:'left',fontSize:9.5,fontWeight:700,letterSpacing:.7,textTransform:'uppercase',color:'var(--cream-30)',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap'}}>{h}</th>
                 ))}
                 <th style={{padding:'9px 12px',borderBottom:'1px solid var(--border)'}}/>
@@ -80,12 +126,13 @@ export default function Partners() {
             </thead>
             <tbody>
               {visible.length === 0
-                ? <tr><td colSpan={7} style={{padding:40,textAlign:'center',color:'var(--cream-30)'}}>No partners found</td></tr>
+                ? <tr><td colSpan={8} style={{padding:40,textAlign:'center',color:'var(--cream-30)'}}>No partners found</td></tr>
                 : visible.map(p => (
-                  <tr key={p.id} style={{borderBottom:'1px solid rgba(245,242,235,.04)',cursor:'pointer'}}
+                  <tr key={p.id} style={{borderBottom:'1px solid rgba(245,242,235,.04)',cursor:'pointer',opacity:(p.tier||'Active')==='Non-active'?0.6:1}}
                     onClick={() => openEdit(p)}
                     onMouseEnter={e=>e.currentTarget.style.background='rgba(245,242,235,.03)'}
                     onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                    <td style={{padding:'9px 12px'}}><TierBadge tier={p.tier||'Active'}/></td>
                     <td style={{padding:'9px 12px',color:'var(--cream)',fontWeight:500}}>{p.company_name}</td>
                     <td style={{padding:'9px 12px',color:'var(--cream-60)',fontSize:11}}>{p.business_type||'—'}</td>
                     <td style={{padding:'9px 12px'}}><Badge color={MODEL_COLORS[p.model]||'#888'}>{p.model||'—'}</Badge></td>
@@ -106,6 +153,7 @@ export default function Partners() {
         </div>
       </div>
 
+      {/* Edit / Add Modal */}
       <Modal open={modal} title={form.id ? 'EDIT PARTNER' : 'ADD PARTNER'} onClose={() => setModal(false)}>
         <div style={{display:'flex',flexDirection:'column',gap:14}}>
           <FormRow cols={2}>
@@ -131,6 +179,33 @@ export default function Partners() {
           </FormRow>
           <Input label="Address" value={form.address||''} onChange={e=>sf('address',e.target.value)}/>
           <Input label="Notes"   value={form.notes||''}   onChange={e=>sf('notes',e.target.value)}/>
+
+          {/* ── Partner Tier ── */}
+          <div style={{borderTop:'1px solid var(--border)',paddingTop:14}}>
+            <div style={{fontSize:10,fontWeight:700,letterSpacing:1,textTransform:'uppercase',color:'var(--cream-30)',marginBottom:12}}>
+              Partner Tier
+            </div>
+            <div style={{display:'flex',gap:8}}>
+              {[
+                { value:'VIP',         label:'⭐ VIP',        desc:'Priority partners — ordering regularly, high revenue',       color:'#F59E0B' },
+                { value:'Active',      label:'Active',         desc:'Current active partners — ordering periodically',            color:'#7fc93e' },
+                { value:'Non-active',  label:'Non-active',     desc:'Dormant contacts — kept for records but not ordering',       color:'#888'    },
+              ].map(opt => (
+                <button key={opt.value} onClick={()=>sf('tier', opt.value)}
+                  style={{flex:1,textAlign:'left',padding:'10px 12px',borderRadius:8,cursor:'pointer',
+                    border:`1px solid ${(form.tier||'Active')===opt.value ? opt.color : 'var(--border)'}`,
+                    background:(form.tier||'Active')===opt.value ? `${opt.color}18` : 'transparent'}}>
+                  <div style={{fontSize:12,fontWeight:700,color:(form.tier||'Active')===opt.value ? opt.color : 'var(--cream)'}}>{opt.label}</div>
+                  <div style={{fontSize:10,color:'var(--cream-30)',marginTop:2,lineHeight:1.4}}>{opt.desc}</div>
+                </button>
+              ))}
+            </div>
+            {(form.tier||'Active') === 'Non-active' && (
+              <div style={{marginTop:8,fontSize:11,color:'#888',lineHeight:1.6}}>
+                ℹ Non-active partners are hidden from partner dropdowns in Record Sale, Invoices, and other actions — they remain here for reference.
+              </div>
+            )}
+          </div>
 
           {/* ── Discount Settings ── */}
           <div style={{borderTop:'1px solid var(--border)',paddingTop:14}}>
@@ -164,7 +239,6 @@ export default function Partners() {
                 </FormRow>
               )}
 
-              {/* Helper text per type */}
               <div style={{fontSize:10,color:'var(--cream-30)',lineHeight:1.7,background:'rgba(245,242,235,.04)',borderRadius:6,padding:'8px 12px'}}>
                 {form.discount_type === 'standard_rebate' && '≥$200 FOC delivery · ≥$400 -$12 rebate · ≥$600 -$30 rebate'}
                 {form.discount_type === 'hybrid'          && `≥$200 FOC · ≥$400 -$12 rebate · ≥$${form.discount_threshold||600} ${form.discount_value||0}% discount`}
