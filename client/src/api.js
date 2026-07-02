@@ -66,6 +66,7 @@ export const consignmentApi = {
   deleteReturn:   (id)   => api.delete(`/consignment/returns/${id}`),
   submitCount:    (data) => api.post('/consignment/counts', data),
   deleteCount:    (id)   => api.delete(`/consignment/counts/${id}`),
+  resetConsignment: (partner_id) => api.delete(`/consignment/reset/${partner_id}`),
   closeMonth:     (data) => api.post('/consignment/snapshot', data),
 }; 
 export const salesApi = { getAll: (q) => api.get(`/sales${qs(q)}`), summary: (q) => api.get(`/sales/summary${qs(q)}`), create: (s) => api.post('/sales',s), update: (id,s) => api.put(`/sales/${id}`,s), delete: (id) => api.delete(`/sales/${id}`), void: (id) => api.patch(`/sales/${id}/void`, {}) };

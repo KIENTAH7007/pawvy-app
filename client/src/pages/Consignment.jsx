@@ -647,6 +647,18 @@ export default function Consignment() {
 
           ) : tab === 'history' ? (
             <div style={{display:'flex',flexDirection:'column',gap:16}}>
+              {/* Danger zone — clear ALL consignment history for this partner */}
+              <div style={{display:'flex',justifyContent:'flex-end'}}>
+                <button onClick={async () => {
+                  if (!window.confirm(`⚠ This will permanently delete ALL consignment history for this partner (placements, returns, counts, snapshots) and void related sales. Use only to clear test data. Continue?`)) return;
+                  await consignmentApi.resetConsignment(partnerId);
+                  loadPartnerData(partnerId);
+                }} style={{fontSize:11,color:'rgba(248,113,113,.6)',background:'none',border:'1px solid rgba(248,113,113,.3)',borderRadius:6,padding:'5px 12px',cursor:'pointer',display:'flex',alignItems:'center',gap:5}}
+                  onMouseEnter={e=>{e.currentTarget.style.color='#f87171';e.currentTarget.style.borderColor='rgba(248,113,113,.6)';}}
+                  onMouseLeave={e=>{e.currentTarget.style.color='rgba(248,113,113,.6)';e.currentTarget.style.borderColor='rgba(248,113,113,.3)';}}>
+                  <Trash2 size={12}/> Clear All Consignment History
+                </button>
+              </div>
               {/* Counts */}
               <Card title={`STOCK COUNTS (${counts.length})`}>
                 {counts.length === 0

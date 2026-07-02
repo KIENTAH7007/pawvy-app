@@ -290,6 +290,50 @@ module.exports = function(db) {
     res.json({ ok: true });
   });
 
+  // ── DELETE all consignment history for a partner (danger — for clearing test data) ──
+  router.delete('/reset/:partner_id', (req, res) => {
+    const pid = req.params.partner_id;
+
+    // 1. Capture product IDs and count IDs before any deletes
+    const productIds = db.query('SELECT DISTINCT product_id FROM consignment_placements WHERE partner_id=?', [pid]).map(r=>r.product_id);
+    const countIds   = db.query('SELECT id FROM consignment_counts WHERE partner_id=?', [pid]).map(r=>r.id);
+
+    // 2. Void Consignment Sale records for this partner
+    db.run(`UPDATE sales SET voided=1, updated_at=CURRENT_TIMESTAMP WHERE partner_id=? AND channel='Consignment Sale'`, [pid]);
+
+    // 3. Delete count line items
+    if (countIds.length) {
+      db.run(`DELETE FROM consignment_count_items WHERE count_id IN (${countIds.map(()=>'?').join(',')})`, countIds);
+    }
+
+    // 4. Clear all consignment movement tables
+    db.run('DELETE FROM consignment_counts     WHERE partner_id=?', [pid]);
+    db.run('DELETE FROM consignment_placements  WHERE partner_id=?', [pid]);
+    db.run('DELETE FROM consignment_returns     WHERE partner_id=?', [pid]);
+    db.run('DELETE FROM consignment_snapshots   WHERE partner_id=?', [pid]);
+
+    // 5. Reverse the inventory movements that were created for these placements/returns
+    if (productIds.length) {
+      db.run(
+        `DELETE FROM inventory_movements
+         WHERE type IN ('Consignment Placement','Consignment Return','Placement Reversal','Return Reversal')
+           AND product_id IN (${productIds.map(()=>'?').join(',')})`,
+        productIds
+      );
+      // Recalculate inventory_levels for affected products
+      productIds.forEach(pid2 => {
+        ['Home','Storhub'].forEach(loc => {
+          const net = db.queryOne(`SELECT COALESCE(SUM(qty_change),0) AS n FROM inventory_movements WHERE product_id=? AND location=?`, [pid2, loc])?.n || 0;
+          const existing = db.queryOne('SELECT id FROM inventory_levels WHERE product_id=? AND location=?', [pid2, loc]);
+          if (existing) db.run('UPDATE inventory_levels SET qty=?, updated_at=CURRENT_TIMESTAMP WHERE id=?', [net, existing.id]);
+          else if (net !== 0) db.run('INSERT INTO inventory_levels (product_id,location,qty) VALUES (?,?,?)', [pid2, loc, net]);
+        });
+      });
+    }
+
+    res.json({ ok: true, partner_id: pid, products_affected: productIds.length, counts_removed: countIds.length });
+  });
+
   // ── POST close month (snapshot) ────────────────────────────────
   router.post('/snapshot', (req, res) => {
     const { partner_id, period_label, date } = req.body;

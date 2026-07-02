@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckCircle, Plus, Trash2 } from 'lucide-react';
+import { CheckCircle, Plus, Trash2, Eye, EyeOff } from 'lucide-react';
 import { brandsApi, productsApi, partnersApi, salesApi } from '../api';
 import { Page, Card, Input, Select, Btn, Divider, fmt } from '../components/ui';
 
@@ -90,6 +90,7 @@ export default function RecordSale() {
   const [partnerId, setPartnerId] = useState('');
   const [notes,     setNotes]     = useState('');
   const [feePct,    setFeePct]    = useState(0);
+  const [hideConfidential, setHideConfidential] = useState(false);
   const [deliveryCharge, setDeliveryCharge] = useState('');
   const [shippingCharged, setShippingCharged] = useState('');
   const [shippingCost,    setShippingCost]    = useState('');
@@ -102,7 +103,6 @@ export default function RecordSale() {
   const [error,     setError]     = useState('');
 
   useEffect(() => { brandsApi.getAll().then(setBrands); partnersApi.getAll({ active_only:'true' }).then(setPartners); }, []);
-  useEffect(() => { setFeePct(PLATFORM_FEES[channel] || 0); }, [channel]);
 
   const selectedPartner = partners.find(p => String(p.id) === String(partnerId));
   const partnerModel    = selectedPartner?.model || '';
@@ -281,15 +281,15 @@ export default function RecordSale() {
           <option value="">— Select SKU —</option>
           {prods.map(p=><option key={p.id} value={p.id}>{p.item_series}{p.variation?' · '+p.variation:''}</option>)}
         </Select>
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
+        <div style={{display:'grid',gridTemplateColumns: hideConfidential ? '1fr 1fr' : '1fr 1fr 1fr',gap:8}}>
           <Input label="Qty" type="number" min="1" value={line.qty} onChange={e=>updateLine(idx,'qty',e.target.value)} placeholder="0"/>
-          <Input label="Unit Cost" type="number" step="0.01" value={line.unit_cost} onChange={e=>updateLine(idx,'unit_cost',e.target.value)} placeholder="0.00"/>
+          {!hideConfidential && <Input label="Unit Cost" type="number" step="0.01" value={line.unit_cost} onChange={e=>updateLine(idx,'unit_cost',e.target.value)} placeholder="0.00"/>}
           <Input label="Sale Price" type="number" step="0.01" value={line.unit_price} onChange={e=>updateLine(idx,'unit_price',e.target.value)} placeholder="0.00"/>
         </div>
         {lc.revenue > 0 && (
-          <div style={{textAlign:'right',fontSize:13,fontWeight:700,color:lc.lineProfit>=0?'#7fc93e':'#f87171'}}>
+          <div style={{textAlign:'right',fontSize:13,fontWeight:700,color: hideConfidential ? 'var(--cream)' : (lc.lineProfit>=0?'#7fc93e':'#f87171')}}>
             {fmt.sgd(lc.revenue)}
-            <span style={{fontSize:10,color:'var(--cream-30)',marginLeft:6}}>profit {fmt.sgd(lc.lineProfit)}</span>
+            {!hideConfidential && <span style={{fontSize:10,color:'var(--cream-30)',marginLeft:6}}>profit {fmt.sgd(lc.lineProfit)}</span>}
           </div>
         )}
       </div>
@@ -297,7 +297,18 @@ export default function RecordSale() {
   }
 
   return (
-    <Page title="RECORD SALE" subtitle="Log a sale — add multiple products for one order">
+    <Page title="RECORD SALE" subtitle="Log a sale — add multiple products for one order"
+      action={
+        <button onClick={() => setHideConfidential(v => !v)}
+          title={hideConfidential ? 'Show cost & profit info' : 'Hide cost & profit (retailer view)'}
+          style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 12px', borderRadius:7, fontSize:12, fontWeight:600, cursor:'pointer',
+            background: hideConfidential ? 'rgba(243,111,74,.15)' : 'transparent',
+            border: `1px solid ${hideConfidential ? 'var(--orange)' : 'var(--border)'}`,
+            color: hideConfidential ? 'var(--orange)' : 'var(--cream-60)' }}>
+          {hideConfidential ? <EyeOff size={14}/> : <Eye size={14}/>}
+          {hideConfidential ? 'Retailer View ON' : 'Retailer View'}
+        </button>
+      }>
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 268px', gap: 16, alignItems: 'start' }}>
 
         {/* ── Main form ── */}
@@ -350,14 +361,14 @@ export default function RecordSale() {
               </div>
             ) : (
               <>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 70px 100px 100px 90px 36px', gap: 8, padding: '7px 16px 3px', fontSize: 9.5, fontWeight: 700, letterSpacing: .8, textTransform: 'uppercase', color: 'var(--cream-30)' }}>
-                  <span>Brand</span><span>Product / SKU</span><span>Qty</span><span>Unit Cost</span><span>Sale Price</span><span style={{ textAlign: 'right' }}>Line Total</span><span />
+                <div style={{ display: 'grid', gridTemplateColumns: hideConfidential ? '1fr 2fr 70px 100px 90px 36px' : '1fr 2fr 70px 100px 100px 90px 36px', gap: 8, padding: '7px 16px 3px', fontSize: 9.5, fontWeight: 700, letterSpacing: .8, textTransform: 'uppercase', color: 'var(--cream-30)' }}>
+                  <span>Brand</span><span>Product / SKU</span><span>Qty</span>{!hideConfidential && <span>Unit Cost</span>}<span>Sale Price</span><span style={{ textAlign: 'right' }}>Line Total</span><span />
                 </div>
                 {lines.map((line, idx) => {
                   const prods = productsByBrand[line.brand_id] || [];
                   const lc    = lineCalcs[idx];
                   return (
-                    <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 70px 100px 100px 90px 36px', gap: 8, padding: '6px 16px', borderBottom: '1px solid var(--cream-05)' }}>
+                    <div key={idx} style={{ display: 'grid', gridTemplateColumns: hideConfidential ? '1fr 2fr 70px 100px 90px 36px' : '1fr 2fr 70px 100px 100px 90px 36px', gap: 8, padding: '6px 16px', borderBottom: '1px solid var(--cream-05)' }}>
                       <Select value={line.brand_id} onChange={async e => { updateLine(idx, 'brand_id', e.target.value); updateLine(idx, 'product_id', ''); await ensureProducts(e.target.value); }}>
                         <option value="">Brand</option>
                         {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
@@ -367,9 +378,9 @@ export default function RecordSale() {
                         {prods.map(p => <option key={p.id} value={p.id}>{p.item_series}{p.variation ? ' · ' + p.variation : ''}</option>)}
                       </Select>
                       <Input type="number" min="1" value={line.qty}        onChange={e => updateLine(idx, 'qty',        e.target.value)} placeholder="0" />
-                      <Input type="number" step="0.01" value={line.unit_cost}  onChange={e => updateLine(idx, 'unit_cost',  e.target.value)} placeholder="0.00" />
+                      {!hideConfidential && <Input type="number" step="0.01" value={line.unit_cost}  onChange={e => updateLine(idx, 'unit_cost',  e.target.value)} placeholder="0.00" />}
                       <Input type="number" step="0.01" value={line.unit_price} onChange={e => updateLine(idx, 'unit_price', e.target.value)} placeholder="0.00" />
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', fontWeight: 600, color: lc.lineProfit >= 0 ? '#7fc93e' : '#f87171', fontSize: 12 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', fontWeight: 600, color: hideConfidential ? 'var(--cream)' : (lc.lineProfit >= 0 ? '#7fc93e' : '#f87171'), fontSize: 12 }}>
                         {lc.revenue > 0 ? fmt.sgd(lc.revenue) : '—'}
                       </div>
                       <button onClick={() => removeLine(idx)} disabled={lines.length === 1}
@@ -463,10 +474,12 @@ export default function RecordSale() {
               )}
 
               <div style={{ height: 1, background: 'var(--border)', margin: '2px 0' }} />
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--cream)' }}>Net Profit (Pawvy)</span>
-                <span style={{ fontSize: 22, fontFamily: "'Bebas Neue',sans-serif", color: netProfit >= 0 ? '#7fc93e' : '#f87171', letterSpacing: 1 }}>{fmt.sgd(netProfit)}</span>
-              </div>
+              {!hideConfidential && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--cream)' }}>Net Profit (Pawvy)</span>
+                  <span style={{ fontSize: 22, fontFamily: "'Bebas Neue',sans-serif", color: netProfit >= 0 ? '#7fc93e' : '#f87171', letterSpacing: 1 }}>{fmt.sgd(netProfit)}</span>
+                </div>
+              )}
               {invoiceTotal !== null && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 4, borderTop: '1px solid var(--border)', marginTop: 2 }}>
                   <span style={{ fontSize: 11, color: 'var(--cream-60)' }}>Invoice to partner</span>
