@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { FileText, Truck, FileSpreadsheet, AlertCircle, CheckCircle, Clock, Trash2, Printer } from 'lucide-react';
-import { invoicesApi, consignmentApi, partnersApi } from '../api';
+import { invoicesApi, consignmentApi, partnersApi, partnerAddressesApi } from '../api';
 import { Page, Card, Select, Input, Btn, Badge, Modal } from '../components/ui';
 import { sgd, pawvyHeaderHtml, pawvyAddressBlockHtml, pawvyFooterHtml, pawvyPaymentInstructionsHtml, openPdfWindow } from '../utils/pawvyPdf';
 
@@ -44,7 +44,7 @@ function generateInvoicePDF(invoice) {
   </style></head><body>
 
   ${pawvyHeaderHtml('INVOICE', date)}
-  ${pawvyAddressBlockHtml({ company_name: invoice.partner_name, address: invoice.partner_address, pic_name: invoice.pic_name }, invoice.invoice_number)}
+  ${pawvyAddressBlockHtml({ company_name: invoice.partner_name, address: invoice.partner_address, pic_name: invoice.pic_name }, invoice.invoice_number, invoice.outlet_label ? { label: invoice.outlet_label, address: invoice.outlet_address, pic_name: invoice.outlet_pic } : null)}
 
   <div style="padding:0 32px;display:flex;gap:32px;font-size:11px;color:#666">
     <div><strong style="color:#14213d">Due Date:</strong> ${invoice.due_date ? new Date(invoice.due_date).toLocaleDateString('en-SG') : '—'}</div>
@@ -108,7 +108,7 @@ function generateDOPDF(doc) {
   </style></head><body>
 
   ${pawvyHeaderHtml('DELIVERY ORDER', date)}
-  ${pawvyAddressBlockHtml({ company_name: doc.partner_name, address: doc.partner_address, pic_name: doc.pic_name }, doc.invoice_number)}
+  ${pawvyAddressBlockHtml({ company_name: doc.partner_name, address: doc.partner_address, pic_name: doc.pic_name }, doc.invoice_number, doc.outlet_label ? { label: doc.outlet_label, address: doc.outlet_address, pic_name: doc.outlet_pic } : null)}
 
   <div style="padding:24px 32px">
     <table style="width:100%;border-collapse:collapse;font-size:12px">
@@ -197,22 +197,34 @@ function GenerateInvoiceModal({ open, onClose, partners, onGenerated }) {
   const [sales, setSales]         = useState([]);
   const [selected, setSelected]   = useState(new Set());
   const [notes, setNotes]         = useState('');
+  const [outletId, setOutletId]   = useState('');
+  const [outlets, setOutlets]     = useState([]);
   const [loading, setLoading]     = useState(false);
   const [saving, setSaving]       = useState(false);
   const [error, setError]         = useState('');
   const [result, setResult]       = useState(null);
 
   useEffect(() => {
-    if (open) { setPartnerId(''); setSales([]); setSelected(new Set()); setNotes(''); setError(''); setResult(null); setDateFrom(''); setDateTo(today()); setInvoiceDate(today()); }
+    if (open) { setPartnerId(''); setSales([]); setSelected(new Set()); setNotes(''); setError(''); setResult(null); setDateFrom(''); setDateTo(today()); setInvoiceDate(today()); setOutletId(''); setOutlets([]); }
   }, [open]);
 
   useEffect(() => {
-    if (!partnerId) { setSales([]); return; }
+    if (!partnerId) { setSales([]); setOutlets([]); return; }
     setLoading(true);
     const q = {};
     if (dateFrom) q.date_from = dateFrom;
     if (dateTo)   q.date_to   = dateTo;
-    invoicesApi.uninvoiced(partnerId, q).then(d => { setSales(d); setSelected(new Set(d.map(s=>s.id))); setLoading(false); });
+    Promise.all([
+      invoicesApi.uninvoiced(partnerId, q),
+      partnerAddressesApi.list(partnerId),
+    ]).then(([d, addrs]) => {
+      setSales(d); setSelected(new Set(d.map(s=>s.id)));
+      setOutlets(addrs);
+      // Pre-select the primary address if there is one
+      const primary = addrs.find(a => a.is_primary);
+      setOutletId(primary ? String(primary.id) : (addrs.length === 1 ? String(addrs[0].id) : ''));
+      setLoading(false);
+    });
   }, [partnerId, dateFrom, dateTo]);
 
   const toggle = (id) => setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -228,7 +240,7 @@ function GenerateInvoiceModal({ open, onClose, partners, onGenerated }) {
     if (selected.size === 0) { setError('Select at least one order line.'); return; }
     setSaving(true); setError('');
     try {
-      const res = await invoicesApi.generateInvoice({ partner_id: partnerId, sale_ids: [...selected], notes: notes||null, invoice_date: invoiceDate });
+      const res = await invoicesApi.generateInvoice({ partner_id: partnerId, sale_ids: [...selected], notes: notes||null, invoice_date: invoiceDate, outlet_address_id: outletId||null });
       setResult(res);
     } catch(e) { setError(e.message); }
     finally { setSaving(false); }
@@ -266,6 +278,35 @@ function GenerateInvoiceModal({ open, onClose, partners, onGenerated }) {
         <div style={{fontSize:10,color:'var(--cream-30)',marginTop:-8}}>
           Invoice Date defaults to today. Due date and SOA period grouping are based on this date — back-date it if you want the invoice to align with an earlier order date.
         </div>
+
+        {outlets.length > 0 && (
+          <div>
+            <div style={{fontSize:10,fontWeight:700,letterSpacing:.8,textTransform:'uppercase',color:'var(--cream-30)',marginBottom:6}}>Deliver / Bill To Outlet</div>
+            <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+              <button onClick={()=>setOutletId('')}
+                style={{padding:'6px 14px',borderRadius:6,fontSize:12,fontWeight:600,cursor:'pointer',
+                  border:`1px solid ${!outletId?'var(--orange)':'var(--border)'}`,
+                  background:!outletId?'rgba(243,111,74,.1)':'transparent',
+                  color:!outletId?'var(--orange)':'var(--cream-60)'}}>
+                HQ / Main
+              </button>
+              {outlets.map(o=>(
+                <button key={o.id} onClick={()=>setOutletId(String(o.id))}
+                  style={{padding:'6px 14px',borderRadius:6,fontSize:12,fontWeight:600,cursor:'pointer',
+                    border:`1px solid ${String(outletId)===String(o.id)?'var(--orange)':'var(--border)'}`,
+                    background:String(outletId)===String(o.id)?'rgba(243,111,74,.1)':'transparent',
+                    color:String(outletId)===String(o.id)?'var(--orange)':'var(--cream-60)'}}>
+                  {o.label}
+                </button>
+              ))}
+            </div>
+            {outletId && outlets.find(o=>String(o.id)===String(outletId)) && (
+              <div style={{fontSize:11,color:'var(--cream-30)',marginTop:5,paddingLeft:2}}>
+                📍 {outlets.find(o=>String(o.id)===String(outletId)).address}
+              </div>
+            )}
+          </div>
+        )}
 
         {!partnerId ? (
           <div style={{padding:30,textAlign:'center',color:'var(--cream-30)',fontSize:12}}>Select a partner to see un-invoiced orders.</div>
@@ -330,22 +371,33 @@ function GenerateDOModal({ open, onClose, partners, onGenerated }) {
   const [sales, setSales]         = useState([]);
   const [selected, setSelected]   = useState(new Set());
   const [notes, setNotes]         = useState('');
+  const [outletId, setOutletId]   = useState('');
+  const [outlets, setOutlets]     = useState([]);
   const [loading, setLoading]     = useState(false);
   const [saving, setSaving]       = useState(false);
   const [error, setError]         = useState('');
   const [result, setResult]       = useState(null);
 
   useEffect(() => {
-    if (open) { setPartnerId(''); setSales([]); setSelected(new Set()); setNotes(''); setError(''); setResult(null); setDateFrom(''); setDateTo(today()); }
+    if (open) { setPartnerId(''); setSales([]); setSelected(new Set()); setNotes(''); setError(''); setResult(null); setDateFrom(''); setDateTo(today()); setOutletId(''); setOutlets([]); }
   }, [open]);
 
   useEffect(() => {
-    if (!partnerId) { setSales([]); return; }
+    if (!partnerId) { setSales([]); setOutlets([]); return; }
     setLoading(true);
     const q = {};
     if (dateFrom) q.date_from = dateFrom;
     if (dateTo)   q.date_to   = dateTo;
-    invoicesApi.availableForDO(partnerId, q).then(d => { setSales(d); setSelected(new Set(d.map(s=>s.id))); setLoading(false); });
+    Promise.all([
+      invoicesApi.availableForDO(partnerId, q),
+      partnerAddressesApi.list(partnerId),
+    ]).then(([d, addrs]) => {
+      setSales(d); setSelected(new Set(d.map(s=>s.id)));
+      setOutlets(addrs);
+      const primary = addrs.find(a => a.is_primary);
+      setOutletId(primary ? String(primary.id) : (addrs.length === 1 ? String(addrs[0].id) : ''));
+      setLoading(false);
+    });
   }, [partnerId, dateFrom, dateTo]);
 
   const toggle = (id) => setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -355,7 +407,7 @@ function GenerateDOModal({ open, onClose, partners, onGenerated }) {
     if (selected.size === 0) { setError('Select at least one order line.'); return; }
     setSaving(true); setError('');
     try {
-      const res = await invoicesApi.generateDO({ partner_id: partnerId, sale_ids: [...selected], notes: notes||null });
+      const res = await invoicesApi.generateDO({ partner_id: partnerId, sale_ids: [...selected], notes: notes||null, outlet_address_id: outletId||null });
       setResult(res);
     } catch(e) { setError(e.message); }
     finally { setSaving(false); }
@@ -388,6 +440,35 @@ function GenerateDOModal({ open, onClose, partners, onGenerated }) {
           <Input label="From" type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} style={{width:160}}/>
           <Input label="To"   type="date" value={dateTo}   onChange={e=>setDateTo(e.target.value)}   style={{width:160}}/>
         </div>
+
+        {outlets.length > 0 && (
+          <div>
+            <div style={{fontSize:10,fontWeight:700,letterSpacing:.8,textTransform:'uppercase',color:'var(--cream-30)',marginBottom:6}}>Deliver To Outlet</div>
+            <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+              <button onClick={()=>setOutletId('')}
+                style={{padding:'6px 14px',borderRadius:6,fontSize:12,fontWeight:600,cursor:'pointer',
+                  border:`1px solid ${!outletId?'var(--orange)':'var(--border)'}`,
+                  background:!outletId?'rgba(243,111,74,.1)':'transparent',
+                  color:!outletId?'var(--orange)':'var(--cream-60)'}}>
+                Main Address
+              </button>
+              {outlets.map(o=>(
+                <button key={o.id} onClick={()=>setOutletId(String(o.id))}
+                  style={{padding:'6px 14px',borderRadius:6,fontSize:12,fontWeight:600,cursor:'pointer',
+                    border:`1px solid ${String(outletId)===String(o.id)?'var(--orange)':'var(--border)'}`,
+                    background:String(outletId)===String(o.id)?'rgba(243,111,74,.1)':'transparent',
+                    color:String(outletId)===String(o.id)?'var(--orange)':'var(--cream-60)'}}>
+                  {o.label}
+                </button>
+              ))}
+            </div>
+            {outletId && outlets.find(o=>String(o.id)===String(outletId)) && (
+              <div style={{fontSize:11,color:'var(--cream-30)',marginTop:5,paddingLeft:2}}>
+                📍 {outlets.find(o=>String(o.id)===String(outletId)).address}
+              </div>
+            )}
+          </div>
+        )}
 
         {!partnerId ? (
           <div style={{padding:30,textAlign:'center',color:'var(--cream-30)',fontSize:12}}>Select a partner to see orders available for delivery.</div>

@@ -113,8 +113,13 @@ module.exports = function(db) {
   router.get('/:id', (req, res) => {
     const invoice = db.queryOne(`
       SELECT i.*, pt.company_name AS partner_name, pt.address AS partner_address,
-        pt.pic_name, pt.phone, pt.email AS partner_email
-      FROM invoices i LEFT JOIN partners pt ON pt.id = i.partner_id WHERE i.id = ?
+        pt.pic_name, pt.phone, pt.email AS partner_email,
+        pa.label AS outlet_label, pa.address AS outlet_address,
+        pa.pic_name AS outlet_pic, pa.phone AS outlet_phone
+      FROM invoices i
+      LEFT JOIN partners pt ON pt.id = i.partner_id
+      LEFT JOIN partner_addresses pa ON pa.id = i.outlet_address_id
+      WHERE i.id = ?
     `, [req.params.id]);
     if (!invoice) return res.status(404).json({ error: 'Not found' });
 
@@ -132,7 +137,7 @@ module.exports = function(db) {
 
   // ── POST generate Invoice from selected sale rows ───────────────
   router.post('/generate-invoice', (req, res) => {
-    const { partner_id, sale_ids, notes, invoice_date } = req.body;
+    const { partner_id, sale_ids, notes, invoice_date, outlet_address_id } = req.body;
     if (!partner_id || !sale_ids?.length) return res.status(400).json({ error: 'partner_id and sale_ids required' });
 
     const sales = db.query(`
@@ -155,10 +160,10 @@ module.exports = function(db) {
     const invoice_number = generateDocNumber('Invoice');
 
     const result = db.run(`
-      INSERT INTO invoices (invoice_number, type, partner_id, date, due_date, market, currency, subtotal, discount, shipping, total, status, notes)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+      INSERT INTO invoices (invoice_number, type, partner_id, date, due_date, market, currency, subtotal, discount, shipping, total, status, notes, outlet_address_id)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     `, [invoice_number, 'Invoice', partner_id, issueDate, due_date, sales[0].market||'SG', 'SGD',
-        parseFloat(subtotal.toFixed(2)), parseFloat(discount.toFixed(2)), parseFloat(shipping.toFixed(2)), total, 'Unpaid', notes||null]);
+        parseFloat(subtotal.toFixed(2)), parseFloat(discount.toFixed(2)), parseFloat(shipping.toFixed(2)), total, 'Unpaid', notes||null, outlet_address_id||null]);
 
     const invoiceId = result.lastID;
 
@@ -175,7 +180,7 @@ module.exports = function(db) {
 
   // ── POST generate Delivery Order from selected sale rows ────────
   router.post('/generate-do', (req, res) => {
-    const { partner_id, sale_ids, notes, do_date } = req.body;
+    const { partner_id, sale_ids, notes, do_date, outlet_address_id } = req.body;
     if (!partner_id || !sale_ids?.length) return res.status(400).json({ error: 'partner_id and sale_ids required' });
 
     const sales = db.query(`
@@ -190,9 +195,9 @@ module.exports = function(db) {
     const do_number = generateDocNumber('Delivery Order');
 
     const result = db.run(`
-      INSERT INTO invoices (invoice_number, type, partner_id, date, market, currency, subtotal, discount, shipping, total, status, notes)
-      VALUES (?,?,?,?,?,?,0,0,0,0,?,?)
-    `, [do_number, 'Delivery Order', partner_id, issueDate, sales[0].market||'SG', 'SGD', 'Issued', notes||null]);
+      INSERT INTO invoices (invoice_number, type, partner_id, date, market, currency, subtotal, discount, shipping, total, status, notes, outlet_address_id)
+      VALUES (?,?,?,?,?,?,0,0,0,0,?,?,?)
+    `, [do_number, 'Delivery Order', partner_id, issueDate, sales[0].market||'SG', 'SGD', 'Issued', notes||null, outlet_address_id||null]);
 
     const doId = result.lastID;
 

@@ -86,5 +86,40 @@ module.exports = function(db) {
     res.json(db.queryOne('SELECT * FROM partners WHERE id = ?', [req.params.id]));
   });
 
+  // ── Outlet addresses ─────────────────────────────────────────────
+  router.get('/:id/addresses', (req, res) => {
+    res.json(db.query(
+      'SELECT * FROM partner_addresses WHERE partner_id = ? ORDER BY is_primary DESC, sort_order ASC, id ASC',
+      [req.params.id]
+    ));
+  });
+
+  router.post('/:id/addresses', (req, res) => {
+    const { label, address, pic_name, phone, is_primary } = req.body;
+    if (!label || !address) return res.status(400).json({ error: 'label and address required' });
+    // If setting as primary, unset any existing primary for this partner
+    if (is_primary) db.run('UPDATE partner_addresses SET is_primary = 0 WHERE partner_id = ?', [req.params.id]);
+    const r = db.run(
+      'INSERT INTO partner_addresses (partner_id, label, address, pic_name, phone, is_primary) VALUES (?,?,?,?,?,?)',
+      [req.params.id, label, address, pic_name||null, phone||null, is_primary ? 1 : 0]
+    );
+    res.status(201).json({ id: r.lastID, ok: true });
+  });
+
+  router.put('/:id/addresses/:addr_id', (req, res) => {
+    const { label, address, pic_name, phone, is_primary } = req.body;
+    if (is_primary) db.run('UPDATE partner_addresses SET is_primary = 0 WHERE partner_id = ?', [req.params.id]);
+    db.run(
+      'UPDATE partner_addresses SET label=?, address=?, pic_name=?, phone=?, is_primary=? WHERE id=? AND partner_id=?',
+      [label, address, pic_name||null, phone||null, is_primary ? 1 : 0, req.params.addr_id, req.params.id]
+    );
+    res.json({ ok: true });
+  });
+
+  router.delete('/:id/addresses/:addr_id', (req, res) => {
+    db.run('DELETE FROM partner_addresses WHERE id = ? AND partner_id = ?', [req.params.addr_id, req.params.id]);
+    res.json({ ok: true });
+  });
+
   return router;
 };

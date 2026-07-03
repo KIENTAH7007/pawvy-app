@@ -53,6 +53,12 @@ export const forecastApi = {
   restockRecommendations: (q) => api.get(`/forecast/restock-recommendations${qs(q)}`),
 };
 
+export const partnerAddressesApi = {
+  list:   (partner_id) => api.get(`/partners/${partner_id}/addresses`),
+  create: (partner_id, data) => api.post(`/partners/${partner_id}/addresses`, data),
+  update: (partner_id, addr_id, data) => api.put(`/partners/${partner_id}/addresses/${addr_id}`, data),
+  delete: (partner_id, addr_id) => api.delete(`/partners/${partner_id}/addresses/${addr_id}`),
+};
 export const consignmentApi = {
   partners:       ()           => api.get('/consignment/partners'),
   onHand:         (partner_id) => api.get(`/consignment/on-hand/${partner_id}`),

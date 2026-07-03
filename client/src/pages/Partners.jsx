@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { partnersApi } from '../api';
+import { partnersApi, partnerAddressesApi } from '../api';
 import { Page, Badge, Btn, Modal, FormRow, Input, Select } from '../components/ui';
 
 const MODEL_COLORS  = { Inventory:'#f36f4a', Consignment:'#378ADD', Commission:'#7F77DD', None:'#555', Pickup:'#1D9E75' };
@@ -37,6 +37,9 @@ export default function Partners() {
   const [modal,    setModal]    = useState(false);
   const [form,     setForm]     = useState({ market:'SG', discount_type:'standard_rebate', discount_value:0, discount_threshold:0, tier:'Active' });
   const [saving,   setSaving]   = useState(false);
+  const [outlets,  setOutlets]  = useState([]);
+  const [newOutlet, setNewOutlet] = useState({ label:'', address:'', pic_name:'', is_primary:false });
+  const [addingOutlet, setAddingOutlet] = useState(false);
 
   const load = () => partnersApi.getAll().then(setPartners);
   useEffect(() => { load(); }, []);
@@ -51,6 +54,10 @@ export default function Partners() {
       discount_threshold: p.discount_threshold  || 0,
       tier:               p.tier               || 'Active',
     });
+    setAddingOutlet(false);
+    setNewOutlet({ label:'', address:'', pic_name:'', is_primary:false });
+    if (p.id) partnerAddressesApi.list(p.id).then(setOutlets);
+    else setOutlets([]);
     setModal(true);
   }
 
@@ -274,6 +281,74 @@ export default function Partners() {
           <Btn onClick={save} disabled={saving} size="lg" style={{justifyContent:'center',marginTop:4}}>
             {saving ? 'Saving…' : 'Save Partner'}
           </Btn>
+
+          {/* ── Outlets & Delivery Addresses (only when editing existing partner) ── */}
+          {form.id && (
+            <div style={{borderTop:'1px solid var(--border)',paddingTop:14}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+                <div style={{fontSize:10,fontWeight:700,letterSpacing:1,textTransform:'uppercase',color:'var(--cream-30)'}}>
+                  Outlets & Delivery Addresses
+                </div>
+                <Btn size="sm" variant="ghost" onClick={()=>setAddingOutlet(v=>!v)}>
+                  {addingOutlet ? 'Cancel' : '+ Add Outlet'}
+                </Btn>
+              </div>
+
+              {outlets.length === 0 && !addingOutlet && (
+                <div style={{fontSize:11,color:'var(--cream-30)',paddingBottom:4}}>
+                  No outlets set up. Add one to enable per-outlet invoice addressing.
+                </div>
+              )}
+
+              {outlets.map(o => (
+                <div key={o.id} style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',padding:'10px 0',borderBottom:'1px solid rgba(245,242,235,.06)'}}>
+                  <div>
+                    <div style={{fontSize:12,fontWeight:700,color:'var(--cream)',display:'flex',alignItems:'center',gap:8}}>
+                      {o.label}
+                      {o.is_primary ? <span style={{fontSize:9,fontWeight:700,padding:'1px 6px',borderRadius:10,background:'rgba(243,111,74,.15)',color:'var(--orange)'}}>PRIMARY / HQ</span> : null}
+                    </div>
+                    <div style={{fontSize:11,color:'var(--cream-60)',marginTop:2,lineHeight:1.5}}>{o.address}</div>
+                    {o.pic_name && <div style={{fontSize:10,color:'var(--cream-30)',marginTop:1}}>Attn: {o.pic_name}</div>}
+                  </div>
+                  <div style={{display:'flex',gap:6,flexShrink:0,marginLeft:8}}>
+                    {!o.is_primary && (
+                      <button onClick={async()=>{ await partnerAddressesApi.update(form.id, o.id, {...o, is_primary:true}); partnerAddressesApi.list(form.id).then(setOutlets); }}
+                        style={{fontSize:10,background:'none',border:'1px solid var(--border)',borderRadius:5,padding:'3px 8px',color:'var(--cream-60)',cursor:'pointer'}}>
+                        Set HQ
+                      </button>
+                    )}
+                    <button onClick={async()=>{ if(window.confirm('Remove this outlet?')){ await partnerAddressesApi.delete(form.id, o.id); partnerAddressesApi.list(form.id).then(setOutlets); } }}
+                      style={{background:'none',border:'none',color:'rgba(248,113,113,.5)',cursor:'pointer',padding:4,display:'flex',alignItems:'center'}}>
+                      <span style={{fontSize:13}}>×</span>
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              {addingOutlet && (
+                <div style={{background:'rgba(245,242,235,.04)',border:'1px solid var(--border)',borderRadius:8,padding:'12px 14px',display:'flex',flexDirection:'column',gap:10,marginTop:8}}>
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 2fr',gap:10}}>
+                    <Input label="Label *" value={newOutlet.label} onChange={e=>setNewOutlet(p=>({...p,label:e.target.value}))} placeholder="e.g. Punggol"/>
+                    <Input label="Address *" value={newOutlet.address} onChange={e=>setNewOutlet(p=>({...p,address:e.target.value}))} placeholder="314B Punggol Way, SG 822314"/>
+                  </div>
+                  <Input label="Contact Person (optional)" value={newOutlet.pic_name||''} onChange={e=>setNewOutlet(p=>({...p,pic_name:e.target.value}))} placeholder="e.g. Sarah"/>
+                  <div style={{display:'flex',alignItems:'center',gap:8}}>
+                    <input type="checkbox" id="isPrimaryNew" checked={!!newOutlet.is_primary} onChange={e=>setNewOutlet(p=>({...p,is_primary:e.target.checked}))} style={{accentColor:'var(--orange)'}}/>
+                    <label htmlFor="isPrimaryNew" style={{fontSize:11,color:'var(--cream-60)',cursor:'pointer'}}>Mark as Primary / HQ (used for SOA billing address)</label>
+                  </div>
+                  <Btn size="sm" onClick={async()=>{
+                    if (!newOutlet.label || !newOutlet.address) return;
+                    await partnerAddressesApi.create(form.id, newOutlet);
+                    partnerAddressesApi.list(form.id).then(setOutlets);
+                    setNewOutlet({ label:'', address:'', pic_name:'', is_primary:false });
+                    setAddingOutlet(false);
+                  }} style={{alignSelf:'flex-start'}}>
+                    Save Outlet
+                  </Btn>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </Modal>
     </Page>

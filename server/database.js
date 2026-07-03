@@ -227,6 +227,17 @@ function createSchema() {
       notes TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`,
+    `CREATE TABLE IF NOT EXISTS partner_addresses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      partner_id INTEGER NOT NULL REFERENCES partners(id) ON DELETE CASCADE,
+      label TEXT NOT NULL,
+      address TEXT NOT NULL,
+      pic_name TEXT,
+      phone TEXT,
+      is_primary INTEGER DEFAULT 0,
+      sort_order INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
     `CREATE TABLE IF NOT EXISTS invoices (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       invoice_number TEXT UNIQUE NOT NULL,
@@ -295,6 +306,9 @@ function createSchema() {
   ];
 
   tables.forEach(sql => db.run(sql));
+
+  // Partner outlet address on invoice/DO
+  try { db.run("ALTER TABLE invoices ADD COLUMN outlet_address_id INTEGER REFERENCES partner_addresses(id)"); } catch(e) {}
 
   // Partner tier (VIP / Active / Non-active) — safe to run multiple times
   try { db.run("ALTER TABLE partners ADD COLUMN tier TEXT DEFAULT 'Active'"); } catch(e) {}

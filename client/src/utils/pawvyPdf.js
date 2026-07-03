@@ -37,8 +37,15 @@ export function pawvyHeaderHtml(title, dateLabel) {
 
 /**
  * Renders the shared From / Bill To / Doc Number block.
+ * Pass `outlet` object with { label, address, pic_name } to override the
+ * Bill To section with a specific outlet address (for Invoices and DOs).
+ * SOA always passes outlet=null so it uses the main partner HQ address.
  */
-export function pawvyAddressBlockHtml(partner, docNum) {
+export function pawvyAddressBlockHtml(partner, docNum, outlet = null) {
+  const billName    = partner?.company_name || partner?.partner_name || '—';
+  const billSub     = outlet ? `${billName} — ${outlet.label}` : billName;
+  const displayAddr = outlet?.address || partner?.address;
+  const displayPic  = outlet?.pic_name || outlet?.outlet_pic || partner?.pic_name;
   return `
   <div style="padding:24px 32px;display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #f0f2f5">
     <div>
@@ -49,9 +56,9 @@ export function pawvyAddressBlockHtml(partner, docNum) {
     </div>
     <div>
       <div style="color:#666;font-size:10px;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">Bill To</div>
-      <div style="font-size:14px;font-weight:700;color:#14213d">${partner?.company_name || partner?.partner_name || '—'}</div>
-      ${partner?.address ? `<div style="font-size:12px;color:#555;margin-top:3px;max-width:220px;line-height:1.5">${partner.address}</div>` : ''}
-      ${partner?.pic_name ? `<div style="font-size:11px;color:#888;margin-top:4px">Attn: ${partner.pic_name}</div>` : ''}
+      <div style="font-size:14px;font-weight:700;color:#14213d">${billSub}</div>
+      ${displayAddr ? `<div style="font-size:12px;color:#555;margin-top:3px;max-width:220px;line-height:1.5">${displayAddr}</div>` : ''}
+      ${displayPic  ? `<div style="font-size:11px;color:#888;margin-top:4px">Attn: ${displayPic}</div>` : ''}
     </div>
     <div style="text-align:right">
       <div style="font-size:20px;font-weight:700;color:#14213d;font-family:monospace">${docNum}</div>
