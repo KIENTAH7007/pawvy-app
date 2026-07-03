@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, RotateCcw, Search, Trash2, CheckCircle, AlertCircle, FileText, Archive } from 'lucide-react';
-import { consignmentApi, productsApi } from '../api';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Plus, RotateCcw, Search, Trash2, CheckCircle, AlertCircle, FileText, Archive, ChevronLeft } from 'lucide-react';
+import { consignmentApi, productsApi, brandsApi } from '../api';
 import { Page, Card, Select, Input, Btn, Badge, Modal } from '../components/ui';
 import { sgd, pawvyHeaderHtml, pawvyAddressBlockHtml, pawvyFooterHtml, openPdfWindow } from '../utils/pawvyPdf';
 
@@ -102,59 +102,78 @@ function makeDocNum(prefix = 'CS') {
 function PlaceStockModal({ open, onClose, partnerId, onSaved }) {
   const [date, setDate]         = useState(today());
   const [products, setProducts] = useState([]);
-  const [lines, setLines]       = useState([{ product_id:'', qty:'' }]);
-  // Prices and costs are completely separate state — product selection can NEVER overwrite them
-  const [prices, setPrices]     = useState({ 0: '' });
-  const [costs,  setCosts]      = useState({ 0: '' });
+  const [brands, setBrands]     = useState([]);
+  const [lines, setLines]       = useState([{ brand_id:'', product_id:'', qty:'' }]);
   const [notes, setNotes]       = useState('');
   const [saving, setSaving]     = useState(false);
   const [error, setError]       = useState('');
 
+  // UNCONTROLLED refs — browser manages value internally, no React state interference.
+  // This is the only reliable fix for the "can't edit price" issue across all browsers/mobile.
+  const priceRefs = useRef({});
+  const costRefs  = useRef({});
+
   useEffect(() => {
     if (open) {
       setDate(today());
-      setLines([{ product_id:'', qty:'' }]);
-      setPrices({ 0: '' });
-      setCosts({ 0: '' });
+      setLines([{ brand_id:'', product_id:'', qty:'' }]);
       setNotes(''); setError('');
-      productsApi.getAll({ active:'true' }).then(setProducts);
+      priceRefs.current = {};
+      costRefs.current  = {};
+      Promise.all([
+        productsApi.getAll({ active:'true' }),
+        brandsApi.getAll(),
+      ]).then(([prods, brnds]) => { setProducts(prods); setBrands(brnds); });
     }
   }, [open]);
+
+  function selectBrand(idx, brandId) {
+    setLines(prev => prev.map((l,i) => i===idx ? { ...l, brand_id: brandId, product_id: '' } : l));
+    if (priceRefs.current[idx]) priceRefs.current[idx].value = '';
+    if (costRefs.current[idx])  costRefs.current[idx].value  = '';
+  }
 
   function selectProduct(idx, productId) {
     setLines(prev => prev.map((l,i) => i===idx ? { ...l, product_id: productId } : l));
     const prod = products.find(p => String(p.id) === String(productId));
-    if (prod) {
-      // Only auto-fill if the user hasn't typed anything yet — never overwrite
-      setPrices(prev => ({ ...prev, [idx]: prev[idx] || String(prod.price_consignment_sg ?? '') }));
-      setCosts(prev  => ({ ...prev, [idx]: prev[idx] || String(prod.unit_cost ?? '') }));
+    if (!prod) return;
+    // Direct DOM mutation — auto-fills ONLY when field is currently empty, never overwrites
+    if (priceRefs.current[idx] && !priceRefs.current[idx].value) {
+      priceRefs.current[idx].value = String(prod.price_consignment_sg || '');
+    }
+    if (costRefs.current[idx] && !costRefs.current[idx].value) {
+      costRefs.current[idx].value = String(prod.unit_cost || '');
     }
   }
 
   function addLine() {
-    const idx = lines.length;
-    setLines(prev => [...prev, { product_id:'', qty:'' }]);
-    setPrices(prev => ({ ...prev, [idx]: '' }));
-    setCosts(prev  => ({ ...prev, [idx]: '' }));
+    setLines(prev => [...prev, { brand_id:'', product_id:'', qty:'' }]);
   }
 
   function removeLine(idx) {
     setLines(prev => prev.filter((_,i) => i!==idx));
+    delete priceRefs.current[idx];
+    delete costRefs.current[idx];
   }
 
   async function save() {
     const valid = lines
-      .map((l,i) => ({ ...l, price: prices[i]||'', cost: costs[i]||'' }))
-      .filter(l => l.product_id && l.qty && parseFloat(l.qty) > 0);
+      .map((l, i) => ({
+        ...l,
+        qtyNum: parseInt(l.qty) || 0,
+        price:  parseFloat(priceRefs.current[i]?.value) || 0,
+        cost:   parseFloat(costRefs.current[i]?.value)  || 0,
+      }))
+      .filter(l => l.product_id && l.qtyNum > 0);
     if (!valid.length) { setError('Add at least one product with qty > 0.'); return; }
     setSaving(true); setError('');
     try {
       for (const l of valid) {
         await consignmentApi.addPlacement({
           partner_id: partnerId, product_id: l.product_id,
-          date, qty: parseInt(l.qty),
-          consignment_price: parseFloat(l.price) || 0,
-          unit_cost:         parseFloat(l.cost)  || 0,
+          date, qty: l.qtyNum,
+          consignment_price: l.price,
+          unit_cost: l.cost,
           notes: notes || null,
         });
       }
@@ -164,47 +183,57 @@ function PlaceStockModal({ open, onClose, partnerId, onSaved }) {
   }
 
   return (
-    <Modal open={open} title="PLACE STOCK" onClose={onClose} width={680}>
+    <Modal open={open} title="PLACE STOCK" onClose={onClose} width={780}>
       <div style={{display:'flex',flexDirection:'column',gap:12}}>
         <Input label="Date" type="date" value={date} onChange={e=>setDate(e.target.value)} style={{width:180}}/>
-        <div style={{display:'grid',gridTemplateColumns:'2fr 60px 130px 110px 28px',gap:8,padding:'0 2px'}}>
-          {['Product / SKU','Qty','Consign Price','Unit Cost',''].map(h=>(
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1.4fr 55px 120px 95px 28px',gap:8,padding:'0 2px'}}>
+          {['Brand','Product / SKU','Qty','Consign Price','Unit Cost',''].map(h=>(
             <div key={h} style={{fontSize:9,fontWeight:700,letterSpacing:.7,textTransform:'uppercase',color:'var(--cream-30)'}}>{h}</div>
           ))}
         </div>
-        {lines.map((line, idx) => (
-          <div key={idx} style={{display:'grid',gridTemplateColumns:'2fr 60px 130px 110px 28px',gap:8,alignItems:'flex-start'}}>
-            <Select value={line.product_id} onChange={e=>selectProduct(idx,e.target.value)}>
-              <option value="">— Select product —</option>
-              {products.map(p=>(
-                <option key={p.id} value={p.id}>{p.brand_name} · {p.item_series}{p.variation?' · '+p.variation:''}</option>
-              ))}
-            </Select>
-            <Input type="number" min="1" value={line.qty}
-              onChange={e=>setLines(prev=>prev.map((l,i)=>i===idx?{...l,qty:e.target.value}:l))}
-              placeholder="0"/>
-            {/* Price: own raw <input> with orange border to signal editability — never linked to lines state */}
-            <input type="text" inputMode="decimal"
-              value={prices[idx] ?? ''}
-              onChange={e => setPrices(prev => ({ ...prev, [idx]: e.target.value }))}
-              placeholder="0.00"
-              style={{background:'var(--navy-light)',border:'1px solid var(--orange)',borderRadius:7,padding:'9px 12px',color:'var(--cream)',fontSize:13,outline:'none',width:'100%'}}
-            />
-            <input type="text" inputMode="decimal"
-              value={costs[idx] ?? ''}
-              onChange={e => setCosts(prev => ({ ...prev, [idx]: e.target.value }))}
-              placeholder="0.00"
-              style={{background:'var(--navy-light)',border:'1px solid var(--border)',borderRadius:7,padding:'9px 12px',color:'var(--cream)',fontSize:13,outline:'none',width:'100%'}}
-            />
-            <button onClick={()=>removeLine(idx)} disabled={lines.length===1}
-              style={{background:'none',border:'none',color:'rgba(248,113,113,.6)',cursor:'pointer',padding:'8px 0',display:'flex',alignItems:'center'}}>
-              <Trash2 size={14}/>
-            </button>
-          </div>
-        ))}
-        <div style={{fontSize:10,color:'var(--orange)'}}>✏ Orange border = editable — tap the price field to change it freely</div>
+        {lines.map((line, idx) => {
+          const filtered = line.brand_id
+            ? products.filter(p => String(p.brand_id) === String(line.brand_id))
+            : products;
+          return (
+            <div key={idx} style={{display:'grid',gridTemplateColumns:'1fr 1.4fr 55px 120px 95px 28px',gap:8,alignItems:'flex-start'}}>
+              {/* Brand filter */}
+              <Select value={line.brand_id} onChange={e=>selectBrand(idx, e.target.value)}>
+                <option value="">All brands</option>
+                {brands.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
+              </Select>
+              {/* Product filtered by brand */}
+              <Select value={line.product_id} onChange={e=>selectProduct(idx, e.target.value)}>
+                <option value="">— Select SKU —</option>
+                {filtered.map(p=>(
+                  <option key={p.id} value={p.id}>{p.item_series}{p.variation?' · '+p.variation:''}</option>
+                ))}
+              </Select>
+              <Input type="number" min="1" value={line.qty}
+                onChange={e=>setLines(prev=>prev.map((l,i)=>i===idx?{...l,qty:e.target.value}:l))}
+                placeholder="0"/>
+              {/* UNCONTROLLED price — browser owns the value, user can always type freely */}
+              <input type="text" inputMode="decimal"
+                ref={el => { if (el) priceRefs.current[idx] = el; }}
+                placeholder="0.00"
+                style={{background:'var(--navy-light)',border:'1px solid var(--orange)',borderRadius:7,padding:'9px 12px',color:'var(--cream)',fontSize:13,outline:'none',width:'100%'}}
+              />
+              {/* UNCONTROLLED cost */}
+              <input type="text" inputMode="decimal"
+                ref={el => { if (el) costRefs.current[idx] = el; }}
+                placeholder="0.00"
+                style={{background:'var(--navy-light)',border:'1px solid var(--border)',borderRadius:7,padding:'9px 12px',color:'var(--cream)',fontSize:13,outline:'none',width:'100%'}}
+              />
+              <button onClick={()=>removeLine(idx)} disabled={lines.length===1}
+                style={{background:'none',border:'none',color:'rgba(248,113,113,.6)',cursor:'pointer',padding:'8px 0',display:'flex',alignItems:'center'}}>
+                <Trash2 size={14}/>
+              </button>
+            </div>
+          );
+        })}
+        <div style={{fontSize:10,color:'var(--orange)'}}>✏ Consign Price has orange border — tap and type to override freely</div>
         <Btn size="sm" variant="ghost" onClick={addLine}><Plus size={12}/> Add product</Btn>
-        <Input label="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="e.g. Restocking visit June"/>
+        <Input label="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="e.g. Restocking visit July"/>
         {error && <div style={{color:'#f87171',fontSize:12,padding:'6px 0'}}>{error}</div>}
         <div style={{display:'flex',gap:10,paddingTop:4}}>
           <Btn onClick={save} disabled={saving} size="lg" style={{flex:1,justifyContent:'center'}}>
@@ -216,7 +245,6 @@ function PlaceStockModal({ open, onClose, partnerId, onSaved }) {
     </Modal>
   );
 }
-
 // ── Record Return Modal ────────────────────────────────────────────
 function ReturnModal({ open, onClose, partnerId, onHandItems, onSaved }) {
   const [date, setDate]     = useState(today());
