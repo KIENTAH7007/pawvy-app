@@ -52,6 +52,8 @@ module.exports = function(db) {
     }
 
     try {
+      // Sanitize barcode: "-", "N/A", "n/a", blank → null so UNIQUE constraint isn't violated by placeholder text
+      const cleanBarcode = (barcode && barcode.trim() && !['−','-','—','n/a','na','none','nil'].includes(barcode.trim().toLowerCase())) ? barcode.trim() : null;
       const result = db.run(`
         INSERT INTO products
           (brand_id, barcode, item_series, variation,
@@ -59,7 +61,7 @@ module.exports = function(db) {
            price_wholesale_my, price_rrp_my, price_wholesale_au, price_rrp_au, notes)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
       `, [
-        brand_id, barcode || null, item_series, variation || null,
+        brand_id, cleanBarcode, item_series, variation || null,
         unit_cost || 0,
         price_wholesale_sg || 0, price_consignment_sg || 0, price_rrp_sg || 0,
         price_wholesale_my || 0, price_rrp_my || 0,

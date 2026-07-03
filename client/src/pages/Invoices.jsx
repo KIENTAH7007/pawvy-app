@@ -706,9 +706,19 @@ export default function Invoices() {
         <div style={{display:'flex',flexDirection:'column',gap:16}}>
           <Card title="PER-INVOICE PARTNERS — AR MONITORING">
             {!monitoring ? <div style={{padding:30,textAlign:'center',color:'var(--cream-30)',fontSize:12}}>Loading…</div>
-            : monitoring.perInvoice.length === 0 ? <div style={{padding:30,textAlign:'center',color:'var(--cream-30)',fontSize:12}}>No invoices yet.</div>
-            : (
-              <div style={{overflowX:'auto'}}>
+            : (() => {
+                const [showPaidPI, setShowPaidPI] = React.useState(false);
+                const filtered = showPaidPI ? monitoring.perInvoice : monitoring.perInvoice.filter(i => i.status !== 'Paid');
+                return (<>
+                  <div style={{padding:'8px 16px',display:'flex',justifyContent:'space-between',alignItems:'center',borderBottom:'1px solid var(--border)'}}>
+                    <span style={{fontSize:11,color:'var(--cream-30)'}}>{filtered.length} unpaid / overdue</span>
+                    <button onClick={()=>setShowPaidPI(v=>!v)} style={{fontSize:11,background:'none',border:'1px solid var(--border)',borderRadius:6,padding:'3px 10px',color:'var(--cream-60)',cursor:'pointer'}}>
+                      {showPaidPI ? 'Hide Paid' : 'Show Paid'}
+                    </button>
+                  </div>
+              {filtered.length === 0
+                ? <div style={{padding:30,textAlign:'center',color:'var(--cream-30)',fontSize:12}}>{showPaidPI ? 'No invoices yet.' : 'All invoices cleared! ✓ Toggle "Show Paid" to see history.'}</div>
+                : <div style={{overflowX:'auto'}}>
                 <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
                   <thead><tr>
                     {['Invoice #','Partner','Date','Due','Days Overdue','Amount','Status'].map(h=>(
@@ -716,7 +726,7 @@ export default function Invoices() {
                     ))}
                   </tr></thead>
                   <tbody>
-                    {monitoring.perInvoice.map(inv=>(
+                    {filtered.map(inv=>(
                       <tr key={inv.id} style={{borderBottom:'1px solid rgba(245,242,235,.04)',background:inv.is_overdue?'rgba(248,113,113,.05)':'transparent'}}>
                         <td style={{padding:'8px 12px',color:'var(--cream)',fontFamily:'monospace',fontSize:11}}>{inv.invoice_number}</td>
                         <td style={{padding:'8px 12px',color:'var(--cream)'}}>{inv.partner_name}</td>
@@ -737,45 +747,59 @@ export default function Invoices() {
                     ))}
                   </tbody>
                 </table>
-              </div>
-            )}
+              </div>}
+            </>);
+              })()
+            }
           </Card>
 
           <Card title="SOA PARTNERS — STATEMENT MONITORING">
             {!monitoring ? <div style={{padding:30,textAlign:'center',color:'var(--cream-30)',fontSize:12}}>Loading…</div>
-            : monitoring.soa.length === 0 ? <div style={{padding:30,textAlign:'center',color:'var(--cream-30)',fontSize:12}}>No SOAs generated yet.</div>
-            : (
-              <div style={{overflowX:'auto'}}>
-                <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
-                  <thead><tr>
-                    {['SOA #','Partner','Period','Due','Days Overdue','Amount','Status'].map(h=>(
-                      <th key={h} style={{padding:'8px 12px',textAlign:['Amount','Days Overdue'].includes(h)?'right':'left',fontSize:9.5,fontWeight:700,letterSpacing:.7,textTransform:'uppercase',color:'var(--cream-30)',borderBottom:'1px solid var(--border)'}}>{h}</th>
-                    ))}
-                  </tr></thead>
-                  <tbody>
-                    {monitoring.soa.map(s=>(
-                      <tr key={s.id} style={{borderBottom:'1px solid rgba(245,242,235,.04)',background:s.is_overdue?'rgba(248,113,113,.05)':'transparent'}}>
-                        <td style={{padding:'8px 12px',color:'var(--cream)',fontFamily:'monospace',fontSize:11}}>{s.invoice_number}</td>
-                        <td style={{padding:'8px 12px',color:'var(--cream)'}}>{s.partner_name}</td>
-                        <td style={{padding:'8px 12px',color:'var(--cream-60)',whiteSpace:'nowrap'}}>{s.period_start} → {s.period_end}</td>
-                        <td style={{padding:'8px 12px',color:'var(--cream-60)',whiteSpace:'nowrap'}}>{s.due_date}</td>
-                        <td style={{padding:'8px 12px',textAlign:'right',color:s.is_overdue?'#f87171':'var(--cream-30)',fontWeight:s.is_overdue?700:400}}>
-                          {s.status==='Paid'?'—':s.is_overdue?`${s.days_overdue}d`:'—'}
-                        </td>
-                        <td style={{padding:'8px 12px',textAlign:'right',fontWeight:700,color:'var(--cream)'}}>{sgd(s.total)}</td>
-                        <td style={{padding:'8px 12px'}}>
-                          <button onClick={()=>togglePaid(s)} style={{background:'none',border:'none',cursor:'pointer',padding:0}}>
-                            <Badge color={s.status==='Paid'?'#7fc93e':s.is_overdue?'#f87171':'#fbbf24'}>
-                              {s.status==='Paid'?<><CheckCircle size={10}/> Paid</>:s.is_overdue?<><AlertCircle size={10}/> Overdue</>:<><Clock size={10}/> Unpaid</>}
-                            </Badge>
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            : (() => {
+                const [showPaidSOA, setShowPaidSOA] = React.useState(false);
+                const filteredSOA = showPaidSOA ? monitoring.soa : monitoring.soa.filter(s => s.status !== 'Paid');
+                return (<>
+                  <div style={{padding:'8px 16px',display:'flex',justifyContent:'space-between',alignItems:'center',borderBottom:'1px solid var(--border)'}}>
+                    <span style={{fontSize:11,color:'var(--cream-30)'}}>{filteredSOA.length} unpaid / overdue</span>
+                    <button onClick={()=>setShowPaidSOA(v=>!v)} style={{fontSize:11,background:'none',border:'1px solid var(--border)',borderRadius:6,padding:'3px 10px',color:'var(--cream-60)',cursor:'pointer'}}>
+                      {showPaidSOA ? 'Hide Paid' : 'Show Paid'}
+                    </button>
+                  </div>
+                  {filteredSOA.length === 0
+                    ? <div style={{padding:30,textAlign:'center',color:'var(--cream-30)',fontSize:12}}>{showPaidSOA ? 'No SOAs generated yet.' : 'All SOAs cleared! ✓ Toggle "Show Paid" to see history.'}</div>
+                    : <div style={{overflowX:'auto'}}>
+                      <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                        <thead><tr>
+                          {['SOA #','Partner','Period','Due','Days Overdue','Amount','Status'].map(h=>(
+                            <th key={h} style={{padding:'8px 12px',textAlign:['Amount','Days Overdue'].includes(h)?'right':'left',fontSize:9.5,fontWeight:700,letterSpacing:.7,textTransform:'uppercase',color:'var(--cream-30)',borderBottom:'1px solid var(--border)'}}>{h}</th>
+                          ))}
+                        </tr></thead>
+                        <tbody>
+                          {filteredSOA.map(s=>(
+                            <tr key={s.id} style={{borderBottom:'1px solid rgba(245,242,235,.04)',background:s.is_overdue?'rgba(248,113,113,.05)':'transparent'}}>
+                              <td style={{padding:'8px 12px',color:'var(--cream)',fontFamily:'monospace',fontSize:11}}>{s.invoice_number}</td>
+                              <td style={{padding:'8px 12px',color:'var(--cream)'}}>{s.partner_name}</td>
+                              <td style={{padding:'8px 12px',color:'var(--cream-60)',whiteSpace:'nowrap'}}>{s.period_start} → {s.period_end}</td>
+                              <td style={{padding:'8px 12px',color:'var(--cream-60)',whiteSpace:'nowrap'}}>{s.due_date}</td>
+                              <td style={{padding:'8px 12px',textAlign:'right',color:s.is_overdue?'#f87171':'var(--cream-30)',fontWeight:s.is_overdue?700:400}}>
+                                {s.status==='Paid'?'—':s.is_overdue?`${s.days_overdue}d`:'—'}
+                              </td>
+                              <td style={{padding:'8px 12px',textAlign:'right',fontWeight:700,color:'var(--cream)'}}>{sgd(s.total)}</td>
+                              <td style={{padding:'8px 12px'}}>
+                                <button onClick={()=>togglePaid(s)} style={{background:'none',border:'none',cursor:'pointer',padding:0}}>
+                                  <Badge color={s.status==='Paid'?'#7fc93e':s.is_overdue?'#f87171':'#fbbf24'}>
+                                    {s.status==='Paid'?<><CheckCircle size={10}/> Paid</>:s.is_overdue?<><AlertCircle size={10}/> Overdue</>:<><Clock size={10}/> Unpaid</>}
+                                  </Badge>
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>}
+                </>);
+              })()
+            }
           </Card>
         </div>
       )}

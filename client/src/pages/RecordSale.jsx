@@ -11,7 +11,7 @@ const IS_MARKETPLACE = ch => ['Shopee', 'Lazada', 'Amazon', 'TikTok Shop'].inclu
 const IS_B2B        = ch => B2B_CHANNELS.includes(ch);
 
 function useIsMobile() {
-  const [mobile, setMobile] = useState(window.innerWidth < 680);
+  const [mobile, setMobile] = useState(window.innerWidth < 900);
   useEffect(() => {
     const h = () => setMobile(window.innerWidth < 680);
     window.addEventListener('resize', h);
@@ -79,7 +79,7 @@ const STANDARD_REBATE_TIERS = [
   { min:   0, rebate:  0, label: '< $200 → delivery charge' },
 ];
 
-const EMPTY_LINE = { brand_id: '', product_id: '', qty: '', unit_cost: '', unit_price: '' };
+const EMPTY_LINE = { brand_id: '', product_id: '', qty: '', unit_cost: '', unit_price: '', item_discount_pct: '' };
 
 export default function RecordSale() {
   const nav = useNavigate();
@@ -154,13 +154,18 @@ export default function RecordSale() {
   const removeLine = (i) => setLines(p => p.filter((_, idx) => idx !== i));
 
   const lineCalcs  = lines.map(l => ({
-    qty:   parseFloat(l.qty)        || 0,
-    cost:  parseFloat(l.unit_cost)  || 0,
-    price: parseFloat(l.unit_price) || 0,
-    get revenue()    { return this.qty * this.price; },
-    get lineProfit() { return this.qty * (this.price - this.cost); },
+    qty:     parseFloat(l.qty)               || 0,
+    cost:    parseFloat(l.unit_cost)         || 0,
+    price:   parseFloat(l.unit_price)        || 0,
+    discPct: parseFloat(l.item_discount_pct) || 0,
+    get discAmt()    { return parseFloat((this.price * this.discPct / 100).toFixed(2)); },
+    get netPrice()   { return parseFloat((this.price - this.discAmt).toFixed(2)); },
+    get revenue()    { return this.qty * this.netPrice; },
+    get lineProfit() { return this.qty * (this.netPrice - this.cost); },
   }));
-  const subtotal    = lineCalcs.reduce((s, l) => s + l.revenue,    0);
+  const catalogSubtotal   = lineCalcs.reduce((s, l) => s + l.qty * l.price, 0);
+  const itemDiscountTotal = lineCalcs.reduce((s, l) => s + l.qty * l.discAmt, 0);
+  const subtotal    = lineCalcs.reduce((s, l) => s + l.revenue,    0); // post-item-discount
   const totalProfit = lineCalcs.reduce((s, l) => s + l.lineProfit, 0);
   const mktFeeAmt   = IS_MARKETPLACE(channel) ? subtotal * (feePct / 100) : 0;
 
@@ -219,32 +224,36 @@ export default function RecordSale() {
       for (let i = 0; i < validLines.length; i++) {
         const l = validLines[i];
         const qty   = parseInt(l.qty);
-        const price = parseFloat(l.unit_price);
-        const cost  = parseFloat(l.unit_cost) || 0;
+        const origIdx  = lines.indexOf(l);
+        const lc       = lineCalcs[origIdx];
+        const netPrice = lc.netPrice;  // catalog price minus per-item clearance discount
+        const cost     = parseFloat(l.unit_cost) || 0;
 
-        // Platform fee (marketplace) or B2B discount stored in platform_fee_amt
+        // Platform fee (marketplace) or B2B partner discount stored in platform_fee_amt
         let feeAmt = 0;
         let feePctToSave = 0;
         if (IS_MARKETPLACE(channel)) {
           feePctToSave = feePct;
-          feeAmt = parseFloat((qty * price * feePct / 100).toFixed(2));
+          feeAmt = parseFloat((qty * netPrice * feePct / 100).toFixed(2));
         } else if (IS_B2B(channel)) {
-          // Fix #7: store B2B discount in platform_fee_amt
-          feeAmt = getPerLineDiscountAmt(lines.indexOf(l));
+          feeAmt = getPerLineDiscountAmt(origIdx); // proportioned from post-item-discount revenue
           feePctToSave = 0;
         }
 
         // Only first line gets the shipping amount (it's per-order)
         const isFirst = (i === 0);
+        const itemDiscNote = lc.discPct > 0
+          ? `Item disc ${lc.discPct}% off SGD ${lc.price.toFixed(2)}`
+          : null;
 
         await salesApi.create({
           date, product_id: l.product_id, partner_id: partnerId || null,
-          channel, market, qty, unit_cost: cost, unit_price: price,
+          channel, market, qty, unit_cost: cost, unit_price: netPrice,
           platform_fee_pct: feePctToSave,
           platform_fee_amt: feeAmt,
           shipping_charged: isFirst ? shipCharged : 0,
           shipping_cost:    isFirst ? shipCost    : 0,
-          notes: saleNotes,
+          notes: [saleNotes, itemDiscNote].filter(Boolean).join(' | ') || null,
         });
       }
       setSaved(true);
@@ -286,8 +295,16 @@ export default function RecordSale() {
           {!hideConfidential && <Input label="Unit Cost" type="number" step="0.01" value={line.unit_cost} onChange={e=>updateLine(idx,'unit_cost',e.target.value)} placeholder="0.00"/>}
           <Input label="Sale Price" type="number" step="0.01" value={line.unit_price} onChange={e=>updateLine(idx,'unit_price',e.target.value)} placeholder="0.00"/>
         </div>
+        <div style={{display:'flex',gap:8,alignItems:'center'}}>
+          <div style={{flex:1,fontSize:11,color:'var(--cream-30)'}}>Item Disc %</div>
+          <div style={{width:90}}>
+            <Input type="number" min="0" max="100" step="1" value={line.item_discount_pct||''} onChange={e=>updateLine(idx,'item_discount_pct',e.target.value)} placeholder="0 = no disc"/>
+          </div>
+          {lc.discPct > 0 && <span style={{fontSize:11,color:'#fbbf24',whiteSpace:'nowrap'}}>− {fmt.sgd(lc.discAmt)} /u</span>}
+        </div>
         {lc.revenue > 0 && (
           <div style={{textAlign:'right',fontSize:13,fontWeight:700,color: hideConfidential ? 'var(--cream)' : (lc.lineProfit>=0?'#7fc93e':'#f87171')}}>
+            {lc.discPct > 0 && <span style={{fontSize:10,color:'var(--cream-30)',marginRight:6,textDecoration:'line-through'}}>{fmt.sgd(lc.qty * lc.price)}</span>}
             {fmt.sgd(lc.revenue)}
             {!hideConfidential && <span style={{fontSize:10,color:'var(--cream-30)',marginLeft:6}}>profit {fmt.sgd(lc.lineProfit)}</span>}
           </div>
@@ -309,10 +326,7 @@ export default function RecordSale() {
           {hideConfidential ? 'Retailer View ON' : 'Retailer View'}
         </button>
       }>
-      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 268px', gap: 16, alignItems: 'start' }}>
-
-        {/* ── Main form ── */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <Card>
             <div style={{ padding: 16, display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1fr 1fr 1fr 2fr', gap: 12 }}>
               <Input label="Date *" type="date" value={date} onChange={e => setDate(e.target.value)} />
@@ -361,14 +375,14 @@ export default function RecordSale() {
               </div>
             ) : (
               <>
-                <div style={{ display: 'grid', gridTemplateColumns: hideConfidential ? '1fr 2fr 70px 100px 90px 36px' : '1fr 2fr 70px 100px 100px 90px 36px', gap: 8, padding: '7px 16px 3px', fontSize: 9.5, fontWeight: 700, letterSpacing: .8, textTransform: 'uppercase', color: 'var(--cream-30)' }}>
-                  <span>Brand</span><span>Product / SKU</span><span>Qty</span>{!hideConfidential && <span>Unit Cost</span>}<span>Sale Price</span><span style={{ textAlign: 'right' }}>Line Total</span><span />
+                <div style={{ display: 'grid', gridTemplateColumns: hideConfidential ? '1fr 2fr 60px 90px 60px 90px 36px' : '1fr 2fr 60px 90px 90px 60px 90px 36px', gap: 8, padding: '7px 16px 3px', fontSize: 9.5, fontWeight: 700, letterSpacing: .8, textTransform: 'uppercase', color: 'var(--cream-30)' }}>
+                  <span>Brand</span><span>Product / SKU</span><span>Qty</span>{!hideConfidential && <span>Unit Cost</span>}<span>Sale Price</span><span>Disc %</span><span style={{ textAlign: 'right' }}>Line Total</span><span />
                 </div>
                 {lines.map((line, idx) => {
                   const prods = productsByBrand[line.brand_id] || [];
                   const lc    = lineCalcs[idx];
                   return (
-                    <div key={idx} style={{ display: 'grid', gridTemplateColumns: hideConfidential ? '1fr 2fr 70px 100px 90px 36px' : '1fr 2fr 70px 100px 100px 90px 36px', gap: 8, padding: '6px 16px', borderBottom: '1px solid var(--cream-05)' }}>
+                    <div key={idx} style={{ display: 'grid', gridTemplateColumns: hideConfidential ? '1fr 2fr 60px 90px 60px 90px 36px' : '1fr 2fr 60px 90px 90px 60px 90px 36px', gap: 8, padding: '6px 16px', borderBottom: '1px solid var(--cream-05)' }}>
                       <Select value={line.brand_id} onChange={async e => { updateLine(idx, 'brand_id', e.target.value); updateLine(idx, 'product_id', ''); await ensureProducts(e.target.value); }}>
                         <option value="">Brand</option>
                         {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
@@ -380,8 +394,10 @@ export default function RecordSale() {
                       <Input type="number" min="1" value={line.qty}        onChange={e => updateLine(idx, 'qty',        e.target.value)} placeholder="0" />
                       {!hideConfidential && <Input type="number" step="0.01" value={line.unit_cost}  onChange={e => updateLine(idx, 'unit_cost',  e.target.value)} placeholder="0.00" />}
                       <Input type="number" step="0.01" value={line.unit_price} onChange={e => updateLine(idx, 'unit_price', e.target.value)} placeholder="0.00" />
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', fontWeight: 600, color: hideConfidential ? 'var(--cream)' : (lc.lineProfit >= 0 ? '#7fc93e' : '#f87171'), fontSize: 12 }}>
-                        {lc.revenue > 0 ? fmt.sgd(lc.revenue) : '—'}
+                      <Input type="number" min="0" max="100" step="1" value={line.item_discount_pct||''} onChange={e => updateLine(idx, 'item_discount_pct', e.target.value)} placeholder="0%" title="Item discount %" />
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', flexDirection: 'column', gap: 1 }}>
+                        {lc.discPct > 0 && <span style={{ fontSize: 9, color: 'var(--cream-30)', textDecoration: 'line-through' }}>{fmt.sgd(lc.qty * lc.price)}</span>}
+                        <span style={{ fontWeight: 600, color: hideConfidential ? 'var(--cream)' : (lc.lineProfit >= 0 ? '#7fc93e' : '#f87171'), fontSize: 12 }}>{lc.revenue > 0 ? fmt.sgd(lc.revenue) : '—'}</span>
                       </div>
                       <button onClick={() => removeLine(idx)} disabled={lines.length === 1}
                         style={{ background: 'none', border: 'none', color: 'rgba(248,113,113,.6)', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}>
@@ -435,13 +451,11 @@ export default function RecordSale() {
             </div>
             {error && <div style={{ margin: '0 14px 12px', background: 'rgba(248,113,113,.12)', border: '1px solid rgba(248,113,113,.3)', borderRadius: 7, padding: '8px 12px', fontSize: 12, color: '#f87171' }}>{error}</div>}
           </Card>
-        </div>
-
-        {/* ── Right panel ── */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <Card title="ORDER SUMMARY">
             <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 9 }}>
-              <Row label={`Subtotal (${lines.filter(l=>l.qty).length} lines)`} value={fmt.sgd(subtotal)} />
+              {itemDiscountTotal > 0 && <Row label={`Catalog Subtotal`} value={fmt.sgd(catalogSubtotal)} muted />}
+              {itemDiscountTotal > 0 && <Row label={`Item Discounts`} value={`− ${fmt.sgd(itemDiscountTotal)}`} style={{color:'#fbbf24'}} />}
+              <Row label={`${itemDiscountTotal > 0 ? 'Net ' : ''}Subtotal (${lines.filter(l=>l.qty).length} line${lines.filter(l=>l.qty).length !== 1 ? 's' : ''})`} value={fmt.sgd(subtotal)} />
 
               {IS_MARKETPLACE(channel) && mktFeeAmt > 0 && (
                 <Row label={`Marketplace fee (${feePct}%)`} value={`− ${fmt.sgd(mktFeeAmt)}`} muted />
@@ -563,7 +577,6 @@ export default function RecordSale() {
               </div>
             </Card>
           )}
-        </div>
       </div>
     </Page>
   );

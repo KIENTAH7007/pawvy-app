@@ -37,6 +37,7 @@ export default function Products() {
   const [form,     setForm]     = useState({});
   const [brandForm, setBrandForm] = useState({ name:'', color: BRAND_COLORS[0] });
   const [saving,   setSaving]   = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   const load = () => {
     const q = {};
@@ -52,12 +53,16 @@ export default function Products() {
   const sf = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   async function save() {
-    if (!form.brand_id || !form.item_series) return;
+    setSaveError('');
+    if (!form.brand_id)   { setSaveError('Please select a Brand before saving.'); return; }
+    if (!form.item_series){ setSaveError('Please enter an Item Series name before saving.'); return; }
     setSaving(true);
     try {
       if (modal === 'edit') await productsApi.update(form.id, form);
       else                  await productsApi.create(form);
-      load(); setModal(null);
+      load(); setModal(null); setSaveError('');
+    } catch(e) {
+      setSaveError(`Save failed: ${e.message || 'unknown error'}`);
     } finally { setSaving(false); }
   }
 
@@ -187,7 +192,7 @@ export default function Products() {
       </div>
 
       {/* Product Add / Edit Modal */}
-      <Modal open={modal==='add'||modal==='edit'} title={modal==='edit'?'EDIT PRODUCT':'ADD PRODUCT'} onClose={()=>setModal(null)} width={640}>
+      <Modal open={modal==='add'||modal==='edit'} title={modal==='edit'?'EDIT PRODUCT':'ADD PRODUCT'} onClose={()=>{setModal(null);setSaveError('');}} width={640}>
         <div style={{display:'flex',flexDirection:'column',gap:14}}>
           <FormRow cols={2}>
             <Select label="Brand *" value={form.brand_id||''} onChange={e=>sf('brand_id',e.target.value)}>
@@ -222,6 +227,12 @@ export default function Products() {
           </FormRow>
 
           <Input label="Notes" value={form.notes||''} onChange={e=>sf('notes',e.target.value)} placeholder="Optional"/>
+
+          {saveError && (
+            <div style={{background:'rgba(248,113,113,.12)',border:'1px solid rgba(248,113,113,.3)',borderRadius:7,padding:'9px 14px',fontSize:12,color:'#f87171'}}>
+              ⚠ {saveError}
+            </div>
+          )}
 
           <div style={{display:'flex',gap:10,paddingTop:4}}>
             <Btn onClick={save} disabled={saving} size="lg" style={{flex:1,justifyContent:'center'}}>{saving?'Saving…':'Save Product'}</Btn>
