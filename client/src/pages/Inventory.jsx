@@ -625,8 +625,8 @@ export default function Inventory() {
             : <div style={{overflowX:'auto'}}>
                 <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:760}}>
                   <thead><tr>
-                    {['Brand','Product','Storhub','Home','Warehouse','Consignment','Total Stock'].map(h=>(
-                      <th key={h} style={{padding:'9px 12px',textAlign:['Storhub','Home','Warehouse','Consignment','Total Stock'].includes(h)?'right':'left',fontSize:9.5,fontWeight:700,letterSpacing:.7,textTransform:'uppercase',color:'var(--cream-30)',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap'}}>{h}</th>
+                    {['Brand','Product','Storhub','Home','Qty On Hand','Consignment','Total Stock'].map(h=>(
+                      <th key={h} style={{padding:'9px 12px',textAlign:['Storhub','Home','Qty On Hand','Consignment','Total Stock'].includes(h)?'right':'left',fontSize:9.5,fontWeight:700,letterSpacing:.7,textTransform:'uppercase',color:'var(--cream-30)',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap'}}>{h}</th>
                     ))}
                   </tr></thead>
                   <tbody>
