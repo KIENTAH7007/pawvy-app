@@ -566,6 +566,8 @@ function GenerateSOAModal({ open, onClose, partners, onGenerated }) {
 export default function Invoices() {
   const isMobile = useIsMobile();
   const [tab, setTab]               = useState('documents'); // documents | monitoring
+  const [showPaidPI,  setShowPaidPI]  = useState(false);
+  const [showPaidSOA, setShowPaidSOA] = useState(false);
   const [partners, setPartners]     = useState([]);
   const [documents, setDocuments]   = useState([]);
   const [filterType, setFilterType] = useState('');
@@ -705,17 +707,17 @@ export default function Invoices() {
         /* Payment Monitoring */
         <div style={{display:'flex',flexDirection:'column',gap:16}}>
           <Card title="PER-INVOICE PARTNERS — AR MONITORING">
-            {!monitoring ? <div style={{padding:30,textAlign:'center',color:'var(--cream-30)',fontSize:12}}>Loading…</div>
-            : (() => {
-                const [showPaidPI, setShowPaidPI] = React.useState(false);
-                const filtered = showPaidPI ? monitoring.perInvoice : monitoring.perInvoice.filter(i => i.status !== 'Paid');
-                return (<>
-                  <div style={{padding:'8px 16px',display:'flex',justifyContent:'space-between',alignItems:'center',borderBottom:'1px solid var(--border)'}}>
-                    <span style={{fontSize:11,color:'var(--cream-30)'}}>{filtered.length} unpaid / overdue</span>
-                    <button onClick={()=>setShowPaidPI(v=>!v)} style={{fontSize:11,background:'none',border:'1px solid var(--border)',borderRadius:6,padding:'3px 10px',color:'var(--cream-60)',cursor:'pointer'}}>
-                      {showPaidPI ? 'Hide Paid' : 'Show Paid'}
-                    </button>
-                  </div>
+            {!monitoring
+              ? <div style={{padding:30,textAlign:'center',color:'var(--cream-30)',fontSize:12}}>Loading…</div>
+              : (() => {
+                  const filtered = showPaidPI ? monitoring.perInvoice : monitoring.perInvoice.filter(i => i.status !== 'Paid');
+                  return (<>
+                    <div style={{padding:'8px 16px',display:'flex',justifyContent:'space-between',alignItems:'center',borderBottom:'1px solid var(--border)'}}>
+                      <span style={{fontSize:11,color:'var(--cream-30)'}}>{filtered.length} unpaid / overdue</span>
+                      <button onClick={()=>setShowPaidPI(v=>!v)} style={{fontSize:11,background:'none',border:'1px solid var(--border)',borderRadius:6,padding:'3px 10px',color:'var(--cream-60)',cursor:'pointer'}}>
+                        {showPaidPI ? 'Hide Paid' : 'Show Paid'}
+                      </button>
+                    </div>
               {filtered.length === 0
                 ? <div style={{padding:30,textAlign:'center',color:'var(--cream-30)',fontSize:12}}>{showPaidPI ? 'No invoices yet.' : 'All invoices cleared! ✓ Toggle "Show Paid" to see history.'}</div>
                 : <div style={{overflowX:'auto'}}>
@@ -754,17 +756,17 @@ export default function Invoices() {
           </Card>
 
           <Card title="SOA PARTNERS — STATEMENT MONITORING">
-            {!monitoring ? <div style={{padding:30,textAlign:'center',color:'var(--cream-30)',fontSize:12}}>Loading…</div>
-            : (() => {
-                const [showPaidSOA, setShowPaidSOA] = React.useState(false);
-                const filteredSOA = showPaidSOA ? monitoring.soa : monitoring.soa.filter(s => s.status !== 'Paid');
-                return (<>
-                  <div style={{padding:'8px 16px',display:'flex',justifyContent:'space-between',alignItems:'center',borderBottom:'1px solid var(--border)'}}>
-                    <span style={{fontSize:11,color:'var(--cream-30)'}}>{filteredSOA.length} unpaid / overdue</span>
-                    <button onClick={()=>setShowPaidSOA(v=>!v)} style={{fontSize:11,background:'none',border:'1px solid var(--border)',borderRadius:6,padding:'3px 10px',color:'var(--cream-60)',cursor:'pointer'}}>
-                      {showPaidSOA ? 'Hide Paid' : 'Show Paid'}
-                    </button>
-                  </div>
+            {!monitoring
+              ? <div style={{padding:30,textAlign:'center',color:'var(--cream-30)',fontSize:12}}>Loading…</div>
+              : (() => {
+                  const filteredSOA = showPaidSOA ? monitoring.soa : monitoring.soa.filter(s => s.status !== 'Paid');
+                  return (<>
+                    <div style={{padding:'8px 16px',display:'flex',justifyContent:'space-between',alignItems:'center',borderBottom:'1px solid var(--border)'}}>
+                      <span style={{fontSize:11,color:'var(--cream-30)'}}>{filteredSOA.length} unpaid / overdue</span>
+                      <button onClick={()=>setShowPaidSOA(v=>!v)} style={{fontSize:11,background:'none',border:'1px solid var(--border)',borderRadius:6,padding:'3px 10px',color:'var(--cream-60)',cursor:'pointer'}}>
+                        {showPaidSOA ? 'Hide Paid' : 'Show Paid'}
+                      </button>
+                    </div>
                   {filteredSOA.length === 0
                     ? <div style={{padding:30,textAlign:'center',color:'var(--cream-30)',fontSize:12}}>{showPaidSOA ? 'No SOAs generated yet.' : 'All SOAs cleared! ✓ Toggle "Show Paid" to see history.'}</div>
                     : <div style={{overflowX:'auto'}}>
