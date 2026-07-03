@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Plus, RotateCcw, Search, Trash2, CheckCircle, AlertCircle, FileText, Archive, ChevronLeft } from 'lucide-react';
+import { Plus, RotateCcw, Search, Trash2, CheckCircle, AlertCircle, FileText, Archive } from 'lucide-react';
 import { consignmentApi, productsApi, brandsApi } from '../api';
 import { Page, Card, Select, Input, Btn, Badge, Modal } from '../components/ui';
 import { sgd, pawvyHeaderHtml, pawvyAddressBlockHtml, pawvyFooterHtml, openPdfWindow } from '../utils/pawvyPdf';
