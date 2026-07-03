@@ -15,11 +15,12 @@ module.exports = function(db) {
     const latestSnap = {};
     snapRows.forEach(s => { if (!latestSnap[s.product_id]) latestSnap[s.product_id] = s; });
 
-    // All products ever placed
+    // All products ever placed — use the PARTNER's actual agreed price from the most recent
+    // placement record, NOT the product's default price from Products & Pricing.
     const placed = db.query(`
       SELECT cp.product_id,
         p.item_series, p.variation, p.barcode,
-        p.unit_cost, p.price_consignment_sg AS consignment_price,
+        p.unit_cost,
         b.name AS brand_name, b.color AS brand_color,
         SUM(cp.qty) AS total_placed_ever
       FROM consignment_placements cp
@@ -28,6 +29,20 @@ module.exports = function(db) {
       WHERE cp.partner_id = ?
       GROUP BY cp.product_id
     `, [partner_id]);
+
+    // Most recent placement price per product for this partner
+    const latestPrices = db.query(`
+      SELECT product_id, consignment_price
+      FROM consignment_placements
+      WHERE partner_id = ?
+        AND id IN (
+          SELECT MAX(id) FROM consignment_placements
+          WHERE partner_id = ?
+          GROUP BY product_id
+        )
+    `, [partner_id, partner_id]);
+    const latestPriceMap = {};
+    latestPrices.forEach(r => { latestPriceMap[r.product_id] = r.consignment_price; });
 
     // Union of product IDs from placements + snapshots
     const allIds = new Set([
@@ -59,7 +74,8 @@ module.exports = function(db) {
       const returnedSince = db.queryOne(`SELECT COALESCE(SUM(qty),0) AS n FROM consignment_returns WHERE partner_id=? AND product_id=? AND date>?`, [partner_id, pid, snapDate])?.n || 0;
 
       const on_hand = snapQty + placedSince - invoicedSince - returnedSince;
-      const price   = info?.consignment_price || snap?.consignment_price || 0;
+      // Price priority: partner's most recent placement price > snapshot price > product default
+      const price = latestPriceMap[pid] || snap?.consignment_price || info?.consignment_price || 0;
 
       result.push({
         ...(info || {}),
