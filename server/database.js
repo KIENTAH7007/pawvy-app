@@ -307,6 +307,9 @@ function createSchema() {
 
   tables.forEach(sql => db.run(sql));
 
+  // Product images for Order Portal catalogue
+  try { db.run("ALTER TABLE products ADD COLUMN image_data TEXT"); } catch(e) {}
+
   // Partner outlet address on invoice/DO
   try { db.run("ALTER TABLE invoices ADD COLUMN outlet_address_id INTEGER REFERENCES partner_addresses(id)"); } catch(e) {}
 

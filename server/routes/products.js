@@ -117,5 +117,21 @@ module.exports = function(db) {
     res.json({ ok: true });
   });
 
+  // ── Product image (base64 stored in DB) ───────────────────────
+  // POST /api/products/:id/image  — body: { image_data: "data:image/jpeg;base64,..." }
+  router.post('/:id/image', (req, res) => {
+    const { image_data } = req.body;
+    if (!image_data) return res.status(400).json({ error: 'image_data required' });
+    // Sanity-check: must be a data URI (jpeg, png, webp)
+    if (!image_data.startsWith('data:image/')) return res.status(400).json({ error: 'Must be a base64 image data URI' });
+    db.run('UPDATE products SET image_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [image_data, req.params.id]);
+    res.json({ ok: true });
+  });
+
+  router.delete('/:id/image', (req, res) => {
+    db.run('UPDATE products SET image_data = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [req.params.id]);
+    res.json({ ok: true });
+  });
+
   return router;
 };
