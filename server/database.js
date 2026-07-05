@@ -374,6 +374,10 @@ function createSchema() {
     db.run("UPDATE partners SET billing_cycle = CASE WHEN discount_type = 'credit_note' THEN 'soa' ELSE 'per_invoice' END WHERE billing_cycle IS NULL");
   } catch(e) {}
 
+  // Order Portal (Phase 6): manual display ordering within a brand.
+  // NULL = falls back to alphabetical item_series/variation ordering.
+  try { db.run("ALTER TABLE products ADD COLUMN portal_sort_order INTEGER"); } catch(e) {}
+
   console.log('✅ Schema ready');
 }
 

@@ -1,10 +1,22 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { Search, ShoppingCart, ArrowLeft, CheckCircle2, Loader2 } from 'lucide-react'
 import { portalApi } from './api.js'
+import { PAWVY_LOGO_WHITE } from './pawvyLogo.js'
 import ProductCard from './ProductCard.jsx'
 import QtyStepper from './QtyStepper.jsx'
 
+function useIsMobile() {
+  const [mobile, setMobile] = useState(window.innerWidth < 768);
+  useEffect(() => {
+    const h = () => setMobile(window.innerWidth < 768);
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
+  }, []);
+  return mobile;
+}
+
 export default function App() {
+  const isMobile = useIsMobile();
   const [catalogue, setCatalogue] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -217,7 +229,12 @@ export default function App() {
   return (
     <div style={{ minHeight: '100vh', paddingBottom: cartCount > 0 ? 84 : 24 }}>
       <TopBar>
-        <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 20, letterSpacing: 1 }}>PAWVY ORDER PORTAL</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ width: 34, height: 34, background: 'var(--orange)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <img src={PAWVY_LOGO_WHITE} alt="Pawvy" style={{ width: 22, height: 22, objectFit: 'contain' }}/>
+          </div>
+          <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 20, letterSpacing: 1 }}>PAWVY ORDER PORTAL</div>
+        </div>
       </TopBar>
 
       <div style={{ maxWidth: 1040, margin: '0 auto', padding: '16px 16px 0' }}>
@@ -258,7 +275,7 @@ export default function App() {
             No products match your search.
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 12, paddingBottom: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: 12, paddingBottom: 20 }}>
             {filtered.map(p => (
               <ProductCard
                 key={p.id}
@@ -267,6 +284,7 @@ export default function App() {
                 onAdd={addToCart}
                 onUpdateQty={updateQty}
                 onRemove={removeFromCart}
+                compact={isMobile}
               />
             ))}
           </div>

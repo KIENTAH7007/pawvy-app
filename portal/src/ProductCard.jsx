@@ -10,7 +10,7 @@ const STOCK_LABEL = {
 
 const sgd = v => `SGD ${parseFloat(v || 0).toFixed(2)}`;
 
-export default function ProductCard({ product, cartQty, onAdd, onUpdateQty, onRemove }) {
+export default function ProductCard({ product, cartQty, onAdd, onUpdateQty, onRemove, compact }) {
   const [pendingQty, setPendingQty] = useState(1);
   const stock = STOCK_LABEL[product.stock_status] || STOCK_LABEL.available;
   const outOfStock = product.stock_status === 'out_of_stock';
@@ -64,13 +64,13 @@ export default function ProductCard({ product, cartQty, onAdd, onUpdateQty, onRe
           {stock.text}
         </div>
 
-        <div style={{ marginTop: 'auto', paddingTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ marginTop: 'auto', paddingTop: 8, display: 'flex', flexDirection: compact ? 'column' : 'row', alignItems: compact ? 'stretch' : 'center', gap: 8 }}>
           {inCart ? (
             <>
               <QtyStepper value={cartQty} onChange={q => onUpdateQty(product.id, q)} disabled={outOfStock} />
               <button
                 onClick={() => onRemove(product.id)}
-                style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'rgba(248,113,113,.8)', background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}
+                style={{ marginLeft: compact ? 0 : 'auto', display: 'flex', alignItems: 'center', justifyContent: compact ? 'center' : 'flex-start', gap: 4, fontSize: 11, color: 'rgba(248,113,113,.8)', background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}
               >
                 <X size={13} /> Remove
               </button>
@@ -85,7 +85,7 @@ export default function ProductCard({ product, cartQty, onAdd, onUpdateQty, onRe
               <button
                 onClick={() => { onAdd(product, pendingQty); setPendingQty(1); }}
                 style={{
-                  marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5,
+                  marginLeft: compact ? 0 : 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
                   fontSize: 12, fontWeight: 700, color: 'var(--navy)', background: 'var(--orange)',
                   border: 'none', borderRadius: 6, padding: '6px 12px', cursor: 'pointer',
                 }}

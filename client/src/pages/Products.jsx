@@ -153,12 +153,13 @@ export default function Products() {
                 <th style={th()}>Variation</th>
                 <th style={th()}>Barcode</th>
                 {mktCols.map(c => <th key={c.key} style={th('right')}>{c.label}</th>)}
+                <th style={th('right')} title="Manual display order on the Order Portal — lower shows first, blank falls back to alphabetical">Portal Order</th>
                 <th style={th()}/>
               </tr>
             </thead>
             <tbody>
               {products.length === 0
-                ? <tr><td colSpan={5+mktCols.length} style={{padding:40,textAlign:'center',color:'var(--cream-30)'}}>No products found</td></tr>
+                ? <tr><td colSpan={6+mktCols.length} style={{padding:40,textAlign:'center',color:'var(--cream-30)'}}>No products found</td></tr>
                 : products.map(p => {
                   const archived = p.is_active === 0;
                   return (
@@ -187,6 +188,25 @@ export default function Products() {
                           {parseFloat(p[c.key]||0)>0 ? `${parseFloat(p[c.key]).toFixed(2)}` : '—'}
                         </td>
                       ))}
+                      <td style={td('right')} onClick={e => e.stopPropagation()}>
+                        <input
+                          type="number"
+                          defaultValue={p.portal_sort_order ?? ''}
+                          placeholder="—"
+                          onClick={e => e.stopPropagation()}
+                          onBlur={e => {
+                            const val = e.target.value === '' ? null : parseInt(e.target.value);
+                            productsApi.setPortalOrder(p.id, val).then(() => {
+                              setProducts(prev => prev.map(pr => pr.id === p.id ? { ...pr, portal_sort_order: val } : pr));
+                            });
+                          }}
+                          style={{
+                            width: 56, textAlign: 'right', background: 'rgba(245,242,235,.05)',
+                            border: '1px solid var(--border)', borderRadius: 5, color: 'var(--cream)',
+                            fontSize: 12, padding: '4px 6px',
+                          }}
+                        />
+                      </td>
                       <td style={td()}>
                         <Btn size="sm" variant="ghost" onClick={e=>{e.stopPropagation();setForm({...p});setModal('edit');}}>Edit</Btn>
                       </td>

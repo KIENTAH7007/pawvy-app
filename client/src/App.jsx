@@ -18,6 +18,8 @@ import Reports        from './pages/Reports';
 import Consignment    from './pages/Consignment';
 import Invoices       from './pages/Invoices';
 
+import { PAWVY_LOGO_WHITE } from './pawvyLogo.js';
+
 /* ── Nav config ─────────────────────────────────────────────────── */
 const NAV = [
   { section: null,          items: [
@@ -88,7 +90,7 @@ function Sidebar({ open, onClose }) {
         <div style={{ padding: '18px 16px 14px', borderBottom: '1px solid var(--border)', display:'flex', alignItems:'center', gap:10, justifyContent:'space-between' }}>
           <div style={{ display:'flex', alignItems:'center', gap:10 }}>
             <div style={{ width:30, height:30, background:'var(--orange)', borderRadius:7, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-              <span style={{ fontFamily:"'Bebas Neue',sans-serif", color:'#fff', fontSize:20, lineHeight:1 }}>P</span>
+              <img src={PAWVY_LOGO_WHITE} alt="Pawvy" style={{ width:20, height:20, objectFit:'contain' }}/>
             </div>
             <div>
               <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:20, color:'var(--cream)', letterSpacing:2, lineHeight:1 }}>PAWVY</div>

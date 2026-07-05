@@ -133,5 +133,17 @@ module.exports = function(db) {
     res.json({ ok: true });
   });
 
+  // ── Portal display order (Phase 6) ─────────────────────────────
+  // POST /api/products/:id/portal-order — body: { portal_sort_order: number|null }
+  // Controls manual ordering within a brand on the public Order Portal.
+  // Lower numbers show first; null falls back to alphabetical.
+  router.post('/:id/portal-order', (req, res) => {
+    const { portal_sort_order } = req.body;
+    const val = (portal_sort_order === '' || portal_sort_order === null || portal_sort_order === undefined)
+      ? null : parseInt(portal_sort_order);
+    db.run('UPDATE products SET portal_sort_order = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [val, req.params.id]);
+    res.json({ ok: true, portal_sort_order: val });
+  });
+
   return router;
 };
