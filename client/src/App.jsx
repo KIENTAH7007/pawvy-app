@@ -3,8 +3,9 @@ import { Routes, Route, NavLink, useLocation, useNavigate } from 'react-router-d
 import {
   LayoutDashboard, PlusCircle, Package, Store, Tag,
   FileText, Users, Receipt, Settings, TrendingUp, ClipboardList,
-  ShoppingBag, Menu, X
+  ShoppingBag, Menu, X, Inbox
 } from 'lucide-react';
+import { ordersApi } from './api';
 
 import Dashboard      from './pages/Dashboard';
 import Sales          from './pages/Sales';
@@ -17,6 +18,7 @@ import Costs          from './pages/Costs';
 import Reports        from './pages/Reports';
 import Consignment    from './pages/Consignment';
 import Invoices       from './pages/Invoices';
+import PendingOrders  from './pages/PendingOrders';
 
 import { PAWVY_LOGO_WHITE } from './pawvyLogo.js';
 
@@ -29,6 +31,7 @@ const NAV = [
     { path: '/sales/record', label: 'Record Sale',     icon: PlusCircle },
     { path: '/sales/event',  label: 'Event Sale / Direct Sale', icon: ShoppingBag },
     { path: '/sales',        label: 'Sales Ledger',    icon: ClipboardList },
+    { path: '/orders',       label: 'Pending Orders',  icon: Inbox },
     { path: '/inventory',    label: 'Inventory',       icon: Package },
     { path: '/consignment',  label: 'Consignment',     icon: Store },
   ]},
@@ -59,6 +62,14 @@ function useIsMobile() {
 function Sidebar({ open, onClose }) {
   const loc      = useLocation();
   const isMobile = useIsMobile();
+  const [pendingCount, setPendingCount] = useState(0);
+
+  useEffect(() => {
+    function refresh() { ordersApi.list({ status: 'pending' }).then(o => setPendingCount(o.length)).catch(() => {}); }
+    refresh();
+    const t = setInterval(refresh, 60000); // light polling, no websocket infra needed for this
+    return () => clearInterval(t);
+  }, []);
 
   const sidebarStyle = {
     width: 196, flexShrink: 0,
@@ -128,6 +139,14 @@ function Sidebar({ open, onClose }) {
                     }}>
                       <Icon size={15} />
                       {item.label}
+                      {item.path === '/orders' && pendingCount > 0 && (
+                        <span style={{
+                          marginLeft: 'auto', background: 'var(--orange)', color: 'var(--navy)',
+                          fontSize: 10, fontWeight: 700, borderRadius: 10, padding: '1px 7px', lineHeight: 1.4,
+                        }}>
+                          {pendingCount}
+                        </span>
+                      )}
                     </div>
                   </NavLink>
                 );
@@ -217,6 +236,7 @@ export default function App() {
             <Route path="/sales/record"  element={<RecordSale />} />
             <Route path="/sales/event"   element={<EventSale />} />
             <Route path="/sales"         element={<Sales />} />
+            <Route path="/orders"        element={<PendingOrders />} />
             <Route path="/inventory"     element={<Inventory />} />
             <Route path="/consignment"   element={<Consignment />} />
             <Route path="/products"      element={<Products />} />
