@@ -48,9 +48,15 @@ export default function ProductCard({ product, cartQty, onAdd, onUpdateQty, onRe
           {product.variation && <span style={{ color: 'rgba(245,242,235,.5)' }}> · {product.variation}</span>}
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 2 }}>
-          <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--orange)' }}>{sgd(product.price_wholesale_sg)}</span>
-          <span style={{ fontSize: 11, color: 'rgba(245,242,235,.4)', textDecoration: 'line-through' }}>{sgd(product.price_rrp_sg)}</span>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 2 }}>
+          <div>
+            <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: .4, textTransform: 'uppercase', color: 'rgba(245,242,235,.35)' }}>Your Price</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--orange)' }}>{sgd(product.price_wholesale_sg)}</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: .4, textTransform: 'uppercase', color: 'rgba(245,242,235,.35)' }}>RRP</div>
+            <div style={{ fontSize: 12, color: 'rgba(245,242,235,.5)' }}>{sgd(product.price_rrp_sg)}</div>
+          </div>
         </div>
 
         <div style={{ fontSize: 10.5, fontWeight: 600, color: stock.color, display: 'flex', alignItems: 'center', gap: 4 }}>

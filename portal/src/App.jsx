@@ -35,6 +35,12 @@ export default function App() {
     return ['All', ...names];
   }, [catalogue]);
 
+  const brandColors = useMemo(() => {
+    const m = {};
+    catalogue.forEach(p => { m[p.brand_name] = p.brand_color; });
+    return m;
+  }, [catalogue]);
+
   const filtered = useMemo(() => {
     return catalogue.filter(p => {
       if (activeBrand !== 'All' && p.brand_name !== activeBrand) return false;
@@ -114,8 +120,7 @@ export default function App() {
           <CheckCircle2 size={48} style={{ color: '#7fc93e', marginBottom: 16 }} />
           <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 28, letterSpacing: 1, marginBottom: 8 }}>ORDER SENT</div>
           <div style={{ fontSize: 13.5, color: 'rgba(245,242,235,.6)', lineHeight: 1.6 }}>
-            Thanks — we've received your order for <strong style={{ color: 'var(--cream)' }}>{companyName}</strong>.
-            Applicable discounts (where applicable) will be reflected in your invoice.
+            Thanks — we've received your order. Applicable discounts will be reflected in your invoice.
             We'll be in touch shortly.
           </div>
         </div>
@@ -227,21 +232,25 @@ export default function App() {
         </div>
 
         <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 14, WebkitOverflowScrolling: 'touch' }}>
-          {brands.map(b => (
-            <button
-              key={b}
-              onClick={() => setActiveBrand(b)}
-              style={{
-                flexShrink: 0, padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 600,
-                border: `1px solid ${activeBrand === b ? 'var(--orange)' : 'rgba(245,242,235,.15)'}`,
-                background: activeBrand === b ? 'rgba(243,111,74,.15)' : 'transparent',
-                color: activeBrand === b ? 'var(--orange)' : 'rgba(245,242,235,.6)',
-                cursor: 'pointer', whiteSpace: 'nowrap',
-              }}
-            >
-              {b}
-            </button>
-          ))}
+          {brands.map(b => {
+            const isAll = b === 'All';
+            const color = isAll ? 'var(--orange)' : (brandColors[b] || 'var(--orange)');
+            const active = activeBrand === b;
+            return (
+              <button
+                key={b}
+                onClick={() => setActiveBrand(b)}
+                style={{
+                  flexShrink: 0, padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600,
+                  border: `1px solid ${active ? color : `${color}44`}`,
+                  background: active ? `${color}22` : `${color}11`,
+                  color, cursor: 'pointer', whiteSpace: 'nowrap',
+                }}
+              >
+                {b}
+              </button>
+            );
+          })}
         </div>
 
         {filtered.length === 0 ? (
