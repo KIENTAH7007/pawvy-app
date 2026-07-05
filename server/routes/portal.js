@@ -79,12 +79,16 @@ module.exports = function(db) {
         return res.status(400).json({ error: `One of the items in your order just went out of stock — please remove it and try again.` });
       }
       // Hard cap: never allow ordering more than what's actually in stock
-      // (Home + Storhub combined). The exact number is intentionally not
-      // disclosed in this message — only that the requested amount isn't
-      // available — to keep exact stock levels private.
+      // (Home + Storhub combined). The available number IS disclosed here —
+      // deliberately, so the partner can correct their order in one try
+      // instead of guessing downward repeatedly. This is a considered
+      // exception to "don't show exact stock" — it only surfaces once
+      // someone has already requested more than what's available.
       if (qty > product.total_qty) {
         const name = `${product.item_series}${product.variation ? ' · ' + product.variation : ''}`;
-        return res.status(400).json({ error: `The quantity requested for "${name}" isn't available right now. Please reduce the quantity and try again.` });
+        return res.status(400).json({
+          error: `Only ${product.total_qty} unit${product.total_qty === 1 ? '' : 's'} of "${name}" ${product.total_qty === 1 ? 'is' : 'are'} currently available. Please adjust the quantity and try again.`
+        });
       }
     }
 
