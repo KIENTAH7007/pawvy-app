@@ -176,14 +176,14 @@ export default function EventSale() {
               </div>
             ) : (
               <>
-                <div style={{display:'grid',gridTemplateColumns:'1fr 2fr 70px 110px 80px 90px 36px',gap:8,padding:'7px 16px 3px',fontSize:9.5,fontWeight:700,letterSpacing:.8,textTransform:'uppercase',color:'var(--cream-30)'}}>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 2fr 60px 90px 60px 90px 36px',gap:8,padding:'7px 16px 3px',fontSize:9.5,fontWeight:700,letterSpacing:.8,textTransform:'uppercase',color:'var(--cream-30)'}}>
                   <span>Brand</span><span>Product / SKU</span><span>Qty</span><span>RRP Price</span><span>Disc %</span><span style={{textAlign:'right'}}>Total</span><span/>
                 </div>
                 {lines.map((line, idx) => {
                   const prods = pbb[line.brand_id] || [];
                   const c = calcs[idx];
                   return (
-                    <div key={idx} style={{display:'grid',gridTemplateColumns:'1fr 2fr 70px 110px 80px 90px 36px',gap:8,padding:'6px 16px',borderBottom:'1px solid var(--cream-05)'}}>
+                    <div key={idx} style={{display:'grid',gridTemplateColumns:'1fr 2fr 60px 90px 60px 90px 36px',gap:8,padding:'6px 16px',borderBottom:'1px solid var(--cream-05)'}}>
                       <Select value={line.brand_id} onChange={async e=>{updateLine(idx,'brand_id',e.target.value);updateLine(idx,'product_id','');await ensureProducts(e.target.value);}}>
                         <option value="">Brand</option>
                         {brands.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
