@@ -93,6 +93,9 @@ module.exports = function(db, inventoryRouter) {
     }
 
     const { partner_id, items } = req.body;
+    if (!partner_id) {
+      return res.status(400).json({ error: 'Select which partner this order belongs to before approving — the company name typed on the portal is free text and can\'t be trusted to match automatically.' });
+    }
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'At least one item is required to approve this order.' });
     }

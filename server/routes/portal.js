@@ -2,9 +2,11 @@ const { Router } = require('express');
 
 // Live stock bucket, per the agreed Order Portal design:
 // Available (>5) / Low Stock (1–5) / Out of Stock (0, blocked from ordering)
-function stockStatus(homeQty) {
-  if (homeQty <= 0) return 'out_of_stock';
-  if (homeQty <= 5) return 'low_stock';
+// Counts Home + Storhub combined — Storhub stock is a same-day transfer away,
+// so it's genuinely available, not just Home's current fulfillment-ready qty.
+function stockStatus(totalQty) {
+  if (totalQty <= 0) return 'out_of_stock';
+  if (totalQty <= 5) return 'low_stock';
   return 'available';
 }
 
@@ -18,10 +20,12 @@ module.exports = function(db) {
         p.id, p.item_series, p.variation, p.image_data,
         p.price_wholesale_sg, p.price_rrp_sg,
         b.id AS brand_id, b.name AS brand_name, b.color AS brand_color,
-        COALESCE(il.qty, 0) AS home_qty
+        COALESCE(home.qty, 0)    AS home_qty,
+        COALESCE(storhub.qty, 0) AS storhub_qty
       FROM products p
       JOIN brands b ON b.id = p.brand_id
-      LEFT JOIN inventory_levels il ON il.product_id = p.id AND il.location = 'Home'
+      LEFT JOIN inventory_levels home    ON home.product_id = p.id    AND home.location    = 'Home'
+      LEFT JOIN inventory_levels storhub ON storhub.product_id = p.id AND storhub.location = 'Storhub'
       WHERE p.is_active = 1
       ORDER BY b.name, p.item_series, p.variation
     `);
@@ -36,7 +40,7 @@ module.exports = function(db) {
       image_data: r.image_data || null,
       price_wholesale_sg: r.price_wholesale_sg,
       price_rrp_sg: r.price_rrp_sg,
-      stock_status: stockStatus(r.home_qty),
+      stock_status: stockStatus(r.home_qty + r.storhub_qty),
     }));
 
     res.json(catalogue);
@@ -61,15 +65,17 @@ module.exports = function(db) {
         return res.status(400).json({ error: 'Each item needs a valid product and quantity.' });
       }
       const product = db.queryOne(`
-        SELECT p.id, p.is_active, COALESCE(il.qty,0) AS home_qty
+        SELECT p.id, p.is_active,
+          COALESCE(home.qty, 0) + COALESCE(storhub.qty, 0) AS total_qty
         FROM products p
-        LEFT JOIN inventory_levels il ON il.product_id = p.id AND il.location = 'Home'
+        LEFT JOIN inventory_levels home    ON home.product_id = p.id    AND home.location    = 'Home'
+        LEFT JOIN inventory_levels storhub ON storhub.product_id = p.id AND storhub.location = 'Storhub'
         WHERE p.id = ?
       `, [line.product_id]);
       if (!product || !product.is_active) {
         return res.status(400).json({ error: `One of the items in your order is no longer available.` });
       }
-      if (product.home_qty <= 0) {
+      if (product.total_qty <= 0) {
         return res.status(400).json({ error: `One of the items in your order just went out of stock — please remove it and try again.` });
       }
     }
