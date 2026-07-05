@@ -117,69 +117,6 @@ export default function EventSale() {
     finally { setSaving(false); }
   }
 
-  /* ── Mobile line card ─────────────────────────────────────────── */
-  function MobileLineCard({ line, idx }) {
-    const prods = pbb[line.brand_id] || [];
-    const c = calcs[idx];
-    return (
-      <div style={{border:'1px solid var(--border)',borderRadius:8,padding:12,background:'rgba(245,242,235,.03)',display:'flex',flexDirection:'column',gap:8}}>
-        <div style={{display:'flex',gap:8}}>
-          <Select value={line.brand_id} onChange={async e=>{updateLine(idx,'brand_id',e.target.value);updateLine(idx,'product_id','');await ensureProducts(e.target.value);}} style={{flex:1}}>
-            <option value="">Brand</option>
-            {brands.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
-          </Select>
-          <button onClick={()=>removeLine(idx)} disabled={lines.length===1}
-            style={{background:'none',border:'none',color:'rgba(248,113,113,.6)',cursor:'pointer',padding:4,display:'flex',alignItems:'center'}}>
-            <Trash2 size={16}/>
-          </button>
-        </div>
-        <Select value={line.product_id} onChange={e=>updateLine(idx,'product_id',e.target.value)} disabled={!line.brand_id}>
-          <option value="">— Select SKU —</option>
-          {prods.map(p=><option key={p.id} value={p.id}>{p.item_series}{p.variation?' · '+p.variation:''}</option>)}
-        </Select>
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
-          <Input label="Qty" type="number" min="1" value={line.qty} onChange={e=>updateLine(idx,'qty',e.target.value)} placeholder="0"/>
-          <Input label="RRP (SGD)" type="number" step="0.01" value={line.unit_price} onChange={e=>updateLine(idx,'unit_price',e.target.value)} placeholder="0.00"/>
-          <Input label="Disc %" type="number" min="0" max="100" value={line.discount_pct} onChange={e=>updateLine(idx,'discount_pct',e.target.value)} placeholder="0"/>
-        </div>
-        {c.lineTotal > 0 && (
-          <div style={{textAlign:'right',fontSize:13,fontWeight:700,color:c.disc>0?'#7fc93e':'var(--cream)'}}>
-            {sgd(c.lineTotal)}
-            {c.disc > 0 && <span style={{fontSize:10,color:'var(--cream-30)',marginLeft:6}}>({c.disc}% off RRP)</span>}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  /* ── Desktop line row ─────────────────────────────────────────── */
-  function DesktopLineRow({ line, idx }) {
-    const prods = pbb[line.brand_id] || [];
-    const c = calcs[idx];
-    return (
-      <div style={{display:'grid',gridTemplateColumns:'1fr 2fr 70px 110px 80px 90px 36px',gap:8,padding:'6px 16px',borderBottom:'1px solid var(--cream-05)'}}>
-        <Select value={line.brand_id} onChange={async e=>{updateLine(idx,'brand_id',e.target.value);updateLine(idx,'product_id','');await ensureProducts(e.target.value);}}>
-          <option value="">Brand</option>
-          {brands.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
-        </Select>
-        <Select value={line.product_id} onChange={e=>updateLine(idx,'product_id',e.target.value)} disabled={!line.brand_id}>
-          <option value="">— SKU —</option>
-          {prods.map(p=><option key={p.id} value={p.id}>{p.item_series}{p.variation?' · '+p.variation:''}</option>)}
-        </Select>
-        <Input type="number" min="1" value={line.qty} onChange={e=>updateLine(idx,'qty',e.target.value)} placeholder="0"/>
-        <Input type="number" step="0.01" value={line.unit_price} onChange={e=>updateLine(idx,'unit_price',e.target.value)} placeholder="0.00"/>
-        <Input type="number" min="0" max="100" step="1" value={line.discount_pct} onChange={e=>updateLine(idx,'discount_pct',e.target.value)} placeholder="0"/>
-        <div style={{display:'flex',alignItems:'center',justifyContent:'flex-end',fontWeight:700,fontSize:12,color:c.disc>0?'#7fc93e':'var(--cream)'}}>
-          {c.lineTotal > 0 ? sgd(c.lineTotal) : '—'}
-        </div>
-        <button onClick={()=>removeLine(idx)} disabled={lines.length===1}
-          style={{background:'none',border:'none',color:'rgba(248,113,113,.6)',cursor:'pointer',padding:0,display:'flex',alignItems:'center'}}>
-          <Trash2 size={14}/>
-        </button>
-      </div>
-    );
-  }
-
   return (
     <Page title="EVENT SALE / DIRECT SALE" subtitle="Walk-in customers at events or direct — RRP pricing, unit cost hidden">
       <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 272px',gap:16,alignItems:'start'}}>
@@ -203,14 +140,71 @@ export default function EventSale() {
 
             {isMobile ? (
               <div style={{padding:'8px 12px',display:'flex',flexDirection:'column',gap:8}}>
-                {lines.map((line, idx) => <MobileLineCard key={idx} line={line} idx={idx}/>)}
+                {lines.map((line, idx) => {
+                  const prods = pbb[line.brand_id] || [];
+                  const c = calcs[idx];
+                  return (
+                    <div key={idx} style={{border:'1px solid var(--border)',borderRadius:8,padding:12,background:'rgba(245,242,235,.03)',display:'flex',flexDirection:'column',gap:8}}>
+                      <div style={{display:'flex',gap:8}}>
+                        <Select value={line.brand_id} onChange={async e=>{updateLine(idx,'brand_id',e.target.value);updateLine(idx,'product_id','');await ensureProducts(e.target.value);}} style={{flex:1}}>
+                          <option value="">Brand</option>
+                          {brands.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
+                        </Select>
+                        <button onClick={()=>removeLine(idx)} disabled={lines.length===1}
+                          style={{background:'none',border:'none',color:'rgba(248,113,113,.6)',cursor:'pointer',padding:4,display:'flex',alignItems:'center'}}>
+                          <Trash2 size={16}/>
+                        </button>
+                      </div>
+                      <Select value={line.product_id} onChange={e=>updateLine(idx,'product_id',e.target.value)} disabled={!line.brand_id}>
+                        <option value="">— Select SKU —</option>
+                        {prods.map(p=><option key={p.id} value={p.id}>{p.item_series}{p.variation?' · '+p.variation:''}</option>)}
+                      </Select>
+                      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
+                        <Input label="Qty" type="number" min="1" value={line.qty} onChange={e=>updateLine(idx,'qty',e.target.value)} placeholder="0"/>
+                        <Input label="RRP (SGD)" type="number" step="0.01" value={line.unit_price} onChange={e=>updateLine(idx,'unit_price',e.target.value)} placeholder="0.00"/>
+                        <Input label="Disc %" type="number" min="0" max="100" value={line.discount_pct} onChange={e=>updateLine(idx,'discount_pct',e.target.value)} placeholder="0"/>
+                      </div>
+                      {c.lineTotal > 0 && (
+                        <div style={{textAlign:'right',fontSize:13,fontWeight:700,color:c.disc>0?'#7fc93e':'var(--cream)'}}>
+                          {sgd(c.lineTotal)}
+                          {c.disc > 0 && <span style={{fontSize:10,color:'var(--cream-30)',marginLeft:6}}>({c.disc}% off RRP)</span>}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <>
                 <div style={{display:'grid',gridTemplateColumns:'1fr 2fr 70px 110px 80px 90px 36px',gap:8,padding:'7px 16px 3px',fontSize:9.5,fontWeight:700,letterSpacing:.8,textTransform:'uppercase',color:'var(--cream-30)'}}>
                   <span>Brand</span><span>Product / SKU</span><span>Qty</span><span>RRP Price</span><span>Disc %</span><span style={{textAlign:'right'}}>Total</span><span/>
                 </div>
-                {lines.map((line, idx) => <DesktopLineRow key={idx} line={line} idx={idx}/>)}
+                {lines.map((line, idx) => {
+                  const prods = pbb[line.brand_id] || [];
+                  const c = calcs[idx];
+                  return (
+                    <div key={idx} style={{display:'grid',gridTemplateColumns:'1fr 2fr 70px 110px 80px 90px 36px',gap:8,padding:'6px 16px',borderBottom:'1px solid var(--cream-05)'}}>
+                      <Select value={line.brand_id} onChange={async e=>{updateLine(idx,'brand_id',e.target.value);updateLine(idx,'product_id','');await ensureProducts(e.target.value);}}>
+                        <option value="">Brand</option>
+                        {brands.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
+                      </Select>
+                      <Select value={line.product_id} onChange={e=>updateLine(idx,'product_id',e.target.value)} disabled={!line.brand_id}>
+                        <option value="">— SKU —</option>
+                        {prods.map(p=><option key={p.id} value={p.id}>{p.item_series}{p.variation?' · '+p.variation:''}</option>)}
+                      </Select>
+                      <Input type="number" min="1" value={line.qty} onChange={e=>updateLine(idx,'qty',e.target.value)} placeholder="0"/>
+                      <Input type="number" step="0.01" value={line.unit_price} onChange={e=>updateLine(idx,'unit_price',e.target.value)} placeholder="0.00"/>
+                      <Input type="number" min="0" max="100" step="1" value={line.discount_pct} onChange={e=>updateLine(idx,'discount_pct',e.target.value)} placeholder="0"/>
+                      <div style={{display:'flex',alignItems:'center',justifyContent:'flex-end',fontWeight:700,fontSize:12,color:c.disc>0?'#7fc93e':'var(--cream)'}}>
+                        {c.lineTotal > 0 ? sgd(c.lineTotal) : '—'}
+                      </div>
+                      <button onClick={()=>removeLine(idx)} disabled={lines.length===1}
+                        style={{background:'none',border:'none',color:'rgba(248,113,113,.6)',cursor:'pointer',padding:0,display:'flex',alignItems:'center'}}>
+                        <Trash2 size={14}/>
+                      </button>
+                    </div>
+                  );
+                })}
               </>
             )}
 

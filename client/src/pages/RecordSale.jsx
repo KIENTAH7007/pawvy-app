@@ -270,49 +270,6 @@ export default function RecordSale() {
 
   const priceLabel = partnerModel === 'Consignment' ? 'Consignment price' : 'Wholesale price';
 
-  /* ── Mobile line card ─────────────────────────────────────────── */
-  function MobileLineCard({ line, idx }) {
-    const prods = productsByBrand[line.brand_id] || [];
-    const lc = lineCalcs[idx];
-    return (
-      <div style={{border:'1px solid var(--border)',borderRadius:8,padding:12,background:'rgba(245,242,235,.03)',display:'flex',flexDirection:'column',gap:8}}>
-        <div style={{display:'flex',gap:8}}>
-          <Select value={line.brand_id} onChange={async e=>{updateLine(idx,'brand_id',e.target.value);updateLine(idx,'product_id','');await ensureProducts(e.target.value);}} style={{flex:1}}>
-            <option value="">Brand</option>
-            {brands.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
-          </Select>
-          <button onClick={()=>removeLine(idx)} disabled={lines.length===1}
-            style={{background:'none',border:'none',color:'rgba(248,113,113,.6)',cursor:'pointer',padding:4,display:'flex',alignItems:'center'}}>
-            <Trash2 size={16}/>
-          </button>
-        </div>
-        <Select value={line.product_id} onChange={e=>updateLine(idx,'product_id',e.target.value)} disabled={!line.brand_id}>
-          <option value="">— Select SKU —</option>
-          {prods.map(p=><option key={p.id} value={p.id}>{p.item_series}{p.variation?' · '+p.variation:''}</option>)}
-        </Select>
-        <div style={{display:'grid',gridTemplateColumns: hideConfidential ? '1fr 1fr' : '1fr 1fr 1fr',gap:8}}>
-          <Input label="Qty" type="number" min="1" value={line.qty} onChange={e=>updateLine(idx,'qty',e.target.value)} placeholder="0"/>
-          {!hideConfidential && <Input label="Unit Cost" type="number" step="0.01" value={line.unit_cost} onChange={e=>updateLine(idx,'unit_cost',e.target.value)} placeholder="0.00"/>}
-          <Input label="Sale Price" type="number" step="0.01" value={line.unit_price} onChange={e=>updateLine(idx,'unit_price',e.target.value)} placeholder="0.00"/>
-        </div>
-        <div style={{display:'flex',gap:8,alignItems:'center'}}>
-          <div style={{flex:1,fontSize:11,color:'var(--cream-30)'}}>Item Disc %</div>
-          <div style={{width:90}}>
-            <Input type="number" min="0" max="100" step="1" value={line.item_discount_pct||''} onChange={e=>updateLine(idx,'item_discount_pct',e.target.value)} placeholder="0 = no disc"/>
-          </div>
-          {lc.discPct > 0 && <span style={{fontSize:11,color:'#fbbf24',whiteSpace:'nowrap'}}>− {fmt.sgd(lc.discAmt)} /u</span>}
-        </div>
-        {lc.revenue > 0 && (
-          <div style={{textAlign:'right',fontSize:13,fontWeight:700,color: hideConfidential ? 'var(--cream)' : (lc.lineProfit>=0?'#7fc93e':'#f87171')}}>
-            {lc.discPct > 0 && <span style={{fontSize:10,color:'var(--cream-30)',marginRight:6,textDecoration:'line-through'}}>{fmt.sgd(lc.qty * lc.price)}</span>}
-            {fmt.sgd(lc.revenue)}
-            {!hideConfidential && <span style={{fontSize:10,color:'var(--cream-30)',marginLeft:6}}>profit {fmt.sgd(lc.lineProfit)}</span>}
-          </div>
-        )}
-      </div>
-    );
-  }
-
   return (
     <Page title="RECORD SALE" subtitle="Log a sale — add multiple products for one order"
       action={
@@ -371,7 +328,47 @@ export default function RecordSale() {
 
             {isMobile ? (
               <div style={{padding:'8px 12px',display:'flex',flexDirection:'column',gap:8}}>
-                {lines.map((line, idx) => <MobileLineCard key={idx} line={line} idx={idx}/>)}
+                {lines.map((line, idx) => {
+                  const prods = productsByBrand[line.brand_id] || [];
+                  const lc = lineCalcs[idx];
+                  return (
+                    <div key={idx} style={{border:'1px solid var(--border)',borderRadius:8,padding:12,background:'rgba(245,242,235,.03)',display:'flex',flexDirection:'column',gap:8}}>
+                      <div style={{display:'flex',gap:8}}>
+                        <Select value={line.brand_id} onChange={async e=>{updateLine(idx,'brand_id',e.target.value);updateLine(idx,'product_id','');await ensureProducts(e.target.value);}} style={{flex:1}}>
+                          <option value="">Brand</option>
+                          {brands.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
+                        </Select>
+                        <button onClick={()=>removeLine(idx)} disabled={lines.length===1}
+                          style={{background:'none',border:'none',color:'rgba(248,113,113,.6)',cursor:'pointer',padding:4,display:'flex',alignItems:'center'}}>
+                          <Trash2 size={16}/>
+                        </button>
+                      </div>
+                      <Select value={line.product_id} onChange={e=>updateLine(idx,'product_id',e.target.value)} disabled={!line.brand_id}>
+                        <option value="">— Select SKU —</option>
+                        {prods.map(p=><option key={p.id} value={p.id}>{p.item_series}{p.variation?' · '+p.variation:''}</option>)}
+                      </Select>
+                      <div style={{display:'grid',gridTemplateColumns: hideConfidential ? '1fr 1fr' : '1fr 1fr 1fr',gap:8}}>
+                        <Input label="Qty" type="number" min="1" value={line.qty} onChange={e=>updateLine(idx,'qty',e.target.value)} placeholder="0"/>
+                        {!hideConfidential && <Input label="Unit Cost" type="number" step="0.01" value={line.unit_cost} onChange={e=>updateLine(idx,'unit_cost',e.target.value)} placeholder="0.00"/>}
+                        <Input label="Sale Price" type="number" step="0.01" value={line.unit_price} onChange={e=>updateLine(idx,'unit_price',e.target.value)} placeholder="0.00"/>
+                      </div>
+                      <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                        <div style={{flex:1,fontSize:11,color:'var(--cream-30)'}}>Item Disc %</div>
+                        <div style={{width:90}}>
+                          <Input type="number" min="0" max="100" step="1" value={line.item_discount_pct||''} onChange={e=>updateLine(idx,'item_discount_pct',e.target.value)} placeholder="0 = no disc"/>
+                        </div>
+                        {lc.discPct > 0 && <span style={{fontSize:11,color:'#fbbf24',whiteSpace:'nowrap'}}>− {fmt.sgd(lc.discAmt)} /u</span>}
+                      </div>
+                      {lc.revenue > 0 && (
+                        <div style={{textAlign:'right',fontSize:13,fontWeight:700,color: hideConfidential ? 'var(--cream)' : (lc.lineProfit>=0?'#7fc93e':'#f87171')}}>
+                          {lc.discPct > 0 && <span style={{fontSize:10,color:'var(--cream-30)',marginRight:6,textDecoration:'line-through'}}>{fmt.sgd(lc.qty * lc.price)}</span>}
+                          {fmt.sgd(lc.revenue)}
+                          {!hideConfidential && <span style={{fontSize:10,color:'var(--cream-30)',marginLeft:6}}>profit {fmt.sgd(lc.lineProfit)}</span>}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <>
