@@ -119,163 +119,159 @@ export default function EventSale() {
 
   return (
     <Page title="EVENT SALE / DIRECT SALE" subtitle="Walk-in customers at events or direct — RRP pricing, unit cost hidden">
-      <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 272px',gap:16,alignItems:'start'}}>
+      <div style={{display:'flex',flexDirection:'column',gap:12}}>
 
-        <div style={{display:'flex',flexDirection:'column',gap:12}}>
-          <Card>
-            <div style={{padding:'12px 16px',display:'flex',alignItems:'center',gap:16}}>
-              <Input label="Date" type="date" value={date} onChange={e=>setDate(e.target.value)} style={{width:170}}/>
-              <div style={{fontSize:11,color:'var(--cream-30)',paddingTop:20}}>
-                Channel: <strong style={{color:'var(--orange)'}}>Event Sale / Direct Sale</strong>
-                &nbsp;·&nbsp; Price: <strong style={{color:'var(--orange)'}}>RRP</strong>
-              </div>
+        <Card>
+          <div style={{padding:'12px 16px',display:'flex',alignItems:'center',gap:16}}>
+            <Input label="Date" type="date" value={date} onChange={e=>setDate(e.target.value)} style={{width:170}}/>
+            <div style={{fontSize:11,color:'var(--cream-30)',paddingTop:20}}>
+              Channel: <strong style={{color:'var(--orange)'}}>Event Sale / Direct Sale</strong>
+              &nbsp;·&nbsp; Price: <strong style={{color:'var(--orange)'}}>RRP</strong>
             </div>
-          </Card>
+          </div>
+        </Card>
 
-          <Card>
-            <div style={{padding:'12px 16px 8px',borderBottom:'1px solid var(--border)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-              <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:13,letterSpacing:1,color:'var(--cream)'}}>PRODUCTS</span>
-              <Btn size="sm" variant="secondary" onClick={addLine}><Plus size={12}/> Add Product</Btn>
-            </div>
+        <Card>
+          <div style={{padding:'12px 16px 8px',borderBottom:'1px solid var(--border)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:13,letterSpacing:1,color:'var(--cream)'}}>PRODUCTS</span>
+            <Btn size="sm" variant="secondary" onClick={addLine}><Plus size={12}/> Add Product</Btn>
+          </div>
 
-            {isMobile ? (
-              <div style={{padding:'8px 12px',display:'flex',flexDirection:'column',gap:8}}>
-                {lines.map((line, idx) => {
-                  const prods = pbb[line.brand_id] || [];
-                  const c = calcs[idx];
-                  return (
-                    <div key={idx} style={{border:'1px solid var(--border)',borderRadius:8,padding:12,background:'rgba(245,242,235,.03)',display:'flex',flexDirection:'column',gap:8}}>
-                      <div style={{display:'flex',gap:8}}>
-                        <Select value={line.brand_id} onChange={async e=>{updateLine(idx,'brand_id',e.target.value);updateLine(idx,'product_id','');await ensureProducts(e.target.value);}} style={{flex:1}}>
-                          <option value="">Brand</option>
-                          {brands.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
-                        </Select>
-                        <button onClick={()=>removeLine(idx)} disabled={lines.length===1}
-                          style={{background:'none',border:'none',color:'rgba(248,113,113,.6)',cursor:'pointer',padding:4,display:'flex',alignItems:'center'}}>
-                          <Trash2 size={16}/>
-                        </button>
-                      </div>
-                      <Select value={line.product_id} onChange={e=>updateLine(idx,'product_id',e.target.value)} disabled={!line.brand_id}>
-                        <option value="">— Select SKU —</option>
-                        {prods.map(p=><option key={p.id} value={p.id}>{p.item_series}{p.variation?' · '+p.variation:''}</option>)}
-                      </Select>
-                      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
-                        <Input label="Qty" type="number" min="1" value={line.qty} onChange={e=>updateLine(idx,'qty',e.target.value)} placeholder="0"/>
-                        <Input label="RRP (SGD)" type="number" step="0.01" value={line.unit_price} onChange={e=>updateLine(idx,'unit_price',e.target.value)} placeholder="0.00"/>
-                        <Input label="Disc %" type="number" min="0" max="100" value={line.discount_pct} onChange={e=>updateLine(idx,'discount_pct',e.target.value)} placeholder="0"/>
-                      </div>
-                      {c.lineTotal > 0 && (
-                        <div style={{textAlign:'right',fontSize:13,fontWeight:700,color:c.disc>0?'#7fc93e':'var(--cream)'}}>
-                          {sgd(c.lineTotal)}
-                          {c.disc > 0 && <span style={{fontSize:10,color:'var(--cream-30)',marginLeft:6}}>({c.disc}% off RRP)</span>}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <>
-                <div style={{display:'grid',gridTemplateColumns:'1fr 2fr 60px 90px 60px 90px 36px',gap:8,padding:'7px 16px 3px',fontSize:9.5,fontWeight:700,letterSpacing:.8,textTransform:'uppercase',color:'var(--cream-30)'}}>
-                  <span>Brand</span><span>Product / SKU</span><span>Qty</span><span>RRP Price</span><span>Disc %</span><span style={{textAlign:'right'}}>Total</span><span/>
-                </div>
-                {lines.map((line, idx) => {
-                  const prods = pbb[line.brand_id] || [];
-                  const c = calcs[idx];
-                  return (
-                    <div key={idx} style={{display:'grid',gridTemplateColumns:'1fr 2fr 60px 90px 60px 90px 36px',gap:8,padding:'6px 16px',borderBottom:'1px solid var(--cream-05)'}}>
-                      <Select value={line.brand_id} onChange={async e=>{updateLine(idx,'brand_id',e.target.value);updateLine(idx,'product_id','');await ensureProducts(e.target.value);}}>
+          {isMobile ? (
+            <div style={{padding:'8px 12px',display:'flex',flexDirection:'column',gap:8}}>
+              {lines.map((line, idx) => {
+                const prods = pbb[line.brand_id] || [];
+                const c = calcs[idx];
+                return (
+                  <div key={idx} style={{border:'1px solid var(--border)',borderRadius:8,padding:12,background:'rgba(245,242,235,.03)',display:'flex',flexDirection:'column',gap:8}}>
+                    <div style={{display:'flex',gap:8}}>
+                      <Select value={line.brand_id} onChange={async e=>{updateLine(idx,'brand_id',e.target.value);updateLine(idx,'product_id','');await ensureProducts(e.target.value);}} style={{flex:1}}>
                         <option value="">Brand</option>
                         {brands.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
                       </Select>
-                      <Select value={line.product_id} onChange={e=>updateLine(idx,'product_id',e.target.value)} disabled={!line.brand_id}>
-                        <option value="">— SKU —</option>
-                        {prods.map(p=><option key={p.id} value={p.id}>{p.item_series}{p.variation?' · '+p.variation:''}</option>)}
-                      </Select>
-                      <Input type="number" min="1" value={line.qty} onChange={e=>updateLine(idx,'qty',e.target.value)} placeholder="0"/>
-                      <Input type="number" step="0.01" value={line.unit_price} onChange={e=>updateLine(idx,'unit_price',e.target.value)} placeholder="0.00"/>
-                      <Input type="number" min="0" max="100" step="1" value={line.discount_pct} onChange={e=>updateLine(idx,'discount_pct',e.target.value)} placeholder="0"/>
-                      <div style={{display:'flex',alignItems:'center',justifyContent:'flex-end',fontWeight:700,fontSize:12,color:c.disc>0?'#7fc93e':'var(--cream)'}}>
-                        {c.lineTotal > 0 ? sgd(c.lineTotal) : '—'}
-                      </div>
                       <button onClick={()=>removeLine(idx)} disabled={lines.length===1}
-                        style={{background:'none',border:'none',color:'rgba(248,113,113,.6)',cursor:'pointer',padding:0,display:'flex',alignItems:'center'}}>
-                        <Trash2 size={14}/>
+                        style={{background:'none',border:'none',color:'rgba(248,113,113,.6)',cursor:'pointer',padding:4,display:'flex',alignItems:'center'}}>
+                        <Trash2 size={16}/>
                       </button>
                     </div>
-                  );
-                })}
+                    <Select value={line.product_id} onChange={e=>updateLine(idx,'product_id',e.target.value)} disabled={!line.brand_id}>
+                      <option value="">— Select SKU —</option>
+                      {prods.map(p=><option key={p.id} value={p.id}>{p.item_series}{p.variation?' · '+p.variation:''}</option>)}
+                    </Select>
+                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
+                      <Input label="Qty" type="number" min="1" value={line.qty} onChange={e=>updateLine(idx,'qty',e.target.value)} placeholder="0"/>
+                      <Input label="RRP (SGD)" type="number" step="0.01" value={line.unit_price} onChange={e=>updateLine(idx,'unit_price',e.target.value)} placeholder="0.00"/>
+                      <Input label="Disc %" type="number" min="0" max="100" value={line.discount_pct} onChange={e=>updateLine(idx,'discount_pct',e.target.value)} placeholder="0"/>
+                    </div>
+                    {c.lineTotal > 0 && (
+                      <div style={{textAlign:'right',fontSize:13,fontWeight:700,color:c.disc>0?'#7fc93e':'var(--cream)'}}>
+                        {sgd(c.lineTotal)}
+                        {c.disc > 0 && <span style={{fontSize:10,color:'var(--cream-30)',marginLeft:6}}>({c.disc}% off RRP)</span>}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 2fr 60px 90px 60px 90px 36px',gap:8,padding:'7px 16px 3px',fontSize:9.5,fontWeight:700,letterSpacing:.8,textTransform:'uppercase',color:'var(--cream-30)'}}>
+                <span>Brand</span><span>Product / SKU</span><span>Qty</span><span>RRP Price</span><span>Disc %</span><span style={{textAlign:'right'}}>Total</span><span/>
+              </div>
+              {lines.map((line, idx) => {
+                const prods = pbb[line.brand_id] || [];
+                const c = calcs[idx];
+                return (
+                  <div key={idx} style={{display:'grid',gridTemplateColumns:'1fr 2fr 60px 90px 60px 90px 36px',gap:8,padding:'6px 16px',borderBottom:'1px solid var(--cream-05)'}}>
+                    <Select value={line.brand_id} onChange={async e=>{updateLine(idx,'brand_id',e.target.value);updateLine(idx,'product_id','');await ensureProducts(e.target.value);}}>
+                      <option value="">Brand</option>
+                      {brands.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
+                    </Select>
+                    <Select value={line.product_id} onChange={e=>updateLine(idx,'product_id',e.target.value)} disabled={!line.brand_id}>
+                      <option value="">— SKU —</option>
+                      {prods.map(p=><option key={p.id} value={p.id}>{p.item_series}{p.variation?' · '+p.variation:''}</option>)}
+                    </Select>
+                    <Input type="number" min="1" value={line.qty} onChange={e=>updateLine(idx,'qty',e.target.value)} placeholder="0"/>
+                    <Input type="number" step="0.01" value={line.unit_price} onChange={e=>updateLine(idx,'unit_price',e.target.value)} placeholder="0.00"/>
+                    <Input type="number" min="0" max="100" step="1" value={line.discount_pct} onChange={e=>updateLine(idx,'discount_pct',e.target.value)} placeholder="0"/>
+                    <div style={{display:'flex',alignItems:'center',justifyContent:'flex-end',fontWeight:700,fontSize:12,color:c.disc>0?'#7fc93e':'var(--cream)'}}>
+                      {c.lineTotal > 0 ? sgd(c.lineTotal) : '—'}
+                    </div>
+                    <button onClick={()=>removeLine(idx)} disabled={lines.length===1}
+                      style={{background:'none',border:'none',color:'rgba(248,113,113,.6)',cursor:'pointer',padding:0,display:'flex',alignItems:'center'}}>
+                      <Trash2 size={14}/>
+                    </button>
+                  </div>
+                );
+              })}
+            </>
+          )}
+
+          <div style={{padding:'8px 16px'}}>
+            <Btn size="sm" variant="ghost" onClick={addLine}><Plus size={12}/> Add another product</Btn>
+          </div>
+        </Card>
+
+        <Card>
+          <div style={{padding:14,display:'flex',gap:10,alignItems:'flex-end',flexWrap:isMobile?'wrap':'nowrap'}}>
+            <div style={{flex:1,minWidth:isMobile?'100%':undefined}}>
+              <Input label="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="e.g. partial payment, tester included…"/>
+            </div>
+            <Btn onClick={handleSave} disabled={saving||saved} size="lg" style={{whiteSpace:'nowrap'}}>
+              {saved ? <><CheckCircle size={14}/> Saved!</> : saving ? 'Saving…' : 'Save Sale'}
+            </Btn>
+          </div>
+          {error && <div style={{margin:'0 14px 12px',background:'rgba(248,113,113,.12)',border:'1px solid rgba(248,113,113,.3)',borderRadius:7,padding:'8px 12px',fontSize:12,color:'#f87171'}}>{error}</div>}
+        </Card>
+
+        <Card title="ORDER TOTAL">
+          <div style={{padding:'14px 16px',display:'flex',flexDirection:'column',gap:9}}>
+            {totalDisc > 0 && (
+              <>
+                <div style={{display:'flex',justifyContent:'space-between'}}>
+                  <span style={{fontSize:12,color:'var(--cream-60)'}}>Subtotal (RRP)</span>
+                  <span style={{fontSize:12,color:'var(--cream)'}}>{sgd(subtotal)}</span>
+                </div>
+                <div style={{display:'flex',justifyContent:'space-between'}}>
+                  <span style={{fontSize:12,color:'#7fc93e'}}>Discount</span>
+                  <span style={{fontSize:12,color:'#7fc93e',fontWeight:700}}>− {sgd(totalDisc)}</span>
+                </div>
+                <div style={{height:1,background:'var(--border)'}}/>
               </>
             )}
-
-            <div style={{padding:'8px 16px'}}>
-              <Btn size="sm" variant="ghost" onClick={addLine}><Plus size={12}/> Add another product</Btn>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <span style={{fontSize:14,fontWeight:700,color:'var(--cream)'}}>Amount Payable</span>
+              <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:30,color:'var(--orange)',letterSpacing:1,lineHeight:1}}>
+                {sgd(payable)}
+              </span>
             </div>
-          </Card>
+          </div>
+        </Card>
 
-          <Card>
-            <div style={{padding:14,display:'flex',gap:10,alignItems:'flex-end',flexWrap:isMobile?'wrap':'nowrap'}}>
-              <div style={{flex:1,minWidth:isMobile?'100%':undefined}}>
-                <Input label="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="e.g. partial payment, tester included…"/>
-              </div>
-              <Btn onClick={handleSave} disabled={saving||saved} size="lg" style={{whiteSpace:'nowrap'}}>
-                {saved ? <><CheckCircle size={14}/> Saved!</> : saving ? 'Saving…' : 'Save Sale'}
-              </Btn>
+        <Card title="PAYMENT">
+          <div style={{padding:'14px 16px',display:'flex',flexDirection:'column',alignItems:'center',gap:12}}>
+            {QR_CODE && (
+              <img src={QR_CODE} alt="PayNow QR"
+                style={{width:168,height:168,borderRadius:10,border:'2px solid rgba(245,242,235,.12)',objectFit:'contain'}}/>
+            )}
+            <div style={{width:'100%',display:'flex',flexDirection:'column',gap:7}}>
+              {[
+                { label:'PayNow UEN', value: PAYMENT.uen },
+                { label:'Name',       value: PAYMENT.name },
+                { label:'Bank',       value: PAYMENT.bank },
+                { label:'Account',    value: PAYMENT.account },
+              ].map(row => (
+                <div key={row.label} style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
+                  <span style={{fontSize:10,color:'var(--cream-30)',fontWeight:600,letterSpacing:.5,textTransform:'uppercase',whiteSpace:'nowrap'}}>{row.label}</span>
+                  <span style={{fontSize:11,color:'var(--cream)',fontWeight:600,textAlign:'right'}}>{row.value}</span>
+                </div>
+              ))}
             </div>
-          </Card>
-          {error && <div style={{background:'rgba(248,113,113,.12)',border:'1px solid rgba(248,113,113,.3)',borderRadius:7,padding:'10px 14px',fontSize:12,color:'#f87171'}}>{error}</div>}
-        </div>
-
-        <div style={{display:'flex',flexDirection:'column',gap:10}}>
-          <Card title="ORDER TOTAL">
-            <div style={{padding:'14px 16px',display:'flex',flexDirection:'column',gap:9}}>
-              {totalDisc > 0 && (
-                <>
-                  <div style={{display:'flex',justifyContent:'space-between'}}>
-                    <span style={{fontSize:12,color:'var(--cream-60)'}}>Subtotal (RRP)</span>
-                    <span style={{fontSize:12,color:'var(--cream)'}}>{sgd(subtotal)}</span>
-                  </div>
-                  <div style={{display:'flex',justifyContent:'space-between'}}>
-                    <span style={{fontSize:12,color:'#7fc93e'}}>Discount</span>
-                    <span style={{fontSize:12,color:'#7fc93e',fontWeight:700}}>− {sgd(totalDisc)}</span>
-                  </div>
-                  <div style={{height:1,background:'var(--border)'}}/>
-                </>
-              )}
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                <span style={{fontSize:14,fontWeight:700,color:'var(--cream)'}}>Amount Payable</span>
-                <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:30,color:'var(--orange)',letterSpacing:1,lineHeight:1}}>
-                  {sgd(payable)}
-                </span>
-              </div>
+            <div style={{fontSize:10,color:'var(--cream-30)',textAlign:'center',lineHeight:1.7,paddingTop:4,borderTop:'1px solid var(--border)',width:'100%'}}>
+              Scan QR to pay via PayNow.<br/>Show payment confirmation to staff.
             </div>
-          </Card>
-
-          <Card title="PAYMENT">
-            <div style={{padding:'14px 16px',display:'flex',flexDirection:'column',alignItems:'center',gap:12}}>
-              {QR_CODE && (
-                <img src={QR_CODE} alt="PayNow QR"
-                  style={{width:168,height:168,borderRadius:10,border:'2px solid rgba(245,242,235,.12)',objectFit:'contain'}}/>
-              )}
-              <div style={{width:'100%',display:'flex',flexDirection:'column',gap:7}}>
-                {[
-                  { label:'PayNow UEN', value: PAYMENT.uen },
-                  { label:'Name',       value: PAYMENT.name },
-                  { label:'Bank',       value: PAYMENT.bank },
-                  { label:'Account',    value: PAYMENT.account },
-                ].map(row => (
-                  <div key={row.label} style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
-                    <span style={{fontSize:10,color:'var(--cream-30)',fontWeight:600,letterSpacing:.5,textTransform:'uppercase',whiteSpace:'nowrap'}}>{row.label}</span>
-                    <span style={{fontSize:11,color:'var(--cream)',fontWeight:600,textAlign:'right'}}>{row.value}</span>
-                  </div>
-                ))}
-              </div>
-              <div style={{fontSize:10,color:'var(--cream-30)',textAlign:'center',lineHeight:1.7,paddingTop:4,borderTop:'1px solid var(--border)',width:'100%'}}>
-                Scan QR to pay via PayNow.<br/>Show payment confirmation to staff.
-              </div>
-            </div>
-          </Card>
-        </div>
+          </div>
+        </Card>
       </div>
     </Page>
   );
