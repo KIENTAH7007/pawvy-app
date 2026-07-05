@@ -254,7 +254,7 @@ export default function EventSale() {
               <img src={QR_CODE} alt="PayNow QR"
                 style={{width:168,height:168,borderRadius:10,border:'2px solid rgba(245,242,235,.12)',objectFit:'contain'}}/>
             )}
-            <div style={{width:'100%',display:'flex',flexDirection:'column',gap:7}}>
+            <div style={{width:'100%',maxWidth:320,margin:'0 auto',display:'flex',flexDirection:'column',gap:7}}>
               {[
                 { label:'PayNow UEN', value: PAYMENT.uen },
                 { label:'Name',       value: PAYMENT.name },
@@ -267,7 +267,7 @@ export default function EventSale() {
                 </div>
               ))}
             </div>
-            <div style={{fontSize:10,color:'var(--cream-30)',textAlign:'center',lineHeight:1.7,paddingTop:4,borderTop:'1px solid var(--border)',width:'100%'}}>
+            <div style={{fontSize:10,color:'var(--cream-30)',textAlign:'center',lineHeight:1.7,paddingTop:4,borderTop:'1px solid var(--border)',width:'100%',maxWidth:320,margin:'0 auto'}}>
               Scan QR to pay via PayNow.<br/>Show payment confirmation to staff.
             </div>
           </div>
