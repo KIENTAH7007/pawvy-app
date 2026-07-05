@@ -303,6 +303,24 @@ function createSchema() {
       notes TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`,
+    // Order Portal (Phase 6) — public submissions awaiting internal review/approval
+    `CREATE TABLE IF NOT EXISTS portal_orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_name TEXT NOT NULL,
+      notes TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      partner_id INTEGER REFERENCES partners(id),
+      created_sale_ids TEXT,
+      submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      reviewed_at DATETIME
+    )`,
+    `CREATE TABLE IF NOT EXISTS portal_order_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      portal_order_id INTEGER NOT NULL REFERENCES portal_orders(id) ON DELETE CASCADE,
+      product_id INTEGER NOT NULL REFERENCES products(id),
+      qty INTEGER NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
   ];
 
   tables.forEach(sql => db.run(sql));
