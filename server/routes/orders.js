@@ -160,5 +160,22 @@ module.exports = function(db, inventoryRouter) {
     res.json(withItems(db.queryOne('SELECT * FROM portal_orders WHERE id = ?', [req.params.id])));
   });
 
+  // POST /api/orders/:id/void — marks an approved or rejected order as voided.
+  // This is purely a bookkeeping marker on the order record — it deliberately
+  // does NOT touch the sales table. If the order was approved and already
+  // created a sale, that sale is voided manually in the Sales Ledger, by design.
+  router.post('/:id/void', (req, res) => {
+    const order = db.queryOne('SELECT * FROM portal_orders WHERE id = ?', [req.params.id]);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (order.status === 'pending') {
+      return res.status(400).json({ error: 'This order is still pending — reject it instead of voiding.' });
+    }
+    if (order.voided_at) {
+      return res.status(400).json({ error: 'This order is already voided.' });
+    }
+    db.run('UPDATE portal_orders SET voided_at = CURRENT_TIMESTAMP WHERE id = ?', [req.params.id]);
+    res.json(withItems(db.queryOne('SELECT * FROM portal_orders WHERE id = ?', [req.params.id])));
+  });
+
   return router;
 };

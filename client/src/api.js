@@ -76,7 +76,7 @@ export const consignmentApi = {
   closeMonth:     (data) => api.post('/consignment/snapshot', data),
 }; 
 export const salesApi = { getAll: (q) => api.get(`/sales${qs(q)}`), summary: (q) => api.get(`/sales/summary${qs(q)}`), create: (s) => api.post('/sales',s), update: (id,s) => api.put(`/sales/${id}`,s), delete: (id) => api.delete(`/sales/${id}`), void: (id) => api.patch(`/sales/${id}/void`, {}) };
-export const ordersApi     = { list: (q) => api.get(`/orders${qs(q)}`), get: (id) => api.get(`/orders/${id}`), update: (id,d) => api.put(`/orders/${id}`,d), approve: (id,d) => api.post(`/orders/${id}/approve`,d), reject: (id) => api.post(`/orders/${id}/reject`,{}) };
+export const ordersApi     = { list: (q) => api.get(`/orders${qs(q)}`), get: (id) => api.get(`/orders/${id}`), update: (id,d) => api.put(`/orders/${id}`,d), approve: (id,d) => api.post(`/orders/${id}/approve`,d), reject: (id) => api.post(`/orders/${id}/reject`,{}), void: (id) => api.post(`/orders/${id}/void`,{}) };
 export const costsApi     = { getAll: (q) => api.get(`/costs${qs(q)}`), summary: (q) => api.get(`/costs/summary${qs(q)}`), create: (c) => api.post('/costs',c), update: (id,c) => api.put(`/costs/${id}`,c), delete: (id) => api.delete(`/costs/${id}`) };
 export const reportsApi   = { pnl: (q) => api.get(`/reports/pnl${qs(q)}`), trend: (q) => api.get(`/reports/trend${qs(q)}`), partners: (q) => api.get(`/reports/partners${qs(q)}`), allChannels: (q) => api.get(`/reports/all-channels${qs(q)}`) };
 export const partnerReportApi = { top: (q) => api.get(`/reports/partners${qs(q)}`) };

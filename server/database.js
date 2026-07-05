@@ -378,6 +378,12 @@ function createSchema() {
   // NULL = falls back to alphabetical item_series/variation ordering.
   try { db.run("ALTER TABLE products ADD COLUMN portal_sort_order INTEGER"); } catch(e) {}
 
+  // Order Portal (Phase 6): void an approved/rejected order record.
+  // Purely a bookkeeping marker on the order itself — never touches the
+  // sales table. Voiding an already-approved order does NOT reverse the
+  // sale it created; that's done manually in the Sales Ledger by design.
+  try { db.run("ALTER TABLE portal_orders ADD COLUMN voided_at DATETIME"); } catch(e) {}
+
   console.log('✅ Schema ready');
 }
 

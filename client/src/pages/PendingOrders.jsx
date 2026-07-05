@@ -210,6 +210,26 @@ export default function PendingOrders() {
     finally { setBusyId(null); }
   }
 
+  async function handleVoid(order) {
+    if (!window.confirm(
+      `Void this ${order.status} order from "${order.company_name}"?\n\n` +
+      `This only marks the order record itself as voided — it will NOT touch ` +
+      `the Sales Ledger. If a sale was already created, void it there separately.`
+    )) return;
+    setBusyId(order.id); setError('');
+    try {
+      await ordersApi.void(order.id);
+      setExpandedId(null);
+      load();
+    } catch (e) { setError(e.message); }
+    finally { setBusyId(null); }
+  }
+
+  function toggleExpand(orderId) {
+    setExpandedId(prev => prev === orderId ? null : orderId);
+    setError('');
+  }
+
   const pendingCount = tab === 'pending' ? orders.length : null;
 
   return (
@@ -245,17 +265,24 @@ export default function PendingOrders() {
             const totals = isOpen && es ? computeTotals(es) : null;
             return (
               <Card key={order.id}>
-                <div onClick={() => tab === 'pending' && expand(order)}
-                  style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 14, cursor: tab === 'pending' ? 'pointer' : 'default' }}>
+                <div onClick={() => tab === 'pending' ? expand(order) : toggleExpand(order.id)}
+                  style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 14, cursor: 'pointer' }}>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--cream)' }}>{order.company_name}</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--cream)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {order.company_name}
+                      {order.voided_at && (
+                        <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: .5, color: '#f87171', background: 'rgba(248,113,113,.12)', border: '1px solid rgba(248,113,113,.3)', borderRadius: 4, padding: '2px 6px' }}>
+                          VOIDED
+                        </span>
+                      )}
+                    </div>
                     <div style={{ fontSize: 11, color: 'var(--cream-30)', display: 'flex', alignItems: 'center', gap: 5, marginTop: 3 }}>
                       <Clock size={11} /> {new Date(order.submitted_at).toLocaleString('en-SG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                       {order.matched_partner_name && <span style={{ marginLeft: 8, color: 'var(--cream-60)' }}>· Matched: {order.matched_partner_name}</span>}
                     </div>
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--cream-60)' }}>{order.items.length} item{order.items.length !== 1 ? 's' : ''}</div>
-                  {tab === 'pending' && (isOpen ? <ChevronUp size={16} color="var(--cream-30)"/> : <ChevronDown size={16} color="var(--cream-30)"/>)}
+                  {isOpen ? <ChevronUp size={16} color="var(--cream-30)"/> : <ChevronDown size={16} color="var(--cream-30)"/>}
                 </div>
 
                 {!isOpen && (
@@ -268,7 +295,46 @@ export default function PendingOrders() {
                   </div>
                 )}
 
-                {isOpen && es && (
+                {isOpen && tab !== 'pending' && (
+                  <div style={{ padding: '0 16px 16px', borderTop: '1px solid var(--border)' }}>
+                    {order.notes && (
+                      <div style={{ fontSize: 12, color: 'var(--cream-60)', padding: '12px 0 0' }}>
+                        <strong style={{ color: 'var(--cream-30)', fontWeight: 600 }}>Notes:</strong> {order.notes}
+                      </div>
+                    )}
+                    <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {order.items.map(it => (
+                        <div key={it.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, color: 'var(--cream-60)' }}>
+                          <span>
+                            <span style={{ color: it.brand_color || 'var(--cream-30)', fontWeight: 600, fontSize: 10.5, textTransform: 'uppercase', marginRight: 8 }}>{it.brand_name}</span>
+                            {it.item_series}{it.variation ? ` · ${it.variation}` : ''}
+                          </span>
+                          <span>× {it.qty}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {order.voided_at ? (
+                      <div style={{ marginTop: 14, fontSize: 11.5, color: 'var(--cream-30)' }}>
+                        Voided on {new Date(order.voided_at).toLocaleString('en-SG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    ) : (
+                      <>
+                        {error && (
+                          <div style={{ marginTop: 12, background: 'rgba(248,113,113,.12)', border: '1px solid rgba(248,113,113,.3)', borderRadius: 7, padding: '8px 12px', fontSize: 12, color: '#f87171' }}>
+                            {error}
+                          </div>
+                        )}
+                        <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
+                          <Btn variant="ghost" size="sm" disabled={busyId === order.id} onClick={() => handleVoid(order)}>
+                            <XCircle size={14}/> Void this order
+                          </Btn>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {isOpen && tab === 'pending' && es && (
                   <div style={{ padding: '0 16px 16px', borderTop: '1px solid var(--border)' }}>
                     {order.notes && (
                       <div style={{ fontSize: 12, color: 'var(--cream-60)', padding: '12px 0 0' }}>
