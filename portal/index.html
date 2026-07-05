@@ -14,6 +14,11 @@
       }
       * { box-sizing: border-box; }
       body { margin: 0; background: var(--navy); color: var(--cream); font-family: 'Montserrat', sans-serif; }
+      input::placeholder { color: rgba(20,33,61,.4); }
+      input:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
+      button:focus-visible { outline: 2px solid var(--orange); outline-offset: 1px; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      .spin { animation: spin 1s linear infinite; }
     </style>
   </head>
   <body>
