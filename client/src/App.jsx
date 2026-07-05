@@ -25,7 +25,7 @@ const NAV = [
   ]},
   { section: 'Operations',  items: [
     { path: '/sales/record', label: 'Record Sale',     icon: PlusCircle },
-    { path: '/sales/event',  label: 'Event Sale',      icon: ShoppingBag },
+    { path: '/sales/event',  label: 'Event Sale / Direct Sale', icon: ShoppingBag },
     { path: '/sales',        label: 'Sales Ledger',    icon: ClipboardList },
     { path: '/inventory',    label: 'Inventory',       icon: Package },
     { path: '/consignment',  label: 'Consignment',     icon: Store },

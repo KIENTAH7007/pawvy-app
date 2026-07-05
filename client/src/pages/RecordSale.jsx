@@ -4,16 +4,16 @@ import { CheckCircle, Plus, Trash2, Eye, EyeOff } from 'lucide-react';
 import { brandsApi, productsApi, partnersApi, salesApi } from '../api';
 import { Page, Card, Input, Select, Btn, Divider, fmt } from '../components/ui';
 
-const B2C_CHANNELS = ['Shopee', 'Lazada', 'Amazon', 'TikTok Shop', 'Event Sale', 'Direct Sale'];
+const B2C_CHANNELS = ['Shopee', 'Lazada', 'Amazon', 'TikTok Shop'];
 const B2B_CHANNELS = ['Wholesale Order', 'Consignment Sale'];
 const PLATFORM_FEES = { Shopee: 9, Lazada: 9, 'TikTok Shop': 8, Amazon: 15 };
 const IS_MARKETPLACE = ch => ['Shopee', 'Lazada', 'Amazon', 'TikTok Shop'].includes(ch);
 const IS_B2B        = ch => B2B_CHANNELS.includes(ch);
 
 function useIsMobile() {
-  const [mobile, setMobile] = useState(window.innerWidth < 900);
+  const [mobile, setMobile] = useState(window.innerWidth < 768);
   useEffect(() => {
-    const h = () => setMobile(window.innerWidth < 680);
+    const h = () => setMobile(window.innerWidth < 768);
     window.addEventListener('resize', h);
     return () => window.removeEventListener('resize', h);
   }, []);

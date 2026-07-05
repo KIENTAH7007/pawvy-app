@@ -19,9 +19,9 @@ const EMPTY = { brand_id:'', product_id:'', qty:'', unit_price:'', discount_pct:
 const sgd = v => `SGD ${parseFloat(v||0).toFixed(2)}`;
 
 function useIsMobile() {
-  const [mobile, setMobile] = useState(window.innerWidth < 680);
+  const [mobile, setMobile] = useState(window.innerWidth < 768);
   useEffect(() => {
-    const h = () => setMobile(window.innerWidth < 680);
+    const h = () => setMobile(window.innerWidth < 768);
     window.addEventListener('resize', h);
     return () => window.removeEventListener('resize', h);
   }, []);
@@ -31,6 +31,7 @@ function useIsMobile() {
 export default function EventSale() {
   const [date,   setDate]  = useState(new Date().toISOString().slice(0,10));
   const [lines,  setLines] = useState([{ ...EMPTY }]);
+  const [notes,  setNotes] = useState('');
   const [brands, setBrands]= useState([]);
   const [pbb,    setPbb]   = useState({});
   const [saving, setSaving]= useState(false);
@@ -104,13 +105,14 @@ export default function EventSale() {
           unit_price:       c.price,                              // full RRP, not net
           platform_fee_pct: c.disc,                                // discount % for display
           platform_fee_amt: parseFloat((c.qty * c.discAmt).toFixed(2)), // total discount $ for the line
-          notes: c.disc > 0
-            ? `Event discount ${c.disc}% off RRP SGD ${c.price.toFixed(2)}`
-            : null,
+          notes: [
+            notes || null,
+            c.disc > 0 ? `Event discount ${c.disc}% off RRP SGD ${c.price.toFixed(2)}` : null,
+          ].filter(Boolean).join(' | ') || null,
         });
       }
       setSaved(true);
-      setTimeout(() => { setSaved(false); setLines([{ ...EMPTY }]); }, 2000);
+      setTimeout(() => { setSaved(false); setLines([{ ...EMPTY }]); setNotes(''); }, 2000);
     } catch(e) { setError(e.message); }
     finally { setSaving(false); }
   }
@@ -179,7 +181,7 @@ export default function EventSale() {
   }
 
   return (
-    <Page title="EVENT SALE" subtitle="Walk-in customers at events — RRP pricing, unit cost hidden">
+    <Page title="EVENT SALE / DIRECT SALE" subtitle="Walk-in customers at events or direct — RRP pricing, unit cost hidden">
       <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 272px',gap:16,alignItems:'start'}}>
 
         <div style={{display:'flex',flexDirection:'column',gap:12}}>
@@ -187,7 +189,7 @@ export default function EventSale() {
             <div style={{padding:'12px 16px',display:'flex',alignItems:'center',gap:16}}>
               <Input label="Date" type="date" value={date} onChange={e=>setDate(e.target.value)} style={{width:170}}/>
               <div style={{fontSize:11,color:'var(--cream-30)',paddingTop:20}}>
-                Channel: <strong style={{color:'var(--orange)'}}>Event Sale</strong>
+                Channel: <strong style={{color:'var(--orange)'}}>Event Sale / Direct Sale</strong>
                 &nbsp;·&nbsp; Price: <strong style={{color:'var(--orange)'}}>RRP</strong>
               </div>
             </div>
@@ -217,11 +219,16 @@ export default function EventSale() {
             </div>
           </Card>
 
-          <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
-            <Btn onClick={handleSave} disabled={saving||saved} size="lg">
-              {saved ? <><CheckCircle size={14}/> Saved!</> : saving ? 'Saving…' : 'Save Sale'}
-            </Btn>
-          </div>
+          <Card>
+            <div style={{padding:14,display:'flex',gap:10,alignItems:'flex-end',flexWrap:isMobile?'wrap':'nowrap'}}>
+              <div style={{flex:1,minWidth:isMobile?'100%':undefined}}>
+                <Input label="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="e.g. partial payment, tester included…"/>
+              </div>
+              <Btn onClick={handleSave} disabled={saving||saved} size="lg" style={{whiteSpace:'nowrap'}}>
+                {saved ? <><CheckCircle size={14}/> Saved!</> : saving ? 'Saving…' : 'Save Sale'}
+              </Btn>
+            </div>
+          </Card>
           {error && <div style={{background:'rgba(248,113,113,.12)',border:'1px solid rgba(248,113,113,.3)',borderRadius:7,padding:'10px 14px',fontSize:12,color:'#f87171'}}>{error}</div>}
         </div>
 
