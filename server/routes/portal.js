@@ -65,7 +65,7 @@ module.exports = function(db) {
         return res.status(400).json({ error: 'Each item needs a valid product and quantity.' });
       }
       const product = db.queryOne(`
-        SELECT p.id, p.is_active,
+        SELECT p.id, p.is_active, p.item_series, p.variation,
           COALESCE(home.qty, 0) + COALESCE(storhub.qty, 0) AS total_qty
         FROM products p
         LEFT JOIN inventory_levels home    ON home.product_id = p.id    AND home.location    = 'Home'
@@ -77,6 +77,14 @@ module.exports = function(db) {
       }
       if (product.total_qty <= 0) {
         return res.status(400).json({ error: `One of the items in your order just went out of stock — please remove it and try again.` });
+      }
+      // Hard cap: never allow ordering more than what's actually in stock
+      // (Home + Storhub combined). The exact number is intentionally not
+      // disclosed in this message — only that the requested amount isn't
+      // available — to keep exact stock levels private.
+      if (qty > product.total_qty) {
+        const name = `${product.item_series}${product.variation ? ' · ' + product.variation : ''}`;
+        return res.status(400).json({ error: `The quantity requested for "${name}" isn't available right now. Please reduce the quantity and try again.` });
       }
     }
 
