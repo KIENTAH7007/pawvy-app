@@ -30,6 +30,18 @@ async function startServer() {
   app.use('/api/adjustments', adj(db));
   app.use('/api/invoices',    require('./routes/invoices')(db));
 
+  // Order Portal (public-facing, separate build) — served under /order.
+  // Registered BEFORE the internal app's catch-all below, so /order/* requests
+  // are handled here first and never fall through to the internal app's index.html.
+  const portalBuild = path.join(__dirname, '..', 'portal', 'dist');
+  if (fs.existsSync(path.join(portalBuild, 'index.html'))) {
+    app.use('/order', express.static(portalBuild));
+    app.get('/order/*', (req, res) => res.sendFile(path.join(portalBuild, 'index.html')));
+    console.log(`📁  Order Portal: ${portalBuild}`);
+  } else {
+    console.log('⚠️   No Order Portal build found (skipping — internal app is unaffected).');
+  }
+
   // Serve React frontend — check multiple locations
   const candidates = [
     path.join(__dirname, '..', 'client', 'dist'),  // Railway (built during deploy)

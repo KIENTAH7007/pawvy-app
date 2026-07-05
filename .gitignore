@@ -1,9 +1,11 @@
 # Dependencies
 node_modules/
 client/node_modules/
+portal/node_modules/
 
 # Build output (Railway builds this itself)
 client/dist/
+portal/dist/
 server/public/
 
 # Local database (DO NOT commit your personal data)
