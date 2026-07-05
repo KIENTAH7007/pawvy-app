@@ -104,6 +104,8 @@ export default function PendingOrders() {
         ...prev,
         [order.id]: {
           partnerId: order.partner_id || '',
+          shippingCharged: '',
+          shippingCost: '',
           items: order.items.map(it => ({
             product_id: it.product_id,
             qty: it.qty,
@@ -154,8 +156,9 @@ export default function PendingOrders() {
     const subtotal = items.reduce((s, it) => s + it.qty * (parseFloat(it.unit_price) || 0), 0);
     const discount = partner ? calcDiscount(partner, subtotal) : { amount: 0, label: null, type: 'none' };
     const discountAffectsTotal = discount.type !== 'credit_note' && discount.type !== 'credit_note_unmet';
-    const netTotal = subtotal - (discountAffectsTotal ? discount.amount : 0);
-    return { partner, items, subtotal, discount, discountAffectsTotal, netTotal };
+    const shipCharged = parseFloat(es?.shippingCharged) || 0;
+    const netTotal = subtotal - (discountAffectsTotal ? discount.amount : 0) + shipCharged;
+    return { partner, items, subtotal, discount, discountAffectsTotal, shipCharged, netTotal };
   }
 
   async function handleApprove(order) {
@@ -168,6 +171,8 @@ export default function PendingOrders() {
     try {
       const payload = {
         partner_id: partner.id,
+        shipping_charged: parseFloat(es.shippingCharged) || 0,
+        shipping_cost:    parseFloat(es.shippingCost) || 0,
         items: items.map(it => {
           const feeAmt = getPerLineDiscountAmt(discount, subtotal, it);
           return {
@@ -388,6 +393,20 @@ export default function PendingOrders() {
                       </Btn>
                     </div>
 
+                    <div style={{ marginTop: 14 }}>
+                      <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 13, letterSpacing: 1, color: 'var(--cream)', paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>
+                        SHIPPING (OPTIONAL)
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, paddingTop: 10 }}>
+                        <Input label="Shipping Charged to Partner (SGD)" type="number" step="0.01" placeholder="0.00"
+                          value={es.shippingCharged}
+                          onChange={e => updateEdit(order.id, prev => ({ ...prev, shippingCharged: e.target.value }))}/>
+                        <Input label="Actual Shipping Cost (SGD)" type="number" step="0.01" placeholder="0.00"
+                          value={es.shippingCost}
+                          onChange={e => updateEdit(order.id, prev => ({ ...prev, shippingCost: e.target.value }))}/>
+                      </div>
+                    </div>
+
                     {totals && totals.partner && (
                       <div style={{ marginTop: 14, padding: 12, background: 'rgba(245,242,235,.03)', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
@@ -400,6 +419,12 @@ export default function PendingOrders() {
                             {totals.discountAffectsTotal && totals.discount.amount > 0 && (
                               <span style={{ color: '#7fc93e', fontWeight: 700 }}>− {fmt.sgd(totals.discount.amount)}</span>
                             )}
+                          </div>
+                        )}
+                        {totals.shipCharged > 0 && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
+                            <span style={{ color: 'var(--cream-60)' }}>Shipping charged</span>
+                            <span style={{ color: 'var(--cream)' }}>+ {fmt.sgd(totals.shipCharged)}</span>
                           </div>
                         )}
                         <div style={{ height: 1, background: 'var(--border)', margin: '2px 0' }}/>

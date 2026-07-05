@@ -92,7 +92,7 @@ module.exports = function(db, inventoryRouter) {
       return res.status(400).json({ error: `This order is already ${order.status}.` });
     }
 
-    const { partner_id, items } = req.body;
+    const { partner_id, items, shipping_charged, shipping_cost } = req.body;
     if (!partner_id) {
       return res.status(400).json({ error: 'Select which partner this order belongs to before approving — the company name typed on the portal is free text and can\'t be trusted to match automatically.' });
     }
@@ -102,8 +102,11 @@ module.exports = function(db, inventoryRouter) {
 
     const today = new Date().toISOString().slice(0, 10);
     const saleIds = [];
+    const shipCharged = parseFloat(shipping_charged) || 0;
+    const shipCost    = parseFloat(shipping_cost)    || 0;
 
-    for (const line of items) {
+    for (let i = 0; i < items.length; i++) {
+      const line = items[i];
       const qty = parseInt(line.qty);
       if (!line.product_id || !qty || qty <= 0 || line.unit_price === undefined) {
         return res.status(400).json({ error: 'Each item needs a valid product, quantity, and price.' });
@@ -119,14 +122,19 @@ module.exports = function(db, inventoryRouter) {
         ? parseFloat(line.platform_fee_amt)
         : parseFloat(((qty * line.unit_price) * (fee_pct / 100)).toFixed(2));
 
+      // Shipping is per-order, not per-line — same convention as Record Sale:
+      // only the first created sale row carries it.
+      const isFirst = i === 0;
+
       const result = db.run(`
         INSERT INTO sales
           (date, product_id, partner_id, channel, market, qty, unit_cost, unit_price,
-           platform_fee_pct, platform_fee_amt, notes)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?)
+           platform_fee_pct, platform_fee_amt, shipping_charged, shipping_cost, notes)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
       `, [
         today, line.product_id, partner_id || null, 'Wholesale Order', 'SG',
         qty, cost, line.unit_price, fee_pct, fee_amt,
+        isFirst ? shipCharged : 0, isFirst ? shipCost : 0,
         `Order Portal — ${order.company_name}`
       ]);
 
