@@ -59,9 +59,9 @@ export default function Shipments() {
     load();
   }
 
-  // Lighter refresh used for line-item add/remove — these change the shape of
-  // line_items so detail needs refetching, but don't change anything shown at
-  // the list level (status, total_landed_cost), so skip the list reload.
+  // Lighter refresh used only when line item SHAPE changes in a way the
+  // caller can't easily patch locally (kept for future use, currently unused
+  // now that add/remove/select all merge their responses directly).
   async function refreshDetailOnly(id) {
     const d = await shipmentsApi.get(id);
     setDetail(d);
@@ -76,10 +76,11 @@ export default function Shipments() {
     } finally { setBusy(false); }
   }
 
-  async function addLine() {
-    if (!products.length) { setError('Select a brand first, then add line items.'); return; }
-    await shipmentsApi.addLineItem(detail.id, { product_id: products[0].id, qty_ordered: 0, qty_received: 0, unit_cost_original_currency: 0 });
-    refreshDetailOnly(detail.id);
+  // No follow-up GET — the POST response already contains the created row.
+  // The caller (child) shows an optimistic placeholder immediately and
+  // swaps in this real row once it resolves, so the click feels instant.
+  async function addLine(productId) {
+    return shipmentsApi.addLineItem(detail.id, { product_id: productId, qty_ordered: 0, qty_received: 0, unit_cost_original_currency: 0 });
   }
 
   // Saves a single line item's field(s) on blur (not on every keystroke — that
@@ -92,9 +93,10 @@ export default function Shipments() {
     return shipmentsApi.updateLineItem(liId, fields);
   }
 
+  // No follow-up GET — the caller removes the row from local state immediately
+  // and this just fires the DELETE in the background.
   async function removeLine(liId) {
-    await shipmentsApi.deleteLineItem(liId);
-    refreshDetailOnly(detail.id);
+    return shipmentsApi.deleteLineItem(liId);
   }
 
   async function selectSku(li, productId) {
@@ -249,6 +251,7 @@ function ShipmentDetailPanel({
   const [header, setHeader] = useState(detail);
   const [lines, setLines] = useState(detail.line_items || []);
   const [gstOverride, setGstOverride] = useState(!!detail.gst_amount_override);
+  const [localError, setLocalError] = useState('');
 
   // Re-sync from server truth whenever the parent refreshes detail (add/remove
   // line, SKU change, cost calc, header save, etc.) — but NOT on every keystroke,
@@ -268,8 +271,46 @@ function ShipmentDetailPanel({
   }
 
   async function handleSelectSku(li, productId) {
-    const updated = await onSelectSku(li, productId);
-    if (updated) setLines(ls => ls.map(l => l.id === li.id ? { ...l, ...updated } : l));
+    // Update the dropdown instantly — don't wait on the network for the
+    // visible selection to change. The cost/weight prefill from Cost
+    // Reference (which does need a lookup) merges in a moment later.
+    setLineField(li.id, 'product_id', productId);
+    try {
+      const updated = await onSelectSku(li, productId);
+      if (updated) setLines(ls => ls.map(l => l.id === li.id ? { ...l, ...updated } : l));
+    } catch (e) {
+      // Background save failed — leave the dropdown as selected but surface
+      // nothing destructive; next full refresh (e.g. after costing) will
+      // reconcile if it never actually saved.
+    }
+  }
+
+  async function handleAddLine() {
+    if (!products.length) { setLocalError('Products for this brand are still loading — try again in a moment.'); return; }
+    setLocalError('');
+    // Show the new row immediately with a temporary id, then swap in the
+    // real server row once the save resolves — this is what makes it feel
+    // as instant as Record Sale instead of waiting ~1s for a round trip.
+    const tempId = `temp-${Date.now()}`;
+    const placeholder = { id: tempId, product_id: products[0].id, qty_ordered: 0, qty_received: 0, unit_cost_original_currency: 0, weight_per_unit: null };
+    setLines(ls => [...ls, placeholder]);
+    try {
+      const created = await onAddLine(products[0].id);
+      setLines(ls => ls.map(l => l.id === tempId ? created : l));
+    } catch (e) {
+      setLines(ls => ls.filter(l => l.id !== tempId));
+    }
+  }
+
+  async function handleRemoveLine(liId) {
+    const backup = lines;
+    setLines(ls => ls.filter(l => l.id !== liId));
+    if (String(liId).startsWith('temp-')) return; // never persisted — nothing to delete server-side
+    try {
+      await onRemoveLine(liId);
+    } catch (e) {
+      setLines(backup); // save failed — restore so it's not silently lost
+    }
   }
 
   const colWidths = '2fr 1fr 1fr 1fr 1fr auto';
@@ -279,6 +320,11 @@ function ShipmentDetailPanel({
       {error && (
         <div style={{ background: 'rgba(226,75,74,.1)', border: '1px solid rgba(226,75,74,.3)', color: '#E24B4A', padding: '8px 12px', borderRadius: 7, fontSize: 12 }}>
           {error}
+        </div>
+      )}
+      {localError && (
+        <div style={{ background: 'rgba(226,75,74,.1)', border: '1px solid rgba(226,75,74,.3)', color: '#E24B4A', padding: '8px 12px', borderRadius: 7, fontSize: 12 }}>
+          {localError}
         </div>
       )}
       {isVoided && (
@@ -343,12 +389,12 @@ function ShipmentDetailPanel({
               onBlur={e => commitLineField(li, 'weight_per_unit', e.target.value ? parseFloat(e.target.value) : null)}
               disabled={isVoided} />
             {!isVoided && (
-              <button onClick={() => onRemoveLine(li.id)} style={{ background: 'none', border: 'none', color: 'var(--cream-30)', cursor: 'pointer', padding: '8px 4px' }}><Trash2 size={14} /></button>
+              <button onClick={() => handleRemoveLine(li.id)} style={{ background: 'none', border: 'none', color: 'var(--cream-30)', cursor: 'pointer', padding: '8px 4px' }}><Trash2 size={14} /></button>
             )}
           </div>
         ))}
       </div>
-      {header.brand_id && !isVoided && <Btn size="sm" variant="secondary" onClick={onAddLine}><Plus size={13} /> Add line item</Btn>}
+      {header.brand_id && !isVoided && <Btn size="sm" variant="secondary" onClick={handleAddLine}><Plus size={13} /> Add line item</Btn>}
 
       <Divider label="Cost inputs" />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
