@@ -516,7 +516,7 @@ function ShipmentDetailPanel({
       </div>
       {!isVoided && (
         <div style={{ fontSize: 11, color: 'var(--cream-30)' }}>
-          Marking "received" does not yet update Inventory — that automatic sync is a separate upcoming step, built and tested in isolation before it touches live stock. "Quick calculation" is a what-if preview only — it doesn't save anything, change status, or touch the variance ledger. It calculates using Qty Ordered (not Qty Received), since it's meant for planning before anything has arrived.
+          Marking "received" adds Qty Received for each line item to Storhub in Inventory, tagged with this shipment's code for audit trail. This only happens once per line — editing Qty Received afterward won't re-sync automatically; use Inventory's Write-off/Adjust functions for corrections. "Quick calculation" is a what-if preview only — it doesn't save anything, change status, or touch the variance ledger. It calculates using Qty Ordered (not Qty Received), since it's meant for planning before anything has arrived.
         </div>
       )}
 

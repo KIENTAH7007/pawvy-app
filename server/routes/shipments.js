@@ -9,7 +9,7 @@ const { Router } = require('express');
 // wired up yet. Marking a shipment "Received" in this patch only changes
 // its status; it does not touch Inventory. That comes next, built and
 // sandbox-tested in isolation per the agreed sequence.
-module.exports = function(db) {
+module.exports = function(db, inventoryRouter) {
   const router = Router();
 
   function nextShipmentCode() {
@@ -282,9 +282,42 @@ module.exports = function(db) {
 
   // ── Status: mark received (no inventory effect yet — Step 4) ─────
 
+  // ── Status: mark received — syncs Inventory (Storhub only) ──────────
+  // Only line items with inventory_synced = 0 are processed, so calling
+  // this more than once (or editing qty_received afterward) never adds
+  // stock twice. Corrections after receiving go through the existing
+  // Write-off/Adjust functions in Inventory, per the agreed design — this
+  // endpoint does not auto-re-sync on edits.
   router.post('/:id/receive', (req, res) => {
+    const shipment = db.queryOne('SELECT * FROM shipments WHERE id = ?', [req.params.id]);
+    if (!shipment) return res.status(404).json({ error: 'Shipment not found' });
+
+    const lines = db.query(
+      `SELECT * FROM shipment_line_items WHERE shipment_id = ? AND inventory_synced = 0 AND qty_received > 0`,
+      [req.params.id]
+    );
+
+    const synced = [];
+    if (inventoryRouter?._recordMovement) {
+      const today = new Date().toISOString().slice(0, 10);
+      lines.forEach(l => {
+        inventoryRouter._recordMovement({
+          date: today,
+          product_id: l.product_id,
+          location: 'Storhub',
+          type: 'Shipment Received',
+          qty_change: l.qty_received,
+          reference: shipment.shipment_code,
+          notes: `Auto-synced from shipment ${shipment.shipment_code}`,
+        });
+        db.run('UPDATE shipment_line_items SET inventory_synced = 1 WHERE id = ?', [l.id]);
+        synced.push({ product_id: l.product_id, qty: l.qty_received });
+      });
+    }
+
     db.run(`UPDATE shipments SET status = 'received', updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [req.params.id]);
-    res.json(db.queryOne('SELECT * FROM shipments WHERE id = ?', [req.params.id]));
+    const updated = db.queryOne('SELECT * FROM shipments WHERE id = ?', [req.params.id]);
+    res.json({ ...updated, inventory_synced_lines: synced });
   });
 
   // ── Void ───────────────────────────────────────────────────────────
