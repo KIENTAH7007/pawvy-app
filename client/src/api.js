@@ -107,6 +107,19 @@ export const shipmentsApi = {
 };
 
 export const brandSkuApi = { detail: (q) => api.get(`/reports/brand-sku${qs(q)}`), };
+export const restockApi = {
+  getAll:  (q) => api.get(`/restock${qs(q)}`),
+  get:     (id) => api.get(`/restock/${id}`),
+  create:  (data) => api.post('/restock', data),
+  update:  (id, data) => api.put(`/restock/${id}`, data),
+  delete:  (id) => api.delete(`/restock/${id}`),
+  addItem: (id, data) => api.post(`/restock/${id}/items`, data),
+  addItemsBulk: (id, items) => api.post(`/restock/${id}/items/bulk`, { items }),
+  updateItem: (itemId, data) => api.put(`/restock/items/${itemId}`, data),
+  deleteItem: (itemId) => api.delete(`/restock/items/${itemId}`),
+  suggestions: () => api.get('/restock/suggestions'),
+  complete: (id) => api.post(`/restock/${id}/complete`, {}),
+};
 
 // ── Sequential document number generator (localStorage counter per day) ──
 // CS-YYYYMMDD-001, INV-YYYYMMDD-001, DO-YYYYMMDD-001 etc.

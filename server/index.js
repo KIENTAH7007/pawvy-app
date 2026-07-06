@@ -32,6 +32,7 @@ async function startServer() {
   app.use('/api/portal',      require('./routes/portal')(db));
   app.use('/api/orders',      require('./routes/orders')(db, inventoryRouter));
   app.use('/api/shipments',   require('./routes/shipments')(db, inventoryRouter));
+  app.use('/api/restock',     require('./routes/restock')(db, inventoryRouter));
 
   // Order Portal (public-facing, separate build) — served under /order.
   // Registered BEFORE the internal app's catch-all below, so /order/* requests

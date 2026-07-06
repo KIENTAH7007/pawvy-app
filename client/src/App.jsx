@@ -3,7 +3,7 @@ import { Routes, Route, NavLink, useLocation, useNavigate } from 'react-router-d
 import {
   LayoutDashboard, PlusCircle, Package, Store, Tag,
   FileText, Users, Receipt, Settings, TrendingUp, ClipboardList,
-  ShoppingBag, Menu, X, Inbox, Truck, Coins, FolderOpen, Scale
+  ShoppingBag, Menu, X, Inbox, Truck, Coins, FolderOpen, Scale, ListChecks
 } from 'lucide-react';
 import { ordersApi } from './api';
 
@@ -17,6 +17,7 @@ import Partners       from './pages/Partners';
 import Costs          from './pages/Costs';
 import Reports        from './pages/Reports';
 import Consignment    from './pages/Consignment';
+import RestockChecklist from './pages/RestockChecklist';
 import Invoices       from './pages/Invoices';
 import PendingOrders  from './pages/PendingOrders';
 import Shipments      from './pages/Shipments';
@@ -37,6 +38,7 @@ const NAV = [
     { path: '/sales',        label: 'Sales Ledger',    icon: ClipboardList },
     { path: '/orders',       label: 'Pending Orders',  icon: Inbox },
     { path: '/inventory',    label: 'Inventory',       icon: Package },
+    { path: '/restock',      label: 'Restock Checklist', icon: ListChecks },
     { path: '/consignment',  label: 'Consignment',     icon: Store },
   ]},
   { section: 'Catalogue',   items: [
@@ -248,6 +250,7 @@ export default function App() {
             <Route path="/sales"         element={<Sales />} />
             <Route path="/orders"        element={<PendingOrders />} />
             <Route path="/inventory"     element={<Inventory />} />
+            <Route path="/restock"       element={<RestockChecklist />} />
             <Route path="/consignment"   element={<Consignment />} />
             <Route path="/products"      element={<Products />} />
             <Route path="/invoices"      element={<Invoices />} />

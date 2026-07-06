@@ -389,6 +389,26 @@ function createSchema() {
       logged_date DATE NOT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`,
+    // Restock Checklist — staged Storhub <-> Home transfer prep, so a
+    // physical warehouse run can be checked off item-by-item and then
+    // committed as real inventory transfers in one action.
+    `CREATE TABLE IF NOT EXISTS restock_checklists (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      label TEXT,
+      direction TEXT NOT NULL DEFAULT 'storhub_to_home',
+      status TEXT NOT NULL DEFAULT 'draft',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      completed_at DATETIME
+    )`,
+    `CREATE TABLE IF NOT EXISTS restock_checklist_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      checklist_id INTEGER NOT NULL REFERENCES restock_checklists(id) ON DELETE CASCADE,
+      product_id INTEGER NOT NULL REFERENCES products(id),
+      qty_planned INTEGER NOT NULL DEFAULT 0,
+      qty_taken INTEGER,
+      checked INTEGER NOT NULL DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
   ];
 
   tables.forEach(sql => db.run(sql));
