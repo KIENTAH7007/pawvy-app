@@ -454,9 +454,19 @@ module.exports = function(db) {
       WHERE li.shipment_id = ?
     `, [req.params.id]);
 
+    // Quick Calculation is a pre-order planning tool — at that point nothing
+    // has arrived yet, so Qty Received is genuinely 0/unset. The real /cost
+    // endpoint correctly uses Qty Received (actual arrived quantity can
+    // differ from ordered), but that would make this preview meaningless if
+    // only Qty Ordered has been filled in. So here specifically, Qty Ordered
+    // stands in as the quantity basis — calculateLandedCost always reads off
+    // qty_received internally, so we remap it for this call only; nothing
+    // about the real line item data changes.
+    const previewLines = lines.map(l => ({ ...l, qty_received: l.qty_ordered }));
+
     let calc;
     try {
-      calc = calculateLandedCost(previewShipment, lines);
+      calc = calculateLandedCost(previewShipment, previewLines);
     } catch (e) {
       return res.status(400).json({ error: e.message });
     }

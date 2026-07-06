@@ -509,7 +509,7 @@ function ShipmentDetailPanel({
       </div>
       {!isVoided && (
         <div style={{ fontSize: 11, color: 'var(--cream-30)' }}>
-          Marking "received" does not yet update Inventory — that automatic sync is a separate upcoming step, built and tested in isolation before it touches live stock. "Quick calculation" is a what-if preview only — it doesn't save anything, change status, or touch the variance ledger.
+          Marking "received" does not yet update Inventory — that automatic sync is a separate upcoming step, built and tested in isolation before it touches live stock. "Quick calculation" is a what-if preview only — it doesn't save anything, change status, or touch the variance ledger. It calculates using Qty Ordered (not Qty Received), since it's meant for planning before anything has arrived.
         </div>
       )}
 
@@ -546,7 +546,7 @@ function ShipmentDetailPanel({
             keyField="product_id"
           />
           <div style={{ fontSize: 11, color: 'var(--cream-30)', marginTop: 8 }}>
-            Try adjusting quantities or the cost inputs above, then click "Quick calculation" again — nothing here is saved until you click "Calculate landed cost & mark costed" for real.
+            Try adjusting quantities (Qty Ordered is what's used here) or the cost inputs above, then click "Quick calculation" again — nothing here is saved until you click "Calculate landed cost & mark costed" for real.
           </div>
         </div>
       )}
