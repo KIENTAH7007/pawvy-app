@@ -83,6 +83,16 @@ export const partnerReportApi = { top: (q) => api.get(`/reports/partners${qs(q)}
 export const adjApi       = { getAll: (q) => api.get(`/adjustments${qs(q)}`), create: (d) => api.post('/adjustments',d) };
 export const shipmentsApi = {
   getAll:   (q) => api.get(`/shipments${qs(q)}`),
+  get:      (id) => api.get(`/shipments/${id}`),
+  create:   (data) => api.post('/shipments', data),
+  update:   (id, data) => api.put(`/shipments/${id}`, data),
+  delete:   (id) => api.delete(`/shipments/${id}`),
+  addLineItem:    (id, data) => api.post(`/shipments/${id}/line-items`, data),
+  updateLineItem: (liId, data) => api.put(`/shipments/line-items/${liId}`, data),
+  deleteLineItem: (liId) => api.delete(`/shipments/line-items/${liId}`),
+  markReceived: (id) => api.post(`/shipments/${id}/receive`, {}),
+  calculateCost: (id, data) => api.post(`/shipments/${id}/cost`, data || {}),
+  uploadDocument: (id, data) => api.post(`/shipments/${id}/documents`, data),
   costReference:        ()      => api.get('/shipments/cost-reference'),
   costReferenceHistory: (pid)   => api.get(`/shipments/cost-reference/${pid}/history`),
   addCostReference:     (data)  => api.post('/shipments/cost-reference', data),

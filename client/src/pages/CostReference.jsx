@@ -3,7 +3,7 @@ import { Plus, History, Trash2 } from 'lucide-react';
 import { shipmentsApi } from '../api';
 import { Page, Table, Btn, Modal, FormRow, Input, Select, Badge, fmt } from '../components/ui';
 
-const CURRENCIES = ['USD', 'EUR', 'KRW', 'CNY', 'SGD'];
+const CURRENCIES = ['USD', 'GBP', 'EUR', 'KRW', 'CNY', 'SGD'];
 
 export default function CostReference() {
   const [rows, setRows] = useState([]);
