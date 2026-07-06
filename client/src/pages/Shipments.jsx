@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, ChevronDown, ChevronUp, Trash2, Upload, FileText, Truck, Ban } from 'lucide-react';
+import { Plus, ChevronDown, ChevronUp, Trash2, Upload, FileText, Truck, Ban, Calculator } from 'lucide-react';
 import { shipmentsApi, brandsApi, productsApi } from '../api';
 import { Page, Card, KpiCard, Input, Select, Btn, Badge, Table, Divider, fmt } from '../components/ui';
 
@@ -23,7 +23,6 @@ export default function Shipments() {
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState(null);
   const [detail, setDetail] = useState(null); // full shipment detail incl. line_items/variance/documents
-  const [products, setProducts] = useState([]); // products for the current shipment's brand
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [monthVariance, setMonthVariance] = useState(0);
@@ -50,7 +49,6 @@ export default function Shipments() {
     setError('');
     const d = await shipmentsApi.get(id);
     setDetail(d);
-    if (d.brand_id) productsApi.getAll({ brand_id: d.brand_id, active: true }).then(setProducts);
   }
 
   async function refreshDetail(id) {
@@ -71,7 +69,6 @@ export default function Shipments() {
     setBusy(true);
     try {
       await shipmentsApi.update(detail.id, fields);
-      if (fields.brand_id) productsApi.getAll({ brand_id: fields.brand_id, active: true }).then(setProducts);
       await refreshDetail(detail.id);
     } finally { setBusy(false); }
   }
@@ -128,6 +125,12 @@ export default function Shipments() {
       await refreshDetail(detail.id);
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }
+  }
+
+  // Pure what-if — no state changes here at all, the child owns its own
+  // preview UI and busy/error state for this.
+  async function previewCost(id, overrides) {
+    return shipmentsApi.previewCost(id, overrides);
   }
 
   async function uploadDoc(documentType, file) {
@@ -219,7 +222,6 @@ export default function Shipments() {
                   <ShipmentDetailPanel
                     detail={detail}
                     brands={brands}
-                    products={products}
                     busy={busy}
                     error={error}
                     onSaveHeader={saveHeader}
@@ -229,6 +231,7 @@ export default function Shipments() {
                     onSelectSku={selectSku}
                     onMarkReceived={markReceived}
                     onCalculateCost={calculateCost}
+                    onPreviewCost={previewCost}
                     onUploadDoc={uploadDoc}
                     onVoid={() => voidShipment(s.id)}
                     onDelete={() => deleteShipment(s.id)}
@@ -244,19 +247,35 @@ export default function Shipments() {
 }
 
 function ShipmentDetailPanel({
-  detail, brands, products, busy, error,
+  detail, brands, busy, error,
   onSaveHeader, onAddLine, onCommitLine, onRemoveLine, onSelectSku,
-  onMarkReceived, onCalculateCost, onUploadDoc, onVoid, onDelete,
+  onMarkReceived, onCalculateCost, onPreviewCost, onUploadDoc, onVoid, onDelete,
 }) {
   const [header, setHeader] = useState(detail);
   const [lines, setLines] = useState(detail.line_items || []);
   const [gstOverride, setGstOverride] = useState(!!detail.gst_amount_override);
   const [localError, setLocalError] = useState('');
+  const [products, setProducts] = useState([]);
+  const [preview, setPreview] = useState(null);
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const [previewError, setPreviewError] = useState('');
 
   // Re-sync from server truth whenever the parent refreshes detail (add/remove
   // line, SKU change, cost calc, header save, etc.) — but NOT on every keystroke,
   // since qty/cost/weight fields below only push to the server on blur.
-  useEffect(() => { setHeader(detail); setLines(detail.line_items || []); setGstOverride(!!detail.gst_amount_override); }, [detail]);
+  useEffect(() => { setHeader(detail); setLines(detail.line_items || []); setGstOverride(!!detail.gst_amount_override); setPreview(null); }, [detail]);
+
+  // Refetch the SKU list whenever the LIVE brand selection changes — including
+  // before "Save details" is clicked. This is the fix for the bug where the
+  // SKU dropdown kept showing a previous shipment's brand: it was only
+  // refetching after a save, so an unsaved brand change had no effect on it.
+  useEffect(() => {
+    if (header.brand_id) {
+      productsApi.getAll({ brand_id: header.brand_id, active: true }).then(setProducts);
+    } else {
+      setProducts([]);
+    }
+  }, [header.brand_id]);
 
   const hf = (k, v) => setHeader(h => ({ ...h, [k]: v }));
   const isVoided = header.status === 'voided';
@@ -268,6 +287,30 @@ function ShipmentDetailPanel({
   async function commitLineField(li, field, value) {
     const updated = await onCommitLine(li.id, { [field]: value });
     if (updated) setLines(ls => ls.map(l => l.id === li.id ? { ...l, ...updated } : l));
+  }
+
+  async function runQuickCalc() {
+    setPreviewBusy(true); setPreviewError(''); setPreview(null);
+    try {
+      // Send whatever is currently typed in Cost Inputs, saved or not — the
+      // whole point is testing a what-if scenario without needing to save
+      // first. Line items themselves are already saved as you type them
+      // (per the existing auto-save-on-blur design), so no override needed there.
+      const overrides = {
+        fx_rate_actual: header.fx_rate_actual, fx_processing_charge: header.fx_processing_charge,
+        cashback: header.cashback, forwarder_invoice_value: header.forwarder_invoice_value,
+        permit_invoice_value: header.permit_invoice_value, avs_payment: header.avs_payment,
+        freight_apportion_method: header.freight_apportion_method,
+        gst_amount: gstOverride ? header.gst_amount : undefined,
+        gst_amount_override: gstOverride ? 1 : 0,
+      };
+      const result = await onPreviewCost(detail.id, overrides);
+      setPreview(result);
+    } catch (e) {
+      setPreviewError(e.message);
+    } finally {
+      setPreviewBusy(false);
+    }
   }
 
   async function handleSelectSku(li, productId) {
@@ -460,12 +503,51 @@ function ShipmentDetailPanel({
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {!isVoided && header.status === 'ordered' && <Btn size="sm" variant="secondary" onClick={onMarkReceived} disabled={busy}><Truck size={13} /> Mark as received</Btn>}
         {!isVoided && <Btn size="sm" onClick={onCalculateCost} disabled={busy}>{header.status === 'costed' ? 'Recalculate & re-cost' : 'Calculate landed cost & mark costed'}</Btn>}
+        {!isVoided && <Btn size="sm" variant="secondary" onClick={runQuickCalc} disabled={previewBusy}><Calculator size={13} /> {previewBusy ? 'Calculating…' : 'Quick calculation'}</Btn>}
         {!isVoided && <Btn size="sm" variant="secondary" onClick={onVoid} disabled={busy}><Ban size={13} /> Void shipment</Btn>}
         <Btn size="sm" variant="secondary" onClick={onDelete} disabled={busy}><Trash2 size={13} /> Delete permanently</Btn>
       </div>
       {!isVoided && (
         <div style={{ fontSize: 11, color: 'var(--cream-30)' }}>
-          Marking "received" does not yet update Inventory — that automatic sync is a separate upcoming step, built and tested in isolation before it touches live stock.
+          Marking "received" does not yet update Inventory — that automatic sync is a separate upcoming step, built and tested in isolation before it touches live stock. "Quick calculation" is a what-if preview only — it doesn't save anything, change status, or touch the variance ledger.
+        </div>
+      )}
+
+      {previewError && (
+        <div style={{ background: 'rgba(226,75,74,.1)', border: '1px solid rgba(226,75,74,.3)', color: '#E24B4A', padding: '8px 12px', borderRadius: 7, fontSize: 12 }}>
+          {previewError}
+        </div>
+      )}
+
+      {preview && (
+        <div style={{ border: '1px dashed var(--orange)', borderRadius: 9, padding: 14 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--orange)', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Calculator size={13} /> Quick calculation — preview only, nothing saved
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--cream-60)' }}>
+              Est. landed cost: <strong style={{ color: 'var(--cream)' }}>${preview.total_landed_cost.toFixed(2)}</strong>
+              {' · '}Est. GST: ${preview.gst_amount.toFixed(2)}
+            </div>
+          </div>
+          <Table
+            cols={[
+              { key: 'product_id', label: 'SKU', render: (v) => {
+                const li = lines.find(l => l.product_id === v);
+                return li ? `${li.item_series || ''}${li.variation ? ' — ' + li.variation : ''}`.trim() || `#${v}` : `#${v}`;
+              }},
+              { key: 'landed_cost', label: 'Est. landed/unit', align: 'right', render: v => `$${v.toFixed(2)}` },
+              { key: 'set_cost_price', label: 'Set/unit', align: 'right', render: v => `$${v.toFixed(2)}` },
+              { key: 'variance_pct', label: 'Diff %', align: 'right', render: v => `${v >= 0 ? '+' : ''}${v.toFixed(1)}%` },
+              { key: 'variance_total', label: 'Est. total variance ($)', align: 'right', render: v => `${v >= 0 ? '+' : ''}$${v.toFixed(2)}` },
+              { key: 'flag', label: 'Flag', align: 'center', render: v => <Badge color={FLAG_COLOR[v]}>{FLAG_LABEL[v]}</Badge> },
+            ]}
+            rows={preview.variance}
+            keyField="product_id"
+          />
+          <div style={{ fontSize: 11, color: 'var(--cream-30)', marginTop: 8 }}>
+            Try adjusting quantities or the cost inputs above, then click "Quick calculation" again — nothing here is saved until you click "Calculate landed cost & mark costed" for real.
+          </div>
         </div>
       )}
 

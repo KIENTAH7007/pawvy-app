@@ -296,23 +296,17 @@ module.exports = function(db) {
   // each run replaces this shipment's variance ledger rows and recalculates
   // line item landed costs from scratch off current inputs.
 
-  router.post('/:id/cost', (req, res) => {
-    const shipment = db.queryOne('SELECT * FROM shipments WHERE id = ?', [req.params.id]);
-    if (!shipment) return res.status(404).json({ error: 'Shipment not found' });
-
-    const lines = db.query(`
-      SELECT li.*, p.unit_cost AS set_cost_price
-      FROM shipment_line_items li
-      JOIN products p ON p.id = li.product_id
-      WHERE li.shipment_id = ?
-    `, [req.params.id]);
-
-    if (!lines.length) return res.status(400).json({ error: 'Add at least one line item before costing' });
-    if (!shipment.fx_rate_actual) return res.status(400).json({ error: 'Actual FX rate is required before costing' });
+  // Pure calculation, no DB writes — shared by the real /cost endpoint
+  // (which persists the result) and /preview (which doesn't, for the
+  // "Quick calculation" what-if tool). Throws a plain Error with a
+  // user-facing message on validation failure; callers turn that into a 400.
+  function calculateLandedCost(shipment, lines) {
+    if (!lines.length) throw new Error('Add at least one line item before calculating');
+    if (!shipment.fx_rate_actual) throw new Error('Actual FX rate is required before calculating');
 
     const method = shipment.freight_apportion_method || 'value';
     if (method === 'weight' && lines.some(l => !l.weight_per_unit)) {
-      return res.status(400).json({ error: 'Weight-based apportionment selected, but one or more line items are missing weight per unit' });
+      throw new Error('Weight-based apportionment selected, but one or more line items are missing weight per unit');
     }
 
     // Product cost per line, converted to SGD
@@ -327,7 +321,7 @@ module.exports = function(db) {
 
     // GST: 9% of (product cost + forwarder invoice only) — confirmed, not GST-registered, permit fees excluded.
     // Editable: if the shipment has gst_amount_override set (user manually typed and saved a value),
-    // use that value as-is and don't overwrite it here.
+    // use that value as-is instead of recalculating.
     const gstAmount = shipment.gst_amount_override
       ? (shipment.gst_amount || 0)
       : 0.09 * (totalProductCostSgd + (shipment.forwarder_invoice_value || 0));
@@ -350,10 +344,43 @@ module.exports = function(db) {
       const sharedCost = valueShare * valuePool + weightShare * weightPool;
       const lineTotalCost = l.product_cost_sgd + sharedCost;
       const landedCostPerUnit = l.qty_received > 0 ? lineTotalCost / l.qty_received : 0;
-      return { ...l, landed_cost_per_unit: landedCostPerUnit };
+
+      const setCost = l.set_cost_price || 0;
+      // Sign convention: variance is a PROFIT impact — negative = landed cost
+      // came in higher than set cost (unfavorable, reduces profit); positive
+      // = came in lower (favorable, adds profit). Reads the same direction
+      // as the rest of the P&L. Feeds P&L as: total COGS = normal COGS − variance_total.
+      const varianceAmount = setCost - landedCostPerUnit;
+      const variancePct = setCost > 0 ? (varianceAmount / setCost) * 100 : 0;
+      const flag = setCost > 0 ? varianceFlag(variancePct) : 'no_reference';
+      const varianceTotal = varianceAmount * (l.qty_received || 0);
+
+      return { ...l, landed_cost_per_unit: landedCostPerUnit, set_cost_price: setCost, variance_amount: varianceAmount, variance_pct: variancePct, variance_total: varianceTotal, flag };
     });
 
     const totalLandedCost = totalProductCostSgd + valuePool + weightPool;
+
+    return { gstAmount, totalLandedCost, costedLines };
+  }
+
+  router.post('/:id/cost', (req, res) => {
+    const shipment = db.queryOne('SELECT * FROM shipments WHERE id = ?', [req.params.id]);
+    if (!shipment) return res.status(404).json({ error: 'Shipment not found' });
+
+    const lines = db.query(`
+      SELECT li.*, p.unit_cost AS set_cost_price
+      FROM shipment_line_items li
+      JOIN products p ON p.id = li.product_id
+      WHERE li.shipment_id = ?
+    `, [req.params.id]);
+
+    let calc;
+    try {
+      calc = calculateLandedCost(shipment, lines);
+    } catch (e) {
+      return res.status(400).json({ error: e.message });
+    }
+    const { gstAmount, totalLandedCost, costedLines } = calc;
     const costedDate = req.body.costed_date || new Date().toISOString().slice(0, 10);
 
     // Persist: line items, shipment totals, variance ledger (replace old rows for this shipment)
@@ -368,21 +395,10 @@ module.exports = function(db) {
 
     db.run('DELETE FROM cost_variance_ledger WHERE shipment_id = ?', [req.params.id]);
     costedLines.forEach(l => {
-      const setCost = l.set_cost_price || 0;
-      // Sign convention: variance is a PROFIT impact, not a "cost impact" —
-      // negative = landed cost came in higher than set cost (unfavorable,
-      // reduces profit); positive = came in lower (favorable, adds profit).
-      // This reads the same way as every other number in the P&L (negative
-      // = bad), rather than requiring a mental flip. Feeds P&L as:
-      // total COGS = normal COGS − variance_total.
-      const varianceAmount = setCost - l.landed_cost_per_unit;
-      const variancePct = setCost > 0 ? (varianceAmount / setCost) * 100 : 0;
-      const flag = setCost > 0 ? varianceFlag(variancePct) : 'no_reference';
-      const varianceTotal = varianceAmount * (l.qty_received || 0);
       db.run(
         `INSERT INTO cost_variance_ledger (shipment_id, product_id, landed_cost, set_cost_price, variance_amount, variance_pct, variance_total, flag, logged_date)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [req.params.id, l.product_id, l.landed_cost_per_unit, setCost, varianceAmount, variancePct, varianceTotal, flag, costedDate]
+        [req.params.id, l.product_id, l.landed_cost_per_unit, l.set_cost_price, l.variance_amount, l.variance_pct, l.variance_total, l.flag, costedDate]
       );
 
       // Auto-add a new cost reference price point from this shipment's actual figures,
@@ -413,6 +429,51 @@ module.exports = function(db) {
     `, [req.params.id]);
 
     res.json({ ...updated, line_items, variance });
+  });
+
+  // ── Quick calculation (preview) ────────────────────────────────────
+  // Same math as /cost, but reads shipment/line-item data straight from
+  // the request body (not the DB) and writes NOTHING — no status change,
+  // no variance ledger rows, no cost reference updates. This is a pure
+  // what-if tool for planning an order before committing to it: try
+  // different quantities or shipping costs and see the resulting variance,
+  // without it touching anything real.
+  router.post('/:id/preview', (req, res) => {
+    const shipment = db.queryOne('SELECT * FROM shipments WHERE id = ?', [req.params.id]);
+    if (!shipment) return res.status(404).json({ error: 'Shipment not found' });
+
+    // Overlay any what-if overrides from the request body onto the saved
+    // shipment (so you can preview a different FX rate/freight/etc. without
+    // saving it first), then use whatever line items are currently saved.
+    const previewShipment = { ...shipment, ...(req.body.overrides || {}) };
+
+    const lines = db.query(`
+      SELECT li.*, p.unit_cost AS set_cost_price
+      FROM shipment_line_items li
+      JOIN products p ON p.id = li.product_id
+      WHERE li.shipment_id = ?
+    `, [req.params.id]);
+
+    let calc;
+    try {
+      calc = calculateLandedCost(previewShipment, lines);
+    } catch (e) {
+      return res.status(400).json({ error: e.message });
+    }
+
+    res.json({
+      gst_amount: calc.gstAmount,
+      total_landed_cost: calc.totalLandedCost,
+      variance: calc.costedLines.map(l => ({
+        product_id: l.product_id,
+        landed_cost: l.landed_cost_per_unit,
+        set_cost_price: l.set_cost_price,
+        variance_amount: l.variance_amount,
+        variance_pct: l.variance_pct,
+        variance_total: l.variance_total,
+        flag: l.flag,
+      })),
+    });
   });
 
   // POST upload a document to a shipment (base64, same pattern as product images)
