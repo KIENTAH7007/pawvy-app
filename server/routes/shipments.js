@@ -137,6 +137,29 @@ module.exports = function(db, inventoryRouter) {
     res.json({ ok: true });
   });
 
+  // ── Cost & FX trends (for Document Library analytics charts) ─────
+  // One row per costed shipment — freight cost, FX rate, total weight
+  // (for $/kg), and its variance total, so the frontend can plot how
+  // these move over time without needing several separate endpoints.
+  router.get('/trends', (req, res) => {
+    const { brand_id, from, to } = req.query;
+    let sql = `
+      SELECT s.id, s.shipment_code, s.brand_id, b.name AS brand_name, s.currency,
+             s.fx_rate_actual, s.forwarder_invoice_value, s.costed_date, s.total_landed_cost,
+             (SELECT SUM(weight_per_unit * qty_received) FROM shipment_line_items WHERE shipment_id = s.id) AS total_weight,
+             (SELECT SUM(variance_total) FROM cost_variance_ledger WHERE shipment_id = s.id) AS variance_total_sum
+      FROM shipments s
+      LEFT JOIN brands b ON b.id = s.brand_id
+      WHERE s.status = 'costed' AND s.costed_date IS NOT NULL
+    `;
+    const params = [];
+    if (brand_id) { sql += ' AND s.brand_id = ?'; params.push(brand_id); }
+    if (from)     { sql += ' AND s.costed_date >= ?'; params.push(from); }
+    if (to)       { sql += ' AND s.costed_date <= ?'; params.push(to); }
+    sql += ' ORDER BY s.costed_date ASC';
+    res.json(db.query(sql, params));
+  });
+
   // ── Variance ledger ───────────────────────────────────────────────
   // All variance entries across all shipments, in one place — this is
   // what feeds P&L (Step 5) and answers "where do I see the ledger".

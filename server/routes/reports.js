@@ -35,6 +35,23 @@ function reportsRouter(db) {
     const writeoffs= db.queryOne(`SELECT ROUND(COALESCE(SUM(cost_impact),0),2) AS total FROM inventory_adjustments WHERE date BETWEEN ? AND ? AND type='Write-off'`, [date_from,date_to]);
     const opBreak  = db.query(`SELECT category, ROUND(SUM(amount),2) AS total FROM operating_costs ${cw} GROUP BY category ORDER BY total DESC`, cp);
 
+    // Cost variance (Phase 7, Step 5) — shipment landed-cost variance vs
+    // Products & Pricing's set cost, matched by costed_date (logged_date)
+    // falling in this period. Sign convention: positive = favorable
+    // (landed cost came in under set cost, adds profit), negative =
+    // unfavorable (reduces profit) — so it's added directly here, same
+    // direction as everything else in the P&L. Voided shipments are
+    // excluded (their variance ledger rows are deleted on void, so this
+    // exclusion is really just future-proofing). Not market-segmented —
+    // shipments/procurement aren't split by market yet, since Pawvy's
+    // sourcing isn't market-specific the way sales are.
+    const costVariance = db.queryOne(`
+      SELECT ROUND(COALESCE(SUM(v.variance_total),0),2) AS total
+      FROM cost_variance_ledger v
+      JOIN shipments s ON s.id = v.shipment_id
+      WHERE s.status != 'voided' AND v.logged_date BETWEEN ? AND ?
+    `, [date_from, date_to]);
+
     const byBrand = db.query(`
       SELECT b.name, b.color,
         ROUND(SUM(${REVENUE_SQL}),2) AS revenue,
@@ -44,11 +61,11 @@ function reportsRouter(db) {
       ${sw} GROUP BY b.id ORDER BY profit DESC
     `, sp);
 
-    const net = parseFloat(((sales.gross_profit||0) - (opCosts.total||0) - (writeoffs.total||0)).toFixed(2));
+    const net = parseFloat(((sales.gross_profit||0) - (opCosts.total||0) - (writeoffs.total||0) + (costVariance.total||0)).toFixed(2));
     res.json({
       period: { from:date_from, to:date_to, market:market||'All' },
       revenue:sales.revenue, cogs:sales.cogs, gross_profit:sales.gross_profit,
-      operating_costs:opCosts.total, writeoffs:writeoffs.total, net_profit:net,
+      operating_costs:opCosts.total, writeoffs:writeoffs.total, cost_variance:costVariance.total, net_profit:net,
       units_sold:sales.units_sold, transactions:sales.transactions,
       by_brand:byBrand, cost_breakdown:opBreak,
     });

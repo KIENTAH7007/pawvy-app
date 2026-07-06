@@ -103,6 +103,7 @@ export const shipmentsApi = {
   documentGet:     (id) => api.get(`/shipments/documents/${id}`),
   documentDelete:  (id) => api.delete(`/shipments/documents/${id}`),
   variance:        (q)  => api.get(`/shipments/variance${qs(q)}`),
+  trends:          (q)  => api.get(`/shipments/trends${qs(q)}`),
 };
 
 export const brandSkuApi = { detail: (q) => api.get(`/reports/brand-sku${qs(q)}`), };

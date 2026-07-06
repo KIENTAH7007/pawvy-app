@@ -33,12 +33,13 @@ export default function Reports() {
               {label:'= Gross Profit',value:pnl.gross_profit,c:'#7fc93e',bold:true},
               {label:'− Operating Costs',value:`(${pnl.operating_costs})`,c:'#f87171'},
               {label:'− Inventory Write-offs',value:`(${pnl.writeoffs})`,c:'#f87171'},
+              {label:'± Cost Variance (Shipments)',value:pnl.cost_variance,c:pnl.cost_variance>=0?'#7fc93e':'#f87171',signed:true},
               {label:'= Net Profit',value:pnl.net_profit,c:pnl.net_profit>=0?'#7fc93e':'#f87171',bold:true,big:true},
             ].map(r=>(
               <div key={r.label} style={{display:'flex',justifyContent:'space-between',padding:'9px 0',borderBottom:'1px solid var(--cream-05)'}}>
                 <span style={{fontSize:r.big?13:12,color:r.bold?'var(--cream)':'var(--cream-60)',fontWeight:r.bold?700:400}}>{r.label}</span>
                 <span style={{fontSize:r.big?17:13,fontFamily:r.big?"'Bebas Neue',sans-serif":'inherit',color:r.c,fontWeight:700}}>
-                  SGD {parseFloat(String(r.value).replace(/[()]/g,'')).toFixed(2)}
+                  SGD {r.signed ? `${parseFloat(r.value)>=0?'+':''}${parseFloat(r.value).toFixed(2)}` : parseFloat(String(r.value).replace(/[()]/g,'')).toFixed(2)}
                 </span>
               </div>
             ))}
