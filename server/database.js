@@ -321,6 +321,74 @@ function createSchema() {
       qty INTEGER NOT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`,
+    // Shipments (Phase 7) — supplier orders, landed cost, cost variance tracking.
+    // Skeleton only for this patch: tables exist but no read/write logic uses them yet.
+    `CREATE TABLE IF NOT EXISTS shipments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      shipment_code TEXT UNIQUE NOT NULL,
+      brand_id INTEGER REFERENCES brands(id),
+      supplier_name TEXT,
+      currency TEXT NOT NULL DEFAULT 'SGD',
+      order_date DATE,
+      arrival_date DATE,
+      costed_date DATE,
+      status TEXT NOT NULL DEFAULT 'ordered',
+      received_warehouse TEXT DEFAULT 'Storhub',
+      fx_rate_actual REAL,
+      fx_processing_charge REAL DEFAULT 0,
+      cashback REAL DEFAULT 0,
+      forwarder_invoice_value REAL DEFAULT 0,
+      permit_invoice_value REAL DEFAULT 0,
+      avs_payment REAL DEFAULT 0,
+      gst_amount REAL DEFAULT 0,
+      freight_apportion_method TEXT DEFAULT 'value',
+      total_landed_cost REAL DEFAULT 0,
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS shipment_line_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      shipment_id INTEGER NOT NULL REFERENCES shipments(id) ON DELETE CASCADE,
+      product_id INTEGER NOT NULL REFERENCES products(id),
+      qty_ordered INTEGER DEFAULT 0,
+      qty_received INTEGER DEFAULT 0,
+      unit_cost_original_currency REAL DEFAULT 0,
+      weight_per_unit REAL,
+      landed_cost_per_unit REAL,
+      inventory_synced INTEGER NOT NULL DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS shipment_documents (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      shipment_id INTEGER NOT NULL REFERENCES shipments(id) ON DELETE CASCADE,
+      document_type TEXT NOT NULL,
+      file_path TEXT,
+      file_name TEXT,
+      uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS sku_cost_reference (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      product_id INTEGER NOT NULL REFERENCES products(id),
+      effective_date DATE NOT NULL,
+      cost_original_currency REAL NOT NULL,
+      currency TEXT NOT NULL DEFAULT 'USD',
+      weight_per_unit REAL,
+      source_shipment_id INTEGER REFERENCES shipments(id),
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS cost_variance_ledger (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      shipment_id INTEGER NOT NULL REFERENCES shipments(id) ON DELETE CASCADE,
+      product_id INTEGER NOT NULL REFERENCES products(id),
+      landed_cost REAL NOT NULL,
+      set_cost_price REAL NOT NULL,
+      variance_amount REAL NOT NULL,
+      variance_pct REAL NOT NULL,
+      flag TEXT NOT NULL,
+      logged_date DATE NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
   ];
 
   tables.forEach(sql => db.run(sql));

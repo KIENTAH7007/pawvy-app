@@ -81,6 +81,7 @@ export const costsApi     = { getAll: (q) => api.get(`/costs${qs(q)}`), summary:
 export const reportsApi   = { pnl: (q) => api.get(`/reports/pnl${qs(q)}`), trend: (q) => api.get(`/reports/trend${qs(q)}`), partners: (q) => api.get(`/reports/partners${qs(q)}`), allChannels: (q) => api.get(`/reports/all-channels${qs(q)}`) };
 export const partnerReportApi = { top: (q) => api.get(`/reports/partners${qs(q)}`) };
 export const adjApi       = { getAll: (q) => api.get(`/adjustments${qs(q)}`), create: (d) => api.post('/adjustments',d) };
+export const shipmentsApi = { getAll: (q) => api.get(`/shipments${qs(q)}`) };
 
 export const brandSkuApi = { detail: (q) => api.get(`/reports/brand-sku${qs(q)}`), };
 

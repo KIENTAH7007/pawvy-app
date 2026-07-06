@@ -3,7 +3,7 @@ import { Routes, Route, NavLink, useLocation, useNavigate } from 'react-router-d
 import {
   LayoutDashboard, PlusCircle, Package, Store, Tag,
   FileText, Users, Receipt, Settings, TrendingUp, ClipboardList,
-  ShoppingBag, Menu, X, Inbox
+  ShoppingBag, Menu, X, Inbox, Truck
 } from 'lucide-react';
 import { ordersApi } from './api';
 
@@ -19,6 +19,7 @@ import Reports        from './pages/Reports';
 import Consignment    from './pages/Consignment';
 import Invoices       from './pages/Invoices';
 import PendingOrders  from './pages/PendingOrders';
+import Shipments      from './pages/Shipments';
 
 import { PAWVY_LOGO_WHITE } from './pawvyLogo.js';
 
@@ -37,6 +38,9 @@ const NAV = [
   ]},
   { section: 'Catalogue',   items: [
     { path: '/products',     label: 'Products & Pricing', icon: Tag },
+  ]},
+  { section: 'Procurement', items: [
+    { path: '/shipments',    label: 'Shipments',       icon: Truck },
   ]},
   { section: 'Documents',   items: [
     { path: '/invoices',     label: 'Invoices & Docs', icon: FileText },
@@ -241,6 +245,7 @@ export default function App() {
             <Route path="/consignment"   element={<Consignment />} />
             <Route path="/products"      element={<Products />} />
             <Route path="/invoices"      element={<Invoices />} />
+            <Route path="/shipments"     element={<Shipments />} />
             <Route path="/partners"      element={<Partners />} />
             <Route path="/costs"         element={<Costs />} />
             <Route path="/reports"       element={<Reports />} />
