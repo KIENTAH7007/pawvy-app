@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, ChevronDown, ChevronUp, Trash2, Upload, FileText, Truck } from 'lucide-react';
+import { Plus, ChevronDown, ChevronUp, Trash2, Upload, FileText, Truck, Ban } from 'lucide-react';
 import { shipmentsApi, brandsApi, productsApi } from '../api';
 import { Page, Card, KpiCard, Input, Select, Btn, Badge, Table, Divider, fmt } from '../components/ui';
 
 const CURRENCIES = ['USD', 'GBP', 'EUR', 'KRW', 'CNY', 'SGD'];
-const STATUS_COLOR = { ordered: '#888', shipped: '#378ADD', received: '#BA7517', costed: '#639922' };
+const STATUS_COLOR = { ordered: '#888', shipped: '#378ADD', received: '#BA7517', costed: '#639922', voided: '#555' };
 const DOC_TYPES = [
   { value: 'supplier_invoice', label: 'Supplier invoice' },
   { value: 'credit_memo',      label: 'Credit memo' },
@@ -19,15 +19,24 @@ const FLAG_LABEL = { healthy: 'Healthy', watch: 'Watch', risky: 'Risky', no_refe
 export default function Shipments() {
   const [shipments, setShipments] = useState([]);
   const [brands, setBrands] = useState([]);
+  const [filters, setFilters] = useState({ brand_id: '', from: '', to: '' });
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState(null);
   const [detail, setDetail] = useState(null); // full shipment detail incl. line_items/variance/documents
   const [products, setProducts] = useState([]); // products for the current shipment's brand
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [monthVariance, setMonthVariance] = useState(0);
 
-  const load = () => shipmentsApi.getAll().then(s => { setShipments(s); setLoading(false); });
-  useEffect(() => { load(); brandsApi.getAll().then(setBrands); }, []);
+  const load = () => shipmentsApi.getAll(filters).then(s => { setShipments(s); setLoading(false); });
+  useEffect(() => { load(); }, [filters.brand_id, filters.from, filters.to]);
+  useEffect(() => {
+    brandsApi.getAll().then(setBrands);
+    const thisMonth = new Date().toISOString().slice(0, 7);
+    shipmentsApi.variance({ from: `${thisMonth}-01`, to: `${thisMonth}-31` }).then(rows => {
+      setMonthVariance(rows.reduce((sum, r) => sum + (r.variance_amount || 0), 0));
+    });
+  }, []);
 
   async function newShipment() {
     const s = await shipmentsApi.create({ currency: 'USD' });
@@ -65,7 +74,9 @@ export default function Shipments() {
     refreshDetail(detail.id);
   }
 
-  async function updateLine(liId, fields) {
+  // Saves a single line item's field(s). Called on blur, not on every keystroke —
+  // that round-trip-per-keystroke was what caused fast typing to get scrambled.
+  async function commitLine(liId, fields) {
     await shipmentsApi.updateLineItem(liId, fields);
     refreshDetail(detail.id);
   }
@@ -76,14 +87,14 @@ export default function Shipments() {
   }
 
   async function selectSku(li, productId) {
-    // Prefill unit cost + weight from the cost reference table, if available
+    // Prefill unit cost + weight from the cost reference table, if available.
+    // Updates the SAME line item id in place (no delete+recreate) — that
+    // delete+recreate approach was what caused rows to jump to the bottom
+    // and made it look like editing one row changed a different one.
     const ref = await shipmentsApi.costReferenceHistory(productId);
     const latest = ref[0];
-    // product_id isn't in the editable field list server-side (by design —
-    // changing a line's SKU is rare enough to just delete + re-add cleanly)
-    await shipmentsApi.deleteLineItem(li.id);
-    await shipmentsApi.addLineItem(detail.id, {
-      product_id: productId, qty_ordered: li.qty_ordered, qty_received: li.qty_received,
+    await shipmentsApi.updateLineItem(li.id, {
+      product_id: productId,
       unit_cost_original_currency: latest?.cost_original_currency ?? li.unit_cost_original_currency,
       weight_per_unit: latest?.weight_per_unit ?? li.weight_per_unit,
     });
@@ -114,18 +125,24 @@ export default function Shipments() {
     reader.readAsDataURL(file);
   }
 
+  async function voidShipment(id) {
+    if (!window.confirm('Void this shipment? It will be removed from the variance ledger and stop feeding Cost Reference, but the record itself stays for audit.')) return;
+    await shipmentsApi.voidShipment(id);
+    await refreshDetail(id);
+  }
+
   async function deleteShipment(id) {
-    if (!window.confirm('Delete this shipment? This cannot be undone.')) return;
+    if (!window.confirm('Permanently delete this shipment? This cannot be undone. If you just want to back it out of reports while keeping a record, use Void instead.')) return;
     await shipmentsApi.delete(id);
     setExpandedId(null); setDetail(null);
     load();
   }
 
   // ── Summary metrics ────────────────────────────────────────────
+  const active = shipments.filter(s => s.status !== 'voided');
   const thisMonth = new Date().toISOString().slice(0, 7);
-  const inMonth = shipments.filter(s => (s.costed_date || s.created_at || '').startsWith(thisMonth));
-  const totalLanded = inMonth.reduce((sum, s) => sum + (s.total_landed_cost || 0), 0);
-  const costedCount = shipments.filter(s => s.status === 'costed').length;
+  const inMonth = active.filter(s => (s.arrival_date || s.created_at || '').startsWith(thisMonth));
+  const costedCount = active.filter(s => s.status === 'costed').length;
 
   return (
     <Page
@@ -135,21 +152,34 @@ export default function Shipments() {
     >
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
         <KpiCard label="Shipments this month" value={inMonth.length} />
-        <KpiCard label="Total landed cost (month)" value={`$${totalLanded.toFixed(2)}`} />
+        <KpiCard
+          label="Cost variance (month)"
+          value={`${monthVariance >= 0 ? '+' : ''}$${monthVariance.toFixed(2)}`}
+          sub={monthVariance >= 0 ? 'Costing more than set price' : 'Costing less than set price'}
+        />
         <KpiCard label="Shipments costed" value={costedCount} />
-        <KpiCard label="Total shipments" value={shipments.length} />
+        <KpiCard label="Total shipments" value={active.length} />
+      </div>
+
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
+        <Select value={filters.brand_id} onChange={e => setFilters(f => ({ ...f, brand_id: e.target.value }))} style={{ width: 180 }}>
+          <option value="">All brands</option>
+          {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+        </Select>
+        <Input type="date" value={filters.from} onChange={e => setFilters(f => ({ ...f, from: e.target.value }))} style={{ width: 160 }} placeholder="From" />
+        <Input type="date" value={filters.to} onChange={e => setFilters(f => ({ ...f, to: e.target.value }))} style={{ width: 160 }} placeholder="To" />
       </div>
 
       {loading ? (
         <div style={{ padding: 40, textAlign: 'center', color: 'var(--cream-30)' }}>Loading…</div>
       ) : shipments.length === 0 ? (
-        <Card><div style={{ padding: 40, textAlign: 'center', color: 'var(--cream-30)', fontSize: 13 }}>No shipments yet. Click "New shipment" to start one.</div></Card>
+        <Card><div style={{ padding: 40, textAlign: 'center', color: 'var(--cream-30)', fontSize: 13 }}>No shipments match these filters.</div></Card>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {shipments.map(s => {
             const isOpen = expandedId === s.id;
             return (
-              <Card key={s.id}>
+              <Card key={s.id} style={s.status === 'voided' ? { opacity: 0.55 } : undefined}>
                 <div onClick={() => expand(s.id)} style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 14, cursor: 'pointer' }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--cream)', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -177,12 +207,13 @@ export default function Shipments() {
                     error={error}
                     onSaveHeader={saveHeader}
                     onAddLine={addLine}
-                    onUpdateLine={updateLine}
+                    onCommitLine={commitLine}
                     onRemoveLine={removeLine}
                     onSelectSku={selectSku}
                     onMarkReceived={markReceived}
                     onCalculateCost={calculateCost}
                     onUploadDoc={uploadDoc}
+                    onVoid={() => voidShipment(s.id)}
                     onDelete={() => deleteShipment(s.id)}
                   />
                 )}
@@ -197,13 +228,30 @@ export default function Shipments() {
 
 function ShipmentDetailPanel({
   detail, brands, products, busy, error,
-  onSaveHeader, onAddLine, onUpdateLine, onRemoveLine, onSelectSku,
-  onMarkReceived, onCalculateCost, onUploadDoc, onDelete,
+  onSaveHeader, onAddLine, onCommitLine, onRemoveLine, onSelectSku,
+  onMarkReceived, onCalculateCost, onUploadDoc, onVoid, onDelete,
 }) {
   const [header, setHeader] = useState(detail);
-  useEffect(() => { setHeader(detail); }, [detail]);
+  const [lines, setLines] = useState(detail.line_items || []);
+  const [gstOverride, setGstOverride] = useState(!!detail.gst_amount_override);
+
+  // Re-sync from server truth whenever the parent refreshes detail (add/remove
+  // line, SKU change, cost calc, header save, etc.) — but NOT on every keystroke,
+  // since qty/cost/weight fields below only push to the server on blur.
+  useEffect(() => { setHeader(detail); setLines(detail.line_items || []); setGstOverride(!!detail.gst_amount_override); }, [detail]);
 
   const hf = (k, v) => setHeader(h => ({ ...h, [k]: v }));
+  const isVoided = header.status === 'voided';
+
+  function setLineField(liId, field, value) {
+    setLines(ls => ls.map(l => l.id === liId ? { ...l, [field]: value } : l));
+  }
+
+  function commitLineField(li, field, value) {
+    onCommitLine(li.id, { [field]: value });
+  }
+
+  const colWidths = '2fr 1fr 1fr 1fr 1fr auto';
 
   return (
     <div style={{ padding: '0 16px 16px', display: 'flex', flexDirection: 'column', gap: 16 }} onClick={e => e.stopPropagation()}>
@@ -212,69 +260,110 @@ function ShipmentDetailPanel({
           {error}
         </div>
       )}
+      {isVoided && (
+        <div style={{ background: 'rgba(150,150,150,.1)', border: '1px solid var(--border)', color: 'var(--cream-60)', padding: '8px 12px', borderRadius: 7, fontSize: 12 }}>
+          This shipment is voided — it's excluded from the variance ledger and no longer feeds Cost Reference. Kept here for audit only.
+        </div>
+      )}
 
       <Divider label="Shipment info" />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
-        <Select label="Brand" value={header.brand_id || ''} onChange={e => hf('brand_id', e.target.value)}>
+        <Select label="Brand" value={header.brand_id || ''} onChange={e => hf('brand_id', e.target.value)} disabled={isVoided}>
           <option value="">Select brand</option>
           {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
         </Select>
-        <Input label="Supplier" value={header.supplier_name || ''} onChange={e => hf('supplier_name', e.target.value)} />
-        <Select label="Currency" value={header.currency || 'USD'} onChange={e => hf('currency', e.target.value)}>
+        <Input label="Supplier" value={header.supplier_name || ''} onChange={e => hf('supplier_name', e.target.value)} disabled={isVoided} />
+        <Select label="Currency" value={header.currency || 'USD'} onChange={e => hf('currency', e.target.value)} disabled={isVoided}>
           {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
         </Select>
         <Select label="Warehouse (received into)" value={header.received_warehouse || 'Storhub'} disabled>
           <option>Storhub</option>
         </Select>
-        <Input label="Order date" type="date" value={header.order_date || ''} onChange={e => hf('order_date', e.target.value)} />
-        <Input label="Arrival date" type="date" value={header.arrival_date || ''} onChange={e => hf('arrival_date', e.target.value)} />
+        <Input label="Order date" type="date" value={header.order_date || ''} onChange={e => hf('order_date', e.target.value)} disabled={isVoided} />
+        <Input label="Arrival date" type="date" value={header.arrival_date || ''} onChange={e => hf('arrival_date', e.target.value)} disabled={isVoided} />
         <Input label="Costed date" type="date" value={header.costed_date || ''} disabled />
-        <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-          <Btn size="sm" onClick={() => onSaveHeader({
-            brand_id: header.brand_id || null, supplier_name: header.supplier_name,
-            currency: header.currency, order_date: header.order_date, arrival_date: header.arrival_date,
-          })} disabled={busy}>Save details</Btn>
-        </div>
+        {!isVoided && (
+          <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+            <Btn size="sm" onClick={() => onSaveHeader({
+              brand_id: header.brand_id || null, supplier_name: header.supplier_name,
+              currency: header.currency, order_date: header.order_date, arrival_date: header.arrival_date,
+            })} disabled={busy}>Save details</Btn>
+          </div>
+        )}
       </div>
 
       <Divider label="Line items" />
       {!header.brand_id && <div style={{ fontSize: 12, color: 'var(--cream-30)' }}>Select and save a brand above to add line items.</div>}
+      {lines.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: colWidths, gap: 8, fontSize: 10, fontWeight: 600, letterSpacing: .5, textTransform: 'uppercase', color: 'var(--cream-30)' }}>
+          <div>SKU</div><div>Qty ordered</div><div>Qty received</div><div>Unit cost ({header.currency})</div><div>Weight/unit (kg)</div><div></div>
+        </div>
+      )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {(detail.line_items || []).map(li => (
-          <div key={li.id} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr auto', gap: 8, alignItems: 'end' }}>
-            <Select label="SKU" value={li.product_id} onChange={e => onSelectSku(li, e.target.value)}>
+        {lines.map(li => (
+          <div key={li.id} style={{ display: 'grid', gridTemplateColumns: colWidths, gap: 8, alignItems: 'center' }}>
+            <Select value={li.product_id} onChange={e => onSelectSku(li, e.target.value)} disabled={isVoided}>
               {products.map(p => <option key={p.id} value={p.id}>{p.item_series}{p.variation ? ' — ' + p.variation : ''}</option>)}
             </Select>
-            <Input label="Qty ordered" type="number" value={li.qty_ordered} onChange={e => onUpdateLine(li.id, { qty_ordered: parseFloat(e.target.value) || 0 })} />
-            <Input label="Qty received" type="number" value={li.qty_received} onChange={e => onUpdateLine(li.id, { qty_received: parseFloat(e.target.value) || 0 })} />
-            <Input label={`Unit cost (${header.currency})`} type="number" step="0.01" value={li.unit_cost_original_currency} onChange={e => onUpdateLine(li.id, { unit_cost_original_currency: parseFloat(e.target.value) || 0 })} />
-            <Input label="Weight/unit (kg)" type="number" step="0.01" value={li.weight_per_unit || ''} onChange={e => onUpdateLine(li.id, { weight_per_unit: e.target.value ? parseFloat(e.target.value) : null })} />
-            <button onClick={() => onRemoveLine(li.id)} style={{ background: 'none', border: 'none', color: 'var(--cream-30)', cursor: 'pointer', padding: '8px 4px' }}><Trash2 size={14} /></button>
+            <Input type="number" value={li.qty_ordered}
+              onChange={e => setLineField(li.id, 'qty_ordered', e.target.value)}
+              onBlur={e => commitLineField(li, 'qty_ordered', parseFloat(e.target.value) || 0)}
+              disabled={isVoided} />
+            <Input type="number" value={li.qty_received}
+              onChange={e => setLineField(li.id, 'qty_received', e.target.value)}
+              onBlur={e => commitLineField(li, 'qty_received', parseFloat(e.target.value) || 0)}
+              disabled={isVoided} />
+            <Input type="number" step="0.01" value={li.unit_cost_original_currency}
+              onChange={e => setLineField(li.id, 'unit_cost_original_currency', e.target.value)}
+              onBlur={e => commitLineField(li, 'unit_cost_original_currency', parseFloat(e.target.value) || 0)}
+              disabled={isVoided} />
+            <Input type="number" step="0.01" value={li.weight_per_unit ?? ''}
+              onChange={e => setLineField(li.id, 'weight_per_unit', e.target.value)}
+              onBlur={e => commitLineField(li, 'weight_per_unit', e.target.value ? parseFloat(e.target.value) : null)}
+              disabled={isVoided} />
+            {!isVoided && (
+              <button onClick={() => onRemoveLine(li.id)} style={{ background: 'none', border: 'none', color: 'var(--cream-30)', cursor: 'pointer', padding: '8px 4px' }}><Trash2 size={14} /></button>
+            )}
           </div>
         ))}
       </div>
-      {header.brand_id && <Btn size="sm" variant="secondary" onClick={onAddLine}><Plus size={13} /> Add line item</Btn>}
+      {header.brand_id && !isVoided && <Btn size="sm" variant="secondary" onClick={onAddLine}><Plus size={13} /> Add line item</Btn>}
 
       <Divider label="Cost inputs" />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-        <Input label={`Actual FX rate (${header.currency} → SGD)`} type="number" step="0.0001" value={header.fx_rate_actual || ''} onChange={e => hf('fx_rate_actual', parseFloat(e.target.value) || null)} />
-        <Input label="FX processing charge (SGD)" type="number" step="0.01" value={header.fx_processing_charge || ''} onChange={e => hf('fx_processing_charge', parseFloat(e.target.value) || 0)} />
-        <Input label="Cashback (SGD)" type="number" step="0.01" value={header.cashback || ''} onChange={e => hf('cashback', parseFloat(e.target.value) || 0)} />
-        <Input label="Forwarder invoice (SGD)" type="number" step="0.01" value={header.forwarder_invoice_value || ''} onChange={e => hf('forwarder_invoice_value', parseFloat(e.target.value) || 0)} />
-        <Input label="Permit declaration invoice (SGD)" type="number" step="0.01" value={header.permit_invoice_value || ''} onChange={e => hf('permit_invoice_value', parseFloat(e.target.value) || 0)} />
-        <Input label="AVS payment (SGD)" type="number" step="0.01" value={header.avs_payment || ''} onChange={e => hf('avs_payment', parseFloat(e.target.value) || 0)} />
-        <Select label="Freight apportion method" value={header.freight_apportion_method || 'value'} onChange={e => hf('freight_apportion_method', e.target.value)}>
+        <Input label={`Actual FX rate (${header.currency} → SGD)`} type="number" step="0.0001" value={header.fx_rate_actual || ''} onChange={e => hf('fx_rate_actual', parseFloat(e.target.value) || null)} disabled={isVoided} />
+        <Input label="FX processing charge (SGD)" type="number" step="0.01" value={header.fx_processing_charge || ''} onChange={e => hf('fx_processing_charge', parseFloat(e.target.value) || 0)} disabled={isVoided} />
+        <Input label="Cashback (SGD)" type="number" step="0.01" value={header.cashback || ''} onChange={e => hf('cashback', parseFloat(e.target.value) || 0)} disabled={isVoided} />
+        <Input label="Forwarder invoice (SGD)" type="number" step="0.01" value={header.forwarder_invoice_value || ''} onChange={e => hf('forwarder_invoice_value', parseFloat(e.target.value) || 0)} disabled={isVoided} />
+        <Input label="Permit declaration invoice (SGD)" type="number" step="0.01" value={header.permit_invoice_value || ''} onChange={e => hf('permit_invoice_value', parseFloat(e.target.value) || 0)} disabled={isVoided} />
+        <Input label="AVS payment (SGD)" type="number" step="0.01" value={header.avs_payment || ''} onChange={e => hf('avs_payment', parseFloat(e.target.value) || 0)} disabled={isVoided} />
+        <Select label="Freight apportion method" value={header.freight_apportion_method || 'value'} onChange={e => hf('freight_apportion_method', e.target.value)} disabled={isVoided}>
           <option value="value">Value-based</option>
           <option value="weight">Weight-based (requires weight/unit on every line)</option>
         </Select>
-        <Input label="GST (9% of product + freight, auto)" value={header.gst_amount ? `$${header.gst_amount.toFixed(2)}` : 'Calculated on costing'} disabled />
-        <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-          <Btn size="sm" onClick={() => onSaveHeader({
-            fx_rate_actual: header.fx_rate_actual, fx_processing_charge: header.fx_processing_charge, cashback: header.cashback,
-            forwarder_invoice_value: header.forwarder_invoice_value, permit_invoice_value: header.permit_invoice_value,
-            avs_payment: header.avs_payment, freight_apportion_method: header.freight_apportion_method,
-          })} disabled={busy}>Save cost inputs</Btn>
+        <div>
+          <Input
+            label="GST (9% of product + freight)"
+            type="number" step="0.01"
+            value={header.gst_amount ?? ''}
+            onChange={e => hf('gst_amount', parseFloat(e.target.value) || 0)}
+            disabled={isVoided || !gstOverride}
+          />
+          <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10.5, color: 'var(--cream-30)', marginTop: 4 }}>
+            <input type="checkbox" checked={gstOverride} disabled={isVoided} onChange={e => setGstOverride(e.target.checked)} />
+            Manually override (default: auto-calculated on costing)
+          </label>
         </div>
+        {!isVoided && (
+          <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+            <Btn size="sm" onClick={() => onSaveHeader({
+              fx_rate_actual: header.fx_rate_actual, fx_processing_charge: header.fx_processing_charge, cashback: header.cashback,
+              forwarder_invoice_value: header.forwarder_invoice_value, permit_invoice_value: header.permit_invoice_value,
+              avs_payment: header.avs_payment, freight_apportion_method: header.freight_apportion_method,
+              gst_amount: header.gst_amount, gst_amount_override: gstOverride ? 1 : 0,
+            })} disabled={busy}>Save cost inputs</Btn>
+          </div>
+        )}
       </div>
 
       <Divider label="Documents" />
@@ -289,10 +378,12 @@ function ShipmentDetailPanel({
               {uploaded.map(d => (
                 <div key={d.id} style={{ fontSize: 10, color: 'var(--cream-30)', marginBottom: 2 }}>{d.file_name || 'File'} ✓</div>
               ))}
-              <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--orange)', cursor: 'pointer' }}>
-                <Upload size={12} /> Upload
-                <input type="file" style={{ display: 'none' }} onChange={e => e.target.files[0] && onUploadDoc(t.value, e.target.files[0])} />
-              </label>
+              {!isVoided && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--orange)', cursor: 'pointer' }}>
+                  <Upload size={12} /> Upload
+                  <input type="file" style={{ display: 'none' }} onChange={e => e.target.files[0] && onUploadDoc(t.value, e.target.files[0])} />
+                </label>
+              )}
             </div>
           );
         })}
@@ -300,13 +391,16 @@ function ShipmentDetailPanel({
 
       <Divider label="Status & actions" />
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {header.status === 'ordered' && <Btn size="sm" variant="secondary" onClick={onMarkReceived} disabled={busy}><Truck size={13} /> Mark as received</Btn>}
-        <Btn size="sm" onClick={onCalculateCost} disabled={busy}>{header.status === 'costed' ? 'Recalculate & re-cost' : 'Calculate landed cost & mark costed'}</Btn>
-        <Btn size="sm" variant="secondary" onClick={onDelete} disabled={busy}><Trash2 size={13} /> Delete shipment</Btn>
+        {!isVoided && header.status === 'ordered' && <Btn size="sm" variant="secondary" onClick={onMarkReceived} disabled={busy}><Truck size={13} /> Mark as received</Btn>}
+        {!isVoided && <Btn size="sm" onClick={onCalculateCost} disabled={busy}>{header.status === 'costed' ? 'Recalculate & re-cost' : 'Calculate landed cost & mark costed'}</Btn>}
+        {!isVoided && <Btn size="sm" variant="secondary" onClick={onVoid} disabled={busy}><Ban size={13} /> Void shipment</Btn>}
+        <Btn size="sm" variant="secondary" onClick={onDelete} disabled={busy}><Trash2 size={13} /> Delete permanently</Btn>
       </div>
-      <div style={{ fontSize: 11, color: 'var(--cream-30)' }}>
-        Marking "received" does not yet update Inventory — that automatic sync is a separate upcoming step, built and tested in isolation before it touches live stock.
-      </div>
+      {!isVoided && (
+        <div style={{ fontSize: 11, color: 'var(--cream-30)' }}>
+          Marking "received" does not yet update Inventory — that automatic sync is a separate upcoming step, built and tested in isolation before it touches live stock.
+        </div>
+      )}
 
       {detail.variance && detail.variance.length > 0 && (
         <>

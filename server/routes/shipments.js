@@ -32,7 +32,7 @@ module.exports = function(db) {
   // ── Shipments list + summary ─────────────────────────────────────
 
   router.get('/', (req, res) => {
-    const { brand_id, status } = req.query;
+    const { brand_id, status, from, to } = req.query;
     let sql = `
       SELECT s.*, b.name AS brand_name,
         (SELECT COUNT(*) FROM shipment_line_items li WHERE li.shipment_id = s.id) AS line_item_count,
@@ -44,6 +44,8 @@ module.exports = function(db) {
     const params = [];
     if (brand_id) { sql += ' AND s.brand_id = ?'; params.push(brand_id); }
     if (status)   { sql += ' AND s.status = ?'; params.push(status); }
+    if (from)     { sql += ' AND s.arrival_date >= ?'; params.push(from); }
+    if (to)       { sql += ' AND s.arrival_date <= ?'; params.push(to); }
     sql += ' ORDER BY s.created_at DESC';
     res.json(db.query(sql, params));
   });
@@ -71,7 +73,8 @@ module.exports = function(db) {
 
   // GET latest cost/weight per product (for pre-filling forms + the reference table view)
   router.get('/cost-reference', (req, res) => {
-    const rows = db.query(`
+    const { brand_id } = req.query;
+    let sql = `
       SELECT p.id AS product_id, p.item_series, p.variation, p.barcode,
              b.name AS brand_name,
              r.id AS reference_id, r.effective_date, r.cost_original_currency,
@@ -85,9 +88,11 @@ module.exports = function(db) {
         LIMIT 1
       )
       WHERE p.is_active = 1
-      ORDER BY b.name, p.item_series, p.variation
-    `);
-    res.json(rows);
+    `;
+    const params = [];
+    if (brand_id) { sql += ' AND p.brand_id = ?'; params.push(brand_id); }
+    sql += ' ORDER BY b.name, p.item_series, p.variation';
+    res.json(db.query(sql, params));
   });
 
   // GET full price history for one SKU
@@ -118,6 +123,30 @@ module.exports = function(db) {
   router.delete('/cost-reference/:id', (req, res) => {
     db.run('DELETE FROM sku_cost_reference WHERE id = ?', [req.params.id]);
     res.json({ ok: true });
+  });
+
+  // ── Variance ledger ───────────────────────────────────────────────
+  // All variance entries across all shipments, in one place — this is
+  // what feeds P&L (Step 5) and answers "where do I see the ledger".
+
+  router.get('/variance', (req, res) => {
+    const { brand_id, flag, from, to } = req.query;
+    let sql = `
+      SELECT v.*, s.shipment_code, s.brand_id, b.name AS brand_name,
+             p.item_series, p.variation
+      FROM cost_variance_ledger v
+      JOIN shipments s ON s.id = v.shipment_id
+      JOIN products p ON p.id = v.product_id
+      LEFT JOIN brands b ON b.id = s.brand_id
+      WHERE s.status != 'voided'
+    `;
+    const params = [];
+    if (brand_id) { sql += ' AND s.brand_id = ?'; params.push(brand_id); }
+    if (flag)     { sql += ' AND v.flag = ?'; params.push(flag); }
+    if (from)     { sql += ' AND v.logged_date >= ?'; params.push(from); }
+    if (to)       { sql += ' AND v.logged_date <= ?'; params.push(to); }
+    sql += ' ORDER BY v.logged_date DESC, v.id DESC';
+    res.json(db.query(sql, params));
   });
 
   // ── Document library ─────────────────────────────────────────────
@@ -189,7 +218,7 @@ module.exports = function(db) {
       'brand_id', 'supplier_name', 'currency', 'order_date', 'arrival_date',
       'received_warehouse', 'fx_rate_actual', 'fx_processing_charge', 'cashback',
       'forwarder_invoice_value', 'permit_invoice_value', 'avs_payment', 'gst_amount',
-      'freight_apportion_method', 'notes',
+      'gst_amount_override', 'freight_apportion_method', 'notes',
     ];
     const sets = [];
     const params = [];
@@ -222,7 +251,7 @@ module.exports = function(db) {
   });
 
   router.put('/line-items/:liId', (req, res) => {
-    const fields = ['qty_ordered', 'qty_received', 'unit_cost_original_currency', 'weight_per_unit'];
+    const fields = ['product_id', 'qty_ordered', 'qty_received', 'unit_cost_original_currency', 'weight_per_unit'];
     const sets = [];
     const params = [];
     fields.forEach(f => {
@@ -243,6 +272,22 @@ module.exports = function(db) {
 
   router.post('/:id/receive', (req, res) => {
     db.run(`UPDATE shipments SET status = 'received', updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [req.params.id]);
+    res.json(db.queryOne('SELECT * FROM shipments WHERE id = ?', [req.params.id]));
+  });
+
+  // ── Void ───────────────────────────────────────────────────────────
+  // Soft-void: keeps the shipment + line items + documents for audit,
+  // but marks it voided and removes anything it fed downstream —
+  // variance ledger rows (so it drops out of P&L/variance totals) and
+  // any cost-reference price points it auto-added (so it stops
+  // influencing future shipment pre-fills).
+
+  router.post('/:id/void', (req, res) => {
+    const shipment = db.queryOne('SELECT * FROM shipments WHERE id = ?', [req.params.id]);
+    if (!shipment) return res.status(404).json({ error: 'Shipment not found' });
+    db.run(`UPDATE shipments SET status = 'voided', updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [req.params.id]);
+    db.run('DELETE FROM cost_variance_ledger WHERE shipment_id = ?', [req.params.id]);
+    db.run('DELETE FROM sku_cost_reference WHERE source_shipment_id = ?', [req.params.id]);
     res.json(db.queryOne('SELECT * FROM shipments WHERE id = ?', [req.params.id]));
   });
 
@@ -280,8 +325,12 @@ module.exports = function(db) {
     const totalProductCostSgd = withProductCost.reduce((s, l) => s + l.product_cost_sgd, 0);
     const totalWeight = withProductCost.reduce((s, l) => s + l.total_weight, 0);
 
-    // GST: 9% of (product cost + forwarder invoice only) — confirmed, not GST-registered, permit fees excluded
-    const gstAmount = 0.09 * (totalProductCostSgd + (shipment.forwarder_invoice_value || 0));
+    // GST: 9% of (product cost + forwarder invoice only) — confirmed, not GST-registered, permit fees excluded.
+    // Editable: if the shipment has gst_amount_override set (user manually typed and saved a value),
+    // use that value as-is and don't overwrite it here.
+    const gstAmount = shipment.gst_amount_override
+      ? (shipment.gst_amount || 0)
+      : 0.09 * (totalProductCostSgd + (shipment.forwarder_invoice_value || 0));
 
     // Value-based pool: always includes permit, AVS, GST, FX processing charge, minus cashback.
     // Freight joins this pool only if method === 'value'.

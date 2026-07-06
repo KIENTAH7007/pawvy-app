@@ -3,7 +3,7 @@ import { Routes, Route, NavLink, useLocation, useNavigate } from 'react-router-d
 import {
   LayoutDashboard, PlusCircle, Package, Store, Tag,
   FileText, Users, Receipt, Settings, TrendingUp, ClipboardList,
-  ShoppingBag, Menu, X, Inbox, Truck, Coins, FolderOpen
+  ShoppingBag, Menu, X, Inbox, Truck, Coins, FolderOpen, Scale
 } from 'lucide-react';
 import { ordersApi } from './api';
 
@@ -22,6 +22,7 @@ import PendingOrders  from './pages/PendingOrders';
 import Shipments      from './pages/Shipments';
 import CostReference  from './pages/CostReference';
 import DocumentLibrary from './pages/DocumentLibrary';
+import VarianceLedger from './pages/VarianceLedger';
 
 import { PAWVY_LOGO_WHITE } from './pawvyLogo.js';
 
@@ -43,6 +44,7 @@ const NAV = [
   ]},
   { section: 'Procurement', items: [
     { path: '/shipments',    label: 'Shipments',       icon: Truck },
+    { path: '/variance-ledger', label: 'Variance Ledger', icon: Scale },
     { path: '/cost-reference', label: 'Cost Reference', icon: Coins },
     { path: '/documents',    label: 'Document Library', icon: FolderOpen },
   ]},
@@ -250,6 +252,7 @@ export default function App() {
             <Route path="/products"      element={<Products />} />
             <Route path="/invoices"      element={<Invoices />} />
             <Route path="/shipments"     element={<Shipments />} />
+            <Route path="/variance-ledger" element={<VarianceLedger />} />
             <Route path="/cost-reference" element={<CostReference />} />
             <Route path="/documents"    element={<DocumentLibrary />} />
             <Route path="/partners"      element={<Partners />} />

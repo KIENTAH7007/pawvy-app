@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, History, Trash2 } from 'lucide-react';
-import { shipmentsApi } from '../api';
+import { shipmentsApi, brandsApi } from '../api';
 import { Page, Table, Btn, Modal, FormRow, Input, Select, Badge, fmt } from '../components/ui';
 
 const CURRENCIES = ['USD', 'GBP', 'EUR', 'KRW', 'CNY', 'SGD'];
 
 export default function CostReference() {
   const [rows, setRows] = useState([]);
+  const [brands, setBrands] = useState([]);
+  const [brandFilter, setBrandFilter] = useState('');
   const [loading, setLoading] = useState(true);
   const [addModal, setAddModal] = useState(null);   // row being added-to
   const [historyModal, setHistoryModal] = useState(null); // row being viewed
@@ -14,8 +16,9 @@ export default function CostReference() {
   const [form, setForm] = useState({ effective_date: new Date().toISOString().slice(0, 10), currency: 'USD' });
   const [saving, setSaving] = useState(false);
 
-  const load = () => shipmentsApi.costReference().then(r => { setRows(r); setLoading(false); });
-  useEffect(() => { load(); }, []);
+  const load = () => shipmentsApi.costReference(brandFilter ? { brand_id: brandFilter } : {}).then(r => { setRows(r); setLoading(false); });
+  useEffect(() => { load(); }, [brandFilter]);
+  useEffect(() => { brandsApi.getAll().then(setBrands); }, []);
 
   function openAdd(row) {
     setForm({
@@ -76,6 +79,12 @@ export default function CostReference() {
 
   return (
     <Page title="Cost reference" subtitle="Original supplier cost and weight per SKU — pre-fills the shipment entry form">
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
+        <Select value={brandFilter} onChange={e => setBrandFilter(e.target.value)} style={{ width: 200 }}>
+          <option value="">All brands</option>
+          {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+        </Select>
+      </div>
       {loading ? (
         <div style={{ padding: 40, textAlign: 'center', color: 'var(--cream-30)' }}>Loading…</div>
       ) : (

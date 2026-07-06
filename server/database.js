@@ -399,6 +399,10 @@ function createSchema() {
   // Shipment document files (base64 stored in DB, same pattern as product images)
   try { db.run("ALTER TABLE shipment_documents ADD COLUMN file_data TEXT"); } catch(e) {}
 
+  // GST manual-override flag — when set, /cost uses the stored gst_amount
+  // as-is instead of recalculating it (still editable, still auto by default)
+  try { db.run("ALTER TABLE shipments ADD COLUMN gst_amount_override INTEGER DEFAULT 0"); } catch(e) {}
+
   // Partner outlet address on invoice/DO
   try { db.run("ALTER TABLE invoices ADD COLUMN outlet_address_id INTEGER REFERENCES partner_addresses(id)"); } catch(e) {}
 

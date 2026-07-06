@@ -91,15 +91,17 @@ export const shipmentsApi = {
   updateLineItem: (liId, data) => api.put(`/shipments/line-items/${liId}`, data),
   deleteLineItem: (liId) => api.delete(`/shipments/line-items/${liId}`),
   markReceived: (id) => api.post(`/shipments/${id}/receive`, {}),
+  voidShipment: (id) => api.post(`/shipments/${id}/void`, {}),
   calculateCost: (id, data) => api.post(`/shipments/${id}/cost`, data || {}),
   uploadDocument: (id, data) => api.post(`/shipments/${id}/documents`, data),
-  costReference:        ()      => api.get('/shipments/cost-reference'),
+  costReference:        (q)     => api.get(`/shipments/cost-reference${qs(q)}`),
   costReferenceHistory: (pid)   => api.get(`/shipments/cost-reference/${pid}/history`),
   addCostReference:     (data)  => api.post('/shipments/cost-reference', data),
   deleteCostReference:  (id)    => api.delete(`/shipments/cost-reference/${id}`),
   documents:       (q)  => api.get(`/shipments/documents${qs(q)}`),
   documentGet:     (id) => api.get(`/shipments/documents/${id}`),
   documentDelete:  (id) => api.delete(`/shipments/documents/${id}`),
+  variance:        (q)  => api.get(`/shipments/variance${qs(q)}`),
 };
 
 export const brandSkuApi = { detail: (q) => api.get(`/reports/brand-sku${qs(q)}`), };
