@@ -396,6 +396,9 @@ function createSchema() {
   // Product images for Order Portal catalogue
   try { db.run("ALTER TABLE products ADD COLUMN image_data TEXT"); } catch(e) {}
 
+  // Shipment document files (base64 stored in DB, same pattern as product images)
+  try { db.run("ALTER TABLE shipment_documents ADD COLUMN file_data TEXT"); } catch(e) {}
+
   // Partner outlet address on invoice/DO
   try { db.run("ALTER TABLE invoices ADD COLUMN outlet_address_id INTEGER REFERENCES partner_addresses(id)"); } catch(e) {}
 

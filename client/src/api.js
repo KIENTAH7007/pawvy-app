@@ -81,7 +81,16 @@ export const costsApi     = { getAll: (q) => api.get(`/costs${qs(q)}`), summary:
 export const reportsApi   = { pnl: (q) => api.get(`/reports/pnl${qs(q)}`), trend: (q) => api.get(`/reports/trend${qs(q)}`), partners: (q) => api.get(`/reports/partners${qs(q)}`), allChannels: (q) => api.get(`/reports/all-channels${qs(q)}`) };
 export const partnerReportApi = { top: (q) => api.get(`/reports/partners${qs(q)}`) };
 export const adjApi       = { getAll: (q) => api.get(`/adjustments${qs(q)}`), create: (d) => api.post('/adjustments',d) };
-export const shipmentsApi = { getAll: (q) => api.get(`/shipments${qs(q)}`) };
+export const shipmentsApi = {
+  getAll:   (q) => api.get(`/shipments${qs(q)}`),
+  costReference:        ()      => api.get('/shipments/cost-reference'),
+  costReferenceHistory: (pid)   => api.get(`/shipments/cost-reference/${pid}/history`),
+  addCostReference:     (data)  => api.post('/shipments/cost-reference', data),
+  deleteCostReference:  (id)    => api.delete(`/shipments/cost-reference/${id}`),
+  documents:       (q)  => api.get(`/shipments/documents${qs(q)}`),
+  documentGet:     (id) => api.get(`/shipments/documents/${id}`),
+  documentDelete:  (id) => api.delete(`/shipments/documents/${id}`),
+};
 
 export const brandSkuApi = { detail: (q) => api.get(`/reports/brand-sku${qs(q)}`), };
 
