@@ -462,7 +462,8 @@ function ShipmentDetailPanel({
           <Input
             label="GST (9% of product + freight)"
             type="number" step="0.01"
-            value={header.gst_amount ?? ''}
+            value={gstOverride ? (header.gst_amount ?? '') : (header.costed_date ? header.gst_amount ?? '' : '')}
+            placeholder={!gstOverride && !header.costed_date ? 'Auto-calculated once costed' : ''}
             onChange={e => hf('gst_amount', parseFloat(e.target.value) || 0)}
             disabled={isVoided || !gstOverride}
           />
