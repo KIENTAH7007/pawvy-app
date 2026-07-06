@@ -26,7 +26,7 @@ export default function VarianceLedger() {
     <Page title="Variance ledger" subtitle="Every logged cost variance vs Products & Pricing, across all shipments — this feeds P&L as a COGS adjustment">
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
         <KpiCard label="Entries (filtered)" value={rows.length} />
-        <KpiCard label="Total variance (COGS impact)" value={`${totalVariance >= 0 ? '+' : ''}$${totalVariance.toFixed(2)}`} sub={totalVariance >= 0 ? 'Cost more than budgeted' : 'Cost less than budgeted'} />
+        <KpiCard label="Total variance (COGS impact)" value={`${totalVariance >= 0 ? '+' : ''}$${totalVariance.toFixed(2)}`} sub={totalVariance >= 0 ? 'Favorable — cost less than budgeted' : 'Unfavorable — cost more than budgeted'} />
         <KpiCard label="Watch" value={watchCount} />
         <KpiCard label="Risky" value={riskyCount} />
       </div>
@@ -67,7 +67,7 @@ export default function VarianceLedger() {
         />
       )}
       <div style={{ fontSize: 11, color: 'var(--cream-30)', marginTop: 10 }}>
-        Sign convention: <strong>positive</strong> means the landed cost came in higher than the set cost (you paid more than budgeted — increases COGS, reduces margin). <strong>Negative</strong> means it came in lower (decreases COGS, improves margin). "Total variance ($)" is the per-unit difference × quantity received for that line — that's the number that actually matters for P&L, not the per-unit rate.
+        Sign convention: <strong>positive</strong> means the landed cost came in lower than the set cost (you paid less than budgeted — favorable, adds profit). <strong>Negative</strong> means it came in higher (unfavorable, reduces profit) — this reads the same direction as the rest of the P&L. "Total variance ($)" is the per-unit difference × quantity received for that line — that's the number that actually matters for P&L, not the per-unit rate.
       </div>
     </Page>
   );

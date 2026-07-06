@@ -369,7 +369,13 @@ module.exports = function(db) {
     db.run('DELETE FROM cost_variance_ledger WHERE shipment_id = ?', [req.params.id]);
     costedLines.forEach(l => {
       const setCost = l.set_cost_price || 0;
-      const varianceAmount = l.landed_cost_per_unit - setCost;
+      // Sign convention: variance is a PROFIT impact, not a "cost impact" —
+      // negative = landed cost came in higher than set cost (unfavorable,
+      // reduces profit); positive = came in lower (favorable, adds profit).
+      // This reads the same way as every other number in the P&L (negative
+      // = bad), rather than requiring a mental flip. Feeds P&L as:
+      // total COGS = normal COGS − variance_total.
+      const varianceAmount = setCost - l.landed_cost_per_unit;
       const variancePct = setCost > 0 ? (varianceAmount / setCost) * 100 : 0;
       const flag = setCost > 0 ? varianceFlag(variancePct) : 'no_reference';
       const varianceTotal = varianceAmount * (l.qty_received || 0);

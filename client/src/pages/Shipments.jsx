@@ -167,7 +167,7 @@ export default function Shipments() {
         <KpiCard
           label="Cost variance (month)"
           value={`${monthVariance >= 0 ? '+' : ''}$${monthVariance.toFixed(2)}`}
-          sub={monthVariance >= 0 ? 'Costing more than set price' : 'Costing less than set price'}
+          sub={monthVariance >= 0 ? 'Favorable — costing less than set price' : 'Unfavorable — costing more than set price'}
         />
         <KpiCard label="Shipments costed" value={costedCount} />
         <KpiCard label="Total shipments" value={active.length} />
@@ -442,7 +442,7 @@ function ShipmentDetailPanel({
             keyField="id"
           />
           <div style={{ fontSize: 11, color: 'var(--cream-30)' }}>
-            Positive = landed cost came in higher than set cost (unfavorable, reduces margin). Negative = came in lower (favorable). "Total variance ($)" — per-unit diff × qty received — is the number that feeds P&L; the per-unit diff alone isn't, since it ignores quantity. Updating Products & Pricing's cost price is a separate, manual step — head there to update any SKU flagged "Risky" after checking its trend over the last few shipments.
+            Positive = landed cost came in lower than set cost (favorable, adds profit). Negative = came in higher (unfavorable, reduces profit) — this reads the same direction as the rest of the P&L. "Total variance ($)" — per-unit diff × qty received — is the number that feeds P&L; the per-unit diff alone isn't, since it ignores quantity. Updating Products & Pricing's cost price is a separate, manual step — head there to update any SKU flagged "Risky" after checking its trend over the last few shipments.
           </div>
         </>
       )}
