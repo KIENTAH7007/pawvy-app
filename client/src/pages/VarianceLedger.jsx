@@ -18,7 +18,7 @@ export default function VarianceLedger() {
   useEffect(() => { load(); }, [filters.brand_id, filters.flag, filters.from, filters.to]);
   useEffect(() => { brandsApi.getAll().then(setBrands); }, []);
 
-  const totalVariance = rows.reduce((sum, r) => sum + (r.variance_amount || 0), 0);
+  const totalVariance = rows.reduce((sum, r) => sum + (r.variance_total || 0), 0);
   const riskyCount = rows.filter(r => r.flag === 'risky').length;
   const watchCount = rows.filter(r => r.flag === 'watch').length;
 
@@ -26,7 +26,7 @@ export default function VarianceLedger() {
     <Page title="Variance ledger" subtitle="Every logged cost variance vs Products & Pricing, across all shipments — this feeds P&L as a COGS adjustment">
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
         <KpiCard label="Entries (filtered)" value={rows.length} />
-        <KpiCard label="Total variance" value={`${totalVariance >= 0 ? '+' : ''}$${totalVariance.toFixed(2)}`} sub={totalVariance >= 0 ? 'Net cost increase' : 'Net cost decrease'} />
+        <KpiCard label="Total variance (COGS impact)" value={`${totalVariance >= 0 ? '+' : ''}$${totalVariance.toFixed(2)}`} sub={totalVariance >= 0 ? 'Cost more than budgeted' : 'Cost less than budgeted'} />
         <KpiCard label="Watch" value={watchCount} />
         <KpiCard label="Risky" value={riskyCount} />
       </div>
@@ -57,15 +57,18 @@ export default function VarianceLedger() {
             { key: 'shipment_code', label: 'Shipment' },
             { key: 'brand_name', label: 'Brand' },
             { key: 'item_series', label: 'SKU', render: (v, r) => `${v}${r.variation ? ' — ' + r.variation : ''}` },
-            { key: 'landed_cost', label: 'Landed cost', align: 'right', render: v => `$${v.toFixed(2)}` },
-            { key: 'set_cost_price', label: 'Set cost', align: 'right', render: v => `$${v.toFixed(2)}` },
-            { key: 'variance_amount', label: 'Variance $', align: 'right', render: v => `${v >= 0 ? '+' : ''}$${v.toFixed(2)}` },
-            { key: 'variance_pct', label: 'Variance %', align: 'right', render: v => `${v >= 0 ? '+' : ''}${v.toFixed(1)}%` },
+            { key: 'landed_cost', label: 'Landed/unit', align: 'right', render: v => `$${v.toFixed(2)}` },
+            { key: 'set_cost_price', label: 'Set/unit', align: 'right', render: v => `$${v.toFixed(2)}` },
+            { key: 'variance_pct', label: 'Diff %', align: 'right', render: v => `${v >= 0 ? '+' : ''}${v.toFixed(1)}%` },
+            { key: 'variance_total', label: 'Total variance ($)', align: 'right', render: v => `${v >= 0 ? '+' : ''}$${v.toFixed(2)}` },
             { key: 'flag', label: 'Flag', align: 'center', render: v => <Badge color={FLAG_COLOR[v]}>{FLAG_LABEL[v]}</Badge> },
           ]}
           rows={rows}
         />
       )}
+      <div style={{ fontSize: 11, color: 'var(--cream-30)', marginTop: 10 }}>
+        Sign convention: <strong>positive</strong> means the landed cost came in higher than the set cost (you paid more than budgeted — increases COGS, reduces margin). <strong>Negative</strong> means it came in lower (decreases COGS, improves margin). "Total variance ($)" is the per-unit difference × quantity received for that line — that's the number that actually matters for P&L, not the per-unit rate.
+      </div>
     </Page>
   );
 }

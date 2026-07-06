@@ -372,10 +372,11 @@ module.exports = function(db) {
       const varianceAmount = l.landed_cost_per_unit - setCost;
       const variancePct = setCost > 0 ? (varianceAmount / setCost) * 100 : 0;
       const flag = setCost > 0 ? varianceFlag(variancePct) : 'no_reference';
+      const varianceTotal = varianceAmount * (l.qty_received || 0);
       db.run(
-        `INSERT INTO cost_variance_ledger (shipment_id, product_id, landed_cost, set_cost_price, variance_amount, variance_pct, flag, logged_date)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [req.params.id, l.product_id, l.landed_cost_per_unit, setCost, varianceAmount, variancePct, flag, costedDate]
+        `INSERT INTO cost_variance_ledger (shipment_id, product_id, landed_cost, set_cost_price, variance_amount, variance_pct, variance_total, flag, logged_date)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [req.params.id, l.product_id, l.landed_cost_per_unit, setCost, varianceAmount, variancePct, varianceTotal, flag, costedDate]
       );
 
       // Auto-add a new cost reference price point from this shipment's actual figures,

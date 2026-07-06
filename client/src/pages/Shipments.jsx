@@ -34,7 +34,7 @@ export default function Shipments() {
     brandsApi.getAll().then(setBrands);
     const thisMonth = new Date().toISOString().slice(0, 7);
     shipmentsApi.variance({ from: `${thisMonth}-01`, to: `${thisMonth}-31` }).then(rows => {
-      setMonthVariance(rows.reduce((sum, r) => sum + (r.variance_amount || 0), 0));
+      setMonthVariance(rows.reduce((sum, r) => sum + (r.variance_total || 0), 0));
     });
   }, []);
 
@@ -59,6 +59,14 @@ export default function Shipments() {
     load();
   }
 
+  // Lighter refresh used for line-item add/remove — these change the shape of
+  // line_items so detail needs refetching, but don't change anything shown at
+  // the list level (status, total_landed_cost), so skip the list reload.
+  async function refreshDetailOnly(id) {
+    const d = await shipmentsApi.get(id);
+    setDetail(d);
+  }
+
   async function saveHeader(fields) {
     setBusy(true);
     try {
@@ -71,19 +79,22 @@ export default function Shipments() {
   async function addLine() {
     if (!products.length) { setError('Select a brand first, then add line items.'); return; }
     await shipmentsApi.addLineItem(detail.id, { product_id: products[0].id, qty_ordered: 0, qty_received: 0, unit_cost_original_currency: 0 });
-    refreshDetail(detail.id);
+    refreshDetailOnly(detail.id);
   }
 
-  // Saves a single line item's field(s). Called on blur, not on every keystroke —
-  // that round-trip-per-keystroke was what caused fast typing to get scrambled.
+  // Saves a single line item's field(s) on blur (not on every keystroke — that
+  // was the original cause of fast typing getting scrambled). This now just
+  // does the PUT and returns the updated row directly, with NO follow-up
+  // GET at all — the previous version chained a PUT + 2 GETs per single field
+  // blur, which is what made the tab feel sluggish. The caller merges the
+  // returned row into its own local state.
   async function commitLine(liId, fields) {
-    await shipmentsApi.updateLineItem(liId, fields);
-    refreshDetail(detail.id);
+    return shipmentsApi.updateLineItem(liId, fields);
   }
 
   async function removeLine(liId) {
     await shipmentsApi.deleteLineItem(liId);
-    refreshDetail(detail.id);
+    refreshDetailOnly(detail.id);
   }
 
   async function selectSku(li, productId) {
@@ -91,14 +102,15 @@ export default function Shipments() {
     // Updates the SAME line item id in place (no delete+recreate) — that
     // delete+recreate approach was what caused rows to jump to the bottom
     // and made it look like editing one row changed a different one.
+    // Also no follow-up GET here, same reasoning as commitLine above —
+    // the PUT response already has everything the row needs.
     const ref = await shipmentsApi.costReferenceHistory(productId);
     const latest = ref[0];
-    await shipmentsApi.updateLineItem(li.id, {
+    return shipmentsApi.updateLineItem(li.id, {
       product_id: productId,
       unit_cost_original_currency: latest?.cost_original_currency ?? li.unit_cost_original_currency,
       weight_per_unit: latest?.weight_per_unit ?? li.weight_per_unit,
     });
-    refreshDetail(detail.id);
   }
 
   async function markReceived() {
@@ -192,8 +204,11 @@ export default function Shipments() {
                     </div>
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--cream-60)' }}>{s.line_item_count} item{s.line_item_count !== 1 ? 's' : ''}</div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--cream)', minWidth: 90, textAlign: 'right' }}>
-                    {s.total_landed_cost ? `$${s.total_landed_cost.toFixed(2)}` : '—'}
+                  <div style={{ textAlign: 'right', minWidth: 90 }}>
+                    <div style={{ fontSize: 9.5, color: 'var(--cream-30)', textTransform: 'uppercase', letterSpacing: .5 }}>Landed cost</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--cream)' }}>
+                      {s.total_landed_cost ? `$${s.total_landed_cost.toFixed(2)}` : '—'}
+                    </div>
                   </div>
                   {isOpen ? <ChevronUp size={16} color="var(--cream-30)" /> : <ChevronDown size={16} color="var(--cream-30)" />}
                 </div>
@@ -247,8 +262,14 @@ function ShipmentDetailPanel({
     setLines(ls => ls.map(l => l.id === liId ? { ...l, [field]: value } : l));
   }
 
-  function commitLineField(li, field, value) {
-    onCommitLine(li.id, { [field]: value });
+  async function commitLineField(li, field, value) {
+    const updated = await onCommitLine(li.id, { [field]: value });
+    if (updated) setLines(ls => ls.map(l => l.id === li.id ? { ...l, ...updated } : l));
+  }
+
+  async function handleSelectSku(li, productId) {
+    const updated = await onSelectSku(li, productId);
+    if (updated) setLines(ls => ls.map(l => l.id === li.id ? { ...l, ...updated } : l));
   }
 
   const colWidths = '2fr 1fr 1fr 1fr 1fr auto';
@@ -302,7 +323,7 @@ function ShipmentDetailPanel({
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {lines.map(li => (
           <div key={li.id} style={{ display: 'grid', gridTemplateColumns: colWidths, gap: 8, alignItems: 'center' }}>
-            <Select value={li.product_id} onChange={e => onSelectSku(li, e.target.value)} disabled={isVoided}>
+            <Select value={li.product_id} onChange={e => handleSelectSku(li, e.target.value)} disabled={isVoided}>
               {products.map(p => <option key={p.id} value={p.id}>{p.item_series}{p.variation ? ' — ' + p.variation : ''}</option>)}
             </Select>
             <Input type="number" value={li.qty_ordered}
@@ -411,16 +432,17 @@ function ShipmentDetailPanel({
                 const li = (detail.line_items || []).find(l => l.product_id === v);
                 return li ? `${li.item_series}${li.variation ? ' — ' + li.variation : ''}` : v;
               }},
-              { key: 'landed_cost', label: 'Landed cost', align: 'right', render: v => `$${v.toFixed(2)}` },
-              { key: 'set_cost_price', label: 'Set cost', align: 'right', render: v => `$${v.toFixed(2)}` },
-              { key: 'variance_pct', label: 'Diff', align: 'right', render: v => `${v >= 0 ? '+' : ''}${v.toFixed(1)}%` },
+              { key: 'landed_cost', label: 'Landed/unit', align: 'right', render: v => `$${v.toFixed(2)}` },
+              { key: 'set_cost_price', label: 'Set/unit', align: 'right', render: v => `$${v.toFixed(2)}` },
+              { key: 'variance_pct', label: 'Diff %', align: 'right', render: v => `${v >= 0 ? '+' : ''}${v.toFixed(1)}%` },
+              { key: 'variance_total', label: 'Total variance ($)', align: 'right', render: v => `${v >= 0 ? '+' : ''}$${v.toFixed(2)}` },
               { key: 'flag', label: 'Flag', align: 'center', render: v => <Badge color={FLAG_COLOR[v]}>{FLAG_LABEL[v]}</Badge> },
             ]}
             rows={detail.variance}
             keyField="id"
           />
           <div style={{ fontSize: 11, color: 'var(--cream-30)' }}>
-            Updating Products & Pricing's cost price is a separate, manual step — head to Products & Pricing to update any SKU flagged "Risky" after checking its trend over the last few shipments.
+            Positive = landed cost came in higher than set cost (unfavorable, reduces margin). Negative = came in lower (favorable). "Total variance ($)" — per-unit diff × qty received — is the number that feeds P&L; the per-unit diff alone isn't, since it ignores quantity. Updating Products & Pricing's cost price is a separate, manual step — head there to update any SKU flagged "Risky" after checking its trend over the last few shipments.
           </div>
         </>
       )}

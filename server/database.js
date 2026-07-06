@@ -403,6 +403,10 @@ function createSchema() {
   // as-is instead of recalculating it (still editable, still auto by default)
   try { db.run("ALTER TABLE shipments ADD COLUMN gst_amount_override INTEGER DEFAULT 0"); } catch(e) {}
 
+  // Variance ledger: total dollar impact (per-unit diff × qty received), not
+  // just the per-unit rate — this is the number that actually feeds P&L
+  try { db.run("ALTER TABLE cost_variance_ledger ADD COLUMN variance_total REAL DEFAULT 0"); } catch(e) {}
+
   // Partner outlet address on invoice/DO
   try { db.run("ALTER TABLE invoices ADD COLUMN outlet_address_id INTEGER REFERENCES partner_addresses(id)"); } catch(e) {}
 
