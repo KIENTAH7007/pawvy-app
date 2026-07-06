@@ -22,7 +22,19 @@ module.exports = function(db) {
     return `SHP-${String(n).padStart(4, '0')}`;
   }
 
+  // Asymmetric bands: unfavorable variance (landed cost > set cost, pct
+  // negative) genuinely needs attention as it scales — Healthy/Watch/Risky.
+  // Favorable variance (landed cost < set cost, pct positive) is good news,
+  // not risk, so it gets its own labels — except when it's implausibly
+  // large (>50%), which is almost always a data-entry mistake (missing unit
+  // cost, wrong FX rate) rather than genuine savings, so that gets flagged
+  // for a sanity check rather than either "risky" or blithely "favorable".
   function varianceFlag(pct) {
+    if (pct >= 0) {
+      if (pct <= 5) return 'healthy';
+      if (pct <= 50) return 'favorable';
+      return 'verify';
+    }
     const a = Math.abs(pct);
     if (a <= 5) return 'healthy';
     if (a <= 15) return 'watch';

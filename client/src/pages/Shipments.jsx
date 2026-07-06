@@ -13,8 +13,8 @@ const DOC_TYPES = [
   { value: 'gst_record',       label: 'GST payment record' },
   { value: 'avs_record',       label: 'AVS payment record' },
 ];
-const FLAG_COLOR = { healthy: '#639922', watch: '#BA7517', risky: '#E24B4A', no_reference: '#888' };
-const FLAG_LABEL = { healthy: 'Healthy', watch: 'Watch', risky: 'Risky', no_reference: 'No reference cost' };
+const FLAG_COLOR = { healthy: '#639922', watch: '#BA7517', risky: '#E24B4A', favorable: '#378ADD', verify: '#9333EA', no_reference: '#888' };
+const FLAG_LABEL = { healthy: 'Healthy', watch: 'Watch', risky: 'Risky', favorable: 'Favorable', verify: 'Verify data', no_reference: 'No reference cost' };
 
 export default function Shipments() {
   const [shipments, setShipments] = useState([]);
@@ -411,28 +411,35 @@ function ShipmentDetailPanel({
       )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {lines.map(li => (
-          <div key={li.id} style={{ display: 'grid', gridTemplateColumns: colWidths, gap: 8, alignItems: 'center' }}>
-            <Select value={li.product_id} onChange={e => handleSelectSku(li, e.target.value)} disabled={isVoided}>
-              {products.map(p => <option key={p.id} value={p.id}>{p.item_series}{p.variation ? ' — ' + p.variation : ''}</option>)}
-            </Select>
-            <Input type="number" value={li.qty_ordered}
-              onChange={e => setLineField(li.id, 'qty_ordered', e.target.value)}
-              onBlur={e => commitLineField(li, 'qty_ordered', parseFloat(e.target.value) || 0)}
-              disabled={isVoided} />
-            <Input type="number" value={li.qty_received}
-              onChange={e => setLineField(li.id, 'qty_received', e.target.value)}
-              onBlur={e => commitLineField(li, 'qty_received', parseFloat(e.target.value) || 0)}
-              disabled={isVoided} />
-            <Input type="number" step="0.01" value={li.unit_cost_original_currency}
-              onChange={e => setLineField(li.id, 'unit_cost_original_currency', e.target.value)}
-              onBlur={e => commitLineField(li, 'unit_cost_original_currency', parseFloat(e.target.value) || 0)}
-              disabled={isVoided} />
-            <Input type="number" step="0.01" value={li.weight_per_unit ?? ''}
-              onChange={e => setLineField(li.id, 'weight_per_unit', e.target.value)}
-              onBlur={e => commitLineField(li, 'weight_per_unit', e.target.value ? parseFloat(e.target.value) : null)}
-              disabled={isVoided} />
-            {!isVoided && (
-              <button onClick={() => handleRemoveLine(li.id)} style={{ background: 'none', border: 'none', color: 'var(--cream-30)', cursor: 'pointer', padding: '8px 4px' }}><Trash2 size={14} /></button>
+          <div key={li.id}>
+            <div style={{ display: 'grid', gridTemplateColumns: colWidths, gap: 8, alignItems: 'center' }}>
+              <Select value={li.product_id} onChange={e => handleSelectSku(li, e.target.value)} disabled={isVoided}>
+                {products.map(p => <option key={p.id} value={p.id}>{p.item_series}{p.variation ? ' — ' + p.variation : ''}</option>)}
+              </Select>
+              <Input type="number" value={li.qty_ordered}
+                onChange={e => setLineField(li.id, 'qty_ordered', e.target.value)}
+                onBlur={e => commitLineField(li, 'qty_ordered', parseFloat(e.target.value) || 0)}
+                disabled={isVoided} />
+              <Input type="number" value={li.qty_received}
+                onChange={e => setLineField(li.id, 'qty_received', e.target.value)}
+                onBlur={e => commitLineField(li, 'qty_received', parseFloat(e.target.value) || 0)}
+                disabled={isVoided} />
+              <Input type="number" step="0.01" value={li.unit_cost_original_currency}
+                onChange={e => setLineField(li.id, 'unit_cost_original_currency', e.target.value)}
+                onBlur={e => commitLineField(li, 'unit_cost_original_currency', parseFloat(e.target.value) || 0)}
+                disabled={isVoided} />
+              <Input type="number" step="0.01" value={li.weight_per_unit ?? ''}
+                onChange={e => setLineField(li.id, 'weight_per_unit', e.target.value)}
+                onBlur={e => commitLineField(li, 'weight_per_unit', e.target.value ? parseFloat(e.target.value) : null)}
+                disabled={isVoided} />
+              {!isVoided && (
+                <button onClick={() => handleRemoveLine(li.id)} style={{ background: 'none', border: 'none', color: 'var(--cream-30)', cursor: 'pointer', padding: '8px 4px' }}><Trash2 size={14} /></button>
+              )}
+            </div>
+            {!li.unit_cost_original_currency && li.qty_ordered > 0 && (
+              <div style={{ fontSize: 10.5, color: '#BA7517', marginTop: 3, paddingLeft: 2 }}>
+                ⚠ Unit cost is $0 — this line will land at $0.00 and show a large false "Verify data" flag until filled in.
+              </div>
             )}
           </div>
         ))}
@@ -570,7 +577,7 @@ function ShipmentDetailPanel({
             keyField="id"
           />
           <div style={{ fontSize: 11, color: 'var(--cream-30)' }}>
-            Positive = landed cost came in lower than set cost (favorable, adds profit). Negative = came in higher (unfavorable, reduces profit) — this reads the same direction as the rest of the P&L. "Total variance ($)" — per-unit diff × qty received — is the number that feeds P&L; the per-unit diff alone isn't, since it ignores quantity. Updating Products & Pricing's cost price is a separate, manual step — head there to update any SKU flagged "Risky" after checking its trend over the last few shipments.
+            Positive = landed cost came in lower than set cost (favorable, adds profit). Negative = came in higher (unfavorable, reduces profit) — this reads the same direction as the rest of the P&L. Flags are asymmetric on purpose: unfavorable variance escalates Healthy → Watch → Risky as it gets worse, since that's real margin erosion needing attention. Favorable variance is just "Favorable" — good news, no action needed — unless it's implausibly large (past +50%), which almost always means a missing or wrong input (like a $0 unit cost) rather than genuine savings, so that gets flagged "Verify data" instead. "Total variance ($)" — per-unit diff × qty received — is the number that feeds P&L; the per-unit diff alone isn't, since it ignores quantity. Updating Products & Pricing's cost price is a separate, manual step.
           </div>
         </>
       )}

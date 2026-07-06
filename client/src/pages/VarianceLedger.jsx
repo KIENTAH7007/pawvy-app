@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { shipmentsApi, brandsApi } from '../api';
 import { Page, Table, Select, Input, KpiCard, Badge, fmt } from '../components/ui';
 
-const FLAG_COLOR = { healthy: '#639922', watch: '#BA7517', risky: '#E24B4A', no_reference: '#888' };
-const FLAG_LABEL = { healthy: 'Healthy', watch: 'Watch', risky: 'Risky', no_reference: 'No reference cost' };
+const FLAG_COLOR = { healthy: '#639922', watch: '#BA7517', risky: '#E24B4A', favorable: '#378ADD', verify: '#9333EA', no_reference: '#888' };
+const FLAG_LABEL = { healthy: 'Healthy', watch: 'Watch', risky: 'Risky', favorable: 'Favorable', verify: 'Verify data', no_reference: 'No reference cost' };
 
 export default function VarianceLedger() {
   const [rows, setRows] = useState([]);
@@ -67,7 +67,7 @@ export default function VarianceLedger() {
         />
       )}
       <div style={{ fontSize: 11, color: 'var(--cream-30)', marginTop: 10 }}>
-        Sign convention: <strong>positive</strong> means the landed cost came in lower than the set cost (you paid less than budgeted — favorable, adds profit). <strong>Negative</strong> means it came in higher (unfavorable, reduces profit) — this reads the same direction as the rest of the P&L. "Total variance ($)" is the per-unit difference × quantity received for that line — that's the number that actually matters for P&L, not the per-unit rate.
+        Sign convention: <strong>positive</strong> means the landed cost came in lower than the set cost (you paid less than budgeted — favorable, adds profit). <strong>Negative</strong> means it came in higher (unfavorable, reduces profit) — this reads the same direction as the rest of the P&L. Flags are asymmetric: unfavorable variance escalates Healthy → Watch → Risky as it worsens (real margin erosion). Favorable variance shows as "Favorable" (good news, no action needed) unless it's past +50%, which almost always signals a data-entry mistake rather than genuine savings — that gets flagged "Verify data" instead. "Total variance ($)" is the per-unit difference × quantity received for that line — that's the number that actually matters for P&L, not the per-unit rate.
       </div>
     </Page>
   );
