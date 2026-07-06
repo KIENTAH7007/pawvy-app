@@ -182,8 +182,20 @@ export default function App() {
                 <span>Subtotal (before any applicable discount)</span>
                 <strong style={{ color: 'var(--cream)' }}>SGD {cartSubtotal.toFixed(2)}</strong>
               </div>
-              <div style={{ fontSize: 11, color: 'rgba(245,242,235,.35)', padding: '0 4px 8px' }}>
-                Applicable discounts (where applicable) will be reflected in your invoice.
+
+              <div style={{
+                marginTop: 4, marginBottom: 4, padding: 14,
+                border: '1px solid rgba(245,242,235,.1)', borderRadius: 10, background: 'rgba(245,242,235,.03)',
+              }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--cream)', marginBottom: 8, textDecoration: 'underline' }}>Delivery</div>
+                <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <li style={{ fontSize: 12, color: 'rgba(245,242,235,.75)' }}>Order &gt; $200 — FOC Delivery</li>
+                  <li style={{ fontSize: 12, color: 'rgba(245,242,235,.75)' }}>Order &gt; $400 — Cash rebate $12 off</li>
+                  <li style={{ fontSize: 12, color: 'rgba(245,242,235,.75)' }}>Order &gt; $600 — Cash rebate $30 off</li>
+                </ul>
+                <div style={{ fontSize: 10.5, color: 'rgba(245,242,235,.35)', marginTop: 8 }}>
+                  *Relevant discount (where applicable) will be reflected in the invoice directly.
+                </div>
               </div>
 
               <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 12 }}>
