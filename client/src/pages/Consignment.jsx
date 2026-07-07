@@ -15,7 +15,14 @@ function useIsMobile() {
 // ── PDF: Pawvy-branded consignment list ────────────────────────────
 function generateConsignmentPDF(partner, items, docNum) {
   const date = new Date().toLocaleDateString('en-SG', { day:'numeric', month:'long', year:'numeric' });
-  const activeItems = items.filter(i => i.on_hand > 0);
+  // Include a row if there's current stock OR any activity since the last
+  // Close Month (placed/returned/invoiced) — this way a SKU that was placed
+  // and fully returned within the same period (net zero on-hand) still shows
+  // up on the very next print, documenting that it happened. It naturally
+  // drops off later prints once a new period starts with no further activity.
+  const activeItems = items.filter(i =>
+    i.on_hand > 0 || (i.placed_since||0) > 0 || (i.returned_since||0) > 0 || (i.invoiced_since||0) > 0
+  );
   const totalValue  = activeItems.reduce((s,i) => s + i.on_hand * (i.consignment_price||0), 0);
 
   const rows = activeItems.map((i, idx) => `

@@ -110,27 +110,35 @@ export default function Costs() {
         ))}
       </div>
 
-      {trend.length > 1 && (
-        <div style={{ background: 'var(--navy)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 16 }}>
-          <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 13, letterSpacing: 1, color: 'var(--cream)', marginBottom: 4 }}>
-            MONTHLY TREND (LAST {trend.length} MONTHS)
-          </div>
-          <div style={{ fontSize: 11, color: 'var(--cream-30)', marginBottom: 10 }}>
-            Dashed reference line = average + 1 standard deviation (SGD {referenceLine.toFixed(2)}) — a month crossing this line is
-            notably higher than your typical spend, not just "above average" (which about half of all months would be anyway).
-          </div>
-          <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={trend} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(245,242,235,.06)" vertical={false} />
-              <XAxis dataKey="month" tick={{ fill: 'rgba(245,242,235,.4)', fontSize: 10 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: 'rgba(245,242,235,.4)', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => `$${v}`} />
-              <Tooltip content={<TrendTip />} />
-              <ReferenceLine y={referenceLine} stroke="#f87171" strokeDasharray="5 5" label={{ value: 'Reference', fill: '#f87171', fontSize: 10, position: 'insideTopRight' }} />
-              <Line type="monotone" dataKey="total" name="Operating Cost" stroke="#f36f4a" strokeWidth={2.5} dot={{ r: 4, fill: '#f36f4a' }} />
-            </LineChart>
-          </ResponsiveContainer>
+      <div style={{ background: 'var(--navy)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 16 }}>
+        <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 13, letterSpacing: 1, color: 'var(--cream)', marginBottom: 4 }}>
+          MONTHLY TREND {trend.length > 0 && `(LAST ${trend.length} MONTH${trend.length !== 1 ? 'S' : ''})`}
         </div>
-      )}
+        {trend.length > 1 ? (
+          <>
+            <div style={{ fontSize: 11, color: 'var(--cream-30)', marginBottom: 10 }}>
+              Dashed reference line = average + 1 standard deviation (SGD {referenceLine.toFixed(2)}) — a month crossing this line is
+              notably higher than your typical spend, not just "above average" (which about half of all months would be anyway).
+            </div>
+            <ResponsiveContainer width="100%" height={220}>
+              <LineChart data={trend} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(245,242,235,.06)" vertical={false} />
+                <XAxis dataKey="month" tick={{ fill: 'rgba(245,242,235,.4)', fontSize: 10 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: 'rgba(245,242,235,.4)', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => `$${v}`} />
+                <Tooltip content={<TrendTip />} />
+                <ReferenceLine y={referenceLine} stroke="#f87171" strokeDasharray="5 5" label={{ value: 'Reference', fill: '#f87171', fontSize: 10, position: 'insideTopRight' }} />
+                <Line type="monotone" dataKey="total" name="Operating Cost" stroke="#f36f4a" strokeWidth={2.5} dot={{ r: 4, fill: '#f36f4a' }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </>
+        ) : (
+          <div style={{ padding: '30px 0', textAlign: 'center', fontSize: 12, color: 'var(--cream-30)' }}>
+            {trend.length === 1
+              ? 'Only one month of cost data so far — the trend chart needs at least 2 months to draw a line. It\'ll appear automatically once next month has an entry.'
+              : 'No cost data yet — add some Operating Costs entries to see the trend here.'}
+          </div>
+        )}
+      </div>
 
       <div style={{background:'var(--navy)',border:'1px solid var(--border)',borderRadius:'var(--radius)',overflow:'hidden'}}>
         <Table cols={cols} rows={costs} emptyMsg="No costs recorded in this period"/>

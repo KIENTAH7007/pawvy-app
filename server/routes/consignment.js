@@ -5,12 +5,21 @@ module.exports = function(db) {
 
   // ── Core on-hand calculation (snapshot-aware) ──────────────────
   // On Hand = latest_snapshot_qty + placed_since - invoiced_since - returned_since
+  //
+  // IMPORTANT: "since" is determined by created_at (full timestamp, true
+  // recording order), NOT the user-entered `date` field. The `date` field
+  // is calendar-day-only — if a Close Month snapshot and a later
+  // correction (e.g. an extra return recorded after realizing more stock
+  // needs to come back) both fall on the SAME calendar day, comparing by
+  // `date` alone can't tell which happened first, and the later one gets
+  // silently excluded from "since the snapshot" activity. created_at
+  // doesn't have this ambiguity — it always reflects true insertion order.
   function getOnHand(partner_id) {
     // Latest snapshot per product
     const snapRows = db.query(`
-      SELECT product_id, on_hand_qty, snapshot_date, consignment_price
+      SELECT id, product_id, on_hand_qty, snapshot_date, consignment_price, created_at
       FROM consignment_snapshots WHERE partner_id = ?
-      ORDER BY snapshot_date DESC
+      ORDER BY snapshot_date DESC, created_at DESC, id DESC
     `, [partner_id]);
     const latestSnap = {};
     snapRows.forEach(s => { if (!latestSnap[s.product_id]) latestSnap[s.product_id] = s; });
@@ -54,7 +63,9 @@ module.exports = function(db) {
     for (const pid of allIds) {
       const placedInfo = placed.find(p => p.product_id === pid);
       const snap       = latestSnap[pid];
-      const snapDate   = snap ? snap.snapshot_date : '1970-01-01';
+      const snapDate      = snap ? snap.snapshot_date : '1970-01-01';
+      const snapCreatedAt = snap ? snap.created_at    : '1970-01-01 00:00:00';
+      const snapId        = snap ? snap.id            : 0;
       const snapQty    = snap ? snap.on_hand_qty   : 0;
 
       // If no placement info, fetch product details from products table
@@ -68,10 +79,16 @@ module.exports = function(db) {
         `, [pid]);
       }
 
-      // Activity since last snapshot (or since epoch if no snapshot)
-      const placedSince   = db.queryOne(`SELECT COALESCE(SUM(qty),0) AS n FROM consignment_placements WHERE partner_id=? AND product_id=? AND date>?`, [partner_id, pid, snapDate])?.n || 0;
-      const invoicedSince = db.queryOne(`SELECT COALESCE(SUM(cci.qty_discrepancy),0) AS n FROM consignment_count_items cci JOIN consignment_counts cc ON cc.id=cci.count_id WHERE cc.partner_id=? AND cci.product_id=? AND cc.invoiced=1 AND cci.qty_discrepancy>0 AND cc.date>?`, [partner_id, pid, snapDate])?.n || 0;
-      const returnedSince = db.queryOne(`SELECT COALESCE(SUM(qty),0) AS n FROM consignment_returns WHERE partner_id=? AND product_id=? AND date>?`, [partner_id, pid, snapDate])?.n || 0;
+      // Activity since last snapshot (or since epoch if no snapshot) — compared
+      // by created_at with id as a tiebreaker, not date. Two events recorded in
+      // the same second (SQLite's CURRENT_TIMESTAMP is only second-precision)
+      // would otherwise tie and the later one could be wrongly excluded — id
+      // is guaranteed strictly increasing regardless of timestamp resolution,
+      // so this closes that race condition completely rather than narrowing it.
+      const sinceParams = [partner_id, pid, snapCreatedAt, snapCreatedAt, snapId];
+      const placedSince   = db.queryOne(`SELECT COALESCE(SUM(qty),0) AS n FROM consignment_placements WHERE partner_id=? AND product_id=? AND (created_at>? OR (created_at=? AND id>?))`, sinceParams)?.n || 0;
+      const invoicedSince = db.queryOne(`SELECT COALESCE(SUM(cci.qty_discrepancy),0) AS n FROM consignment_count_items cci JOIN consignment_counts cc ON cc.id=cci.count_id WHERE cc.partner_id=? AND cci.product_id=? AND cc.invoiced=1 AND cci.qty_discrepancy>0 AND (cc.created_at>? OR (cc.created_at=? AND cc.id>?))`, sinceParams)?.n || 0;
+      const returnedSince = db.queryOne(`SELECT COALESCE(SUM(qty),0) AS n FROM consignment_returns WHERE partner_id=? AND product_id=? AND (created_at>? OR (created_at=? AND id>?))`, sinceParams)?.n || 0;
 
       const on_hand = snapQty + placedSince - invoicedSince - returnedSince;
       // Price priority: partner's most recent placement price > snapshot price > product default
