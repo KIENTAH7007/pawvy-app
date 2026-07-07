@@ -83,9 +83,15 @@ function generateConsignmentPDF(partner, items, docNum) {
   </div>
 
   <!-- Notes -->
-  <div style="padding:0 32px 24px;font-size:10px;color:#888;line-height:1.8">
+  <div style="padding:0 32px 8px;font-size:10px;color:#888;line-height:1.8">
     <div>* Price is in SGD</div>
     <div>¹ All products are verified and received by consignee</div>
+  </div>
+
+  <!-- Liability clause -->
+  <div style="margin:0 32px 24px;padding:12px 16px;border:1px solid #e8ecf0;border-left:3px solid #14213d;background:#f8f9fc;font-size:10px;color:#444;line-height:1.6">
+    <strong style="color:#14213d">Consignee Liability:</strong> The Consignee is solely liable for inventory safety.
+    Items with physical damage or tampered, unsealed packaging will be deemed sold, requiring full payout to the Consignor.
   </div>
 
   ${pawvyFooterHtml()}
@@ -407,37 +413,31 @@ function StockCountModal({ open, onClose, partnerId, onHandItems, onSaved }) {
         {activeItems.length === 0
           ? <div style={{padding:30,textAlign:'center',color:'var(--cream-30)',fontSize:12}}>No active consignment stock to count.</div>
           : <>
-              <div style={{overflowX:'auto',borderRadius:8,border:'1px solid var(--border)'}}>
-                <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
-                  <thead><tr style={{background:'rgba(245,242,235,.05)'}}>
-                    {['Brand','Product','On Hand','Physical Count','Discrepancy','Invoice'].map(h=>(
-                      <th key={h} style={{padding:'8px 12px',textAlign:['On Hand','Physical Count','Discrepancy','Invoice'].includes(h)?'right':'left',fontSize:9.5,fontWeight:700,letterSpacing:.7,textTransform:'uppercase',color:'var(--cream-30)',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap'}}>{h}</th>
-                    ))}
-                  </tr></thead>
-                  <tbody>
-                    {discrepancies.map(item=>(
-                      <tr key={item.product_id} style={{borderBottom:'1px solid rgba(245,242,235,.04)'}}>
-                        <td style={{padding:'8px 12px'}}><Badge color={item.brand_color}>{item.brand_name}</Badge></td>
-                        <td style={{padding:'8px 12px',color:'var(--cream)',maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-                          {item.item_series}{item.variation?' · '+item.variation:''}
-                        </td>
-                        <td style={{padding:'8px 12px',textAlign:'right',fontWeight:700,color:'var(--cream)'}}>{item.on_hand}</td>
-                        <td style={{padding:'8px 12px',textAlign:'right'}}>
-                          <input type="number" min="0" value={counts[item.product_id]??''}
-                            onChange={e=>setCounts(p=>({...p,[item.product_id]:e.target.value}))}
-                            placeholder="—"
-                            style={{width:70,background:'var(--navy-light)',border:`1px solid ${counts[item.product_id]!==undefined&&counts[item.product_id]!==''?'var(--orange)':'var(--border)'}`,borderRadius:6,padding:'6px 8px',color:'var(--cream)',fontSize:12,textAlign:'right',outline:'none'}}/>
-                        </td>
-                        <td style={{padding:'8px 12px',textAlign:'right',fontWeight:700,color:item.discrepancy===null?'var(--cream-30)':item.discrepancy>0?'#fbbf24':'#7fc93e'}}>
-                          {item.discrepancy===null?'—':item.discrepancy>0?`−${item.discrepancy}`:'✓ 0'}
-                        </td>
-                        <td style={{padding:'8px 12px',textAlign:'right',fontSize:11,color:'var(--cream)'}}>
-                          {item.discrepancy>0 ? sgd(item.discrepancy*item.consignment_price) : '—'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div style={{display:'flex',flexDirection:'column',gap:8,maxHeight:420,overflowY:'auto',paddingRight:4}}>
+                {discrepancies.map(item=>(
+                  <div key={item.product_id} style={{
+                    border:`1px solid ${counts[item.product_id]!==undefined&&counts[item.product_id]!==''?'rgba(243,111,74,.35)':'var(--border)'}`,
+                    borderRadius:8, padding:'10px 12px', background:'rgba(245,242,235,.02)',
+                  }}>
+                    <div style={{display:'flex',alignItems:'flex-start',gap:8,marginBottom:8}}>
+                      <Badge color={item.brand_color}>{item.brand_name}</Badge>
+                      <div style={{flex:1,minWidth:0,fontSize:13,color:'var(--cream)',fontWeight:600,lineHeight:1.35}}>
+                        {item.item_series}{item.variation?' · '+item.variation:''}
+                      </div>
+                    </div>
+                    <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+                      <div style={{fontSize:11,color:'var(--cream-30)'}}>On hand: <strong style={{color:'var(--cream)'}}>{item.on_hand}</strong></div>
+                      <input type="number" min="0" value={counts[item.product_id]??''}
+                        onChange={e=>setCounts(p=>({...p,[item.product_id]:e.target.value}))}
+                        placeholder="Physical count"
+                        style={{flex:'1 1 100px',minWidth:100,background:'var(--navy-light)',border:`1px solid ${counts[item.product_id]!==undefined&&counts[item.product_id]!==''?'var(--orange)':'var(--border)'}`,borderRadius:6,padding:'8px 10px',color:'var(--cream)',fontSize:13,textAlign:'right',outline:'none'}}/>
+                      <div style={{fontSize:12,fontWeight:700,color:item.discrepancy===null?'var(--cream-30)':item.discrepancy>0?'#fbbf24':'#7fc93e',minWidth:44,textAlign:'right'}}>
+                        {item.discrepancy===null?'—':item.discrepancy>0?`−${item.discrepancy}`:'✓ 0'}
+                      </div>
+                      {item.discrepancy>0 && <div style={{fontSize:11,color:'var(--cream-60)'}}>{sgd(item.discrepancy*item.consignment_price)}</div>}
+                    </div>
+                  </div>
+                ))}
               </div>
               <div style={{background:'rgba(245,242,235,.04)',border:'1px solid var(--border)',borderRadius:8,padding:'10px 16px',display:'flex',gap:24,flexWrap:'wrap'}}>
                 <span style={{fontSize:12,color:'var(--cream-30)'}}>Discrepancy: <strong style={{color:totalDisc>0?'#fbbf24':'#7fc93e'}}>{totalDisc} units</strong></span>

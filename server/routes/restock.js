@@ -218,8 +218,8 @@ module.exports = function(db, inventoryRouter) {
       items.forEach(it => {
         const qty = (it.qty_taken != null ? it.qty_taken : it.qty_planned) || 0;
         if (qty <= 0) return;
-        inventoryRouter._recordMovement({ date: today, product_id: it.product_id, location: fromLoc, type: 'Transfer Out', qty_change: -qty, reference, notes: `Restock checklist #${checklist.id}` });
-        inventoryRouter._recordMovement({ date: today, product_id: it.product_id, location: toLoc, type: 'Transfer In', qty_change: qty, reference, notes: `Restock checklist #${checklist.id}` });
+        inventoryRouter._recordMovement({ date: today, product_id: it.product_id, location: fromLoc, type: 'Transfer Out', qty_change: -qty, reference, notes: reference });
+        inventoryRouter._recordMovement({ date: today, product_id: it.product_id, location: toLoc, type: 'Transfer In', qty_change: qty, reference, notes: reference });
         transferred.push({ product_id: it.product_id, qty });
       });
     }
