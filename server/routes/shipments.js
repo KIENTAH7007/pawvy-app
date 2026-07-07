@@ -188,7 +188,7 @@ module.exports = function(db, inventoryRouter) {
   // Same note as above: literal '/documents' routes registered before '/:id'.
 
   router.get('/documents', (req, res) => {
-    const { document_type, brand_id, from, to } = req.query;
+    const { document_type, brand_id, shipment_id, from, to } = req.query;
     let sql = `
       SELECT d.id, d.document_type, d.file_name, d.uploaded_at,
              s.shipment_code, s.brand_id, b.name AS brand_name
@@ -200,6 +200,7 @@ module.exports = function(db, inventoryRouter) {
     const params = [];
     if (document_type) { sql += ' AND d.document_type = ?'; params.push(document_type); }
     if (brand_id)      { sql += ' AND s.brand_id = ?'; params.push(brand_id); }
+    if (shipment_id)   { sql += ' AND d.shipment_id = ?'; params.push(shipment_id); }
     if (from)          { sql += ' AND d.uploaded_at >= ?'; params.push(from); }
     if (to)            { sql += ' AND d.uploaded_at <= ?'; params.push(to); }
     sql += ' ORDER BY d.uploaded_at DESC';

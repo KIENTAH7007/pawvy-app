@@ -28,6 +28,19 @@ module.exports = function costsRouter(db) {
     res.json({ total: total.total, byCategory: byCat });
   });
 
+  // Monthly totals for the trend chart — defaults to the trailing 12 months.
+  router.get('/trend', (req, res) => {
+    const months = parseInt(req.query.months) || 12;
+    const rows = db.query(`
+      SELECT strftime('%Y-%m', date) AS month, ROUND(SUM(amount), 2) AS total
+      FROM operating_costs
+      GROUP BY month
+      ORDER BY month DESC
+      LIMIT ?
+    `, [months]);
+    res.json(rows.reverse()); // chronological order for charting
+  });
+
   router.post('/', (req, res) => {
     const { date, category, description, amount, market, receipt_ref } = req.body;
     if (!date || !category || !description || !amount) {

@@ -20,6 +20,7 @@ export default function Shipments() {
   const [shipments, setShipments] = useState([]);
   const [brands, setBrands] = useState([]);
   const [filters, setFilters] = useState({ brand_id: '', from: '', to: '' });
+  const [statusGroup, setStatusGroup] = useState('not_completed'); // 'all' | 'not_completed' | 'done'
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState(null);
   const [detail, setDetail] = useState(null); // full shipment detail incl. line_items/variance/documents
@@ -161,6 +162,18 @@ export default function Shipments() {
   const inMonth = active.filter(s => (s.arrival_date || s.created_at || '').startsWith(thisMonth));
   const costedCount = active.filter(s => s.status === 'costed').length;
 
+  // "Done" = costed or voided (nothing more to do). "Not completed" = still
+  // somewhere in ordered/shipped/received. Defaults to Not Completed so the
+  // list focuses on what still needs attention.
+  const isDone = s => s.status === 'costed' || s.status === 'voided';
+  const visible = shipments.filter(s => {
+    if (statusGroup === 'all') return true;
+    if (statusGroup === 'done') return isDone(s);
+    return !isDone(s);
+  });
+  const notCompletedCount = shipments.filter(s => !isDone(s)).length;
+  const doneCount = shipments.filter(isDone).length;
+
   return (
     <Page
       title="Shipments"
@@ -178,6 +191,21 @@ export default function Shipments() {
         <KpiCard label="Total shipments" value={active.length} />
       </div>
 
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+        {[
+          { key: 'not_completed', label: `Not completed (${notCompletedCount})` },
+          { key: 'done', label: `Done (${doneCount})` },
+          { key: 'all', label: 'All' },
+        ].map(t => (
+          <button key={t.key} onClick={() => setStatusGroup(t.key)} style={{
+            padding: '6px 14px', borderRadius: 7, fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+            border: `1px solid ${statusGroup === t.key ? 'var(--orange)' : 'var(--border)'}`,
+            background: statusGroup === t.key ? 'rgba(243,111,74,.12)' : 'transparent',
+            color: statusGroup === t.key ? 'var(--orange)' : 'var(--cream-60)',
+          }}>{t.label}</button>
+        ))}
+      </div>
+
       <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
         <Select value={filters.brand_id} onChange={e => setFilters(f => ({ ...f, brand_id: e.target.value }))} style={{ width: 180 }}>
           <option value="">All brands</option>
@@ -189,11 +217,11 @@ export default function Shipments() {
 
       {loading ? (
         <div style={{ padding: 40, textAlign: 'center', color: 'var(--cream-30)' }}>Loading…</div>
-      ) : shipments.length === 0 ? (
+      ) : visible.length === 0 ? (
         <Card><div style={{ padding: 40, textAlign: 'center', color: 'var(--cream-30)', fontSize: 13 }}>No shipments match these filters.</div></Card>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {shipments.map(s => {
+          {visible.map(s => {
             const isOpen = expandedId === s.id;
             return (
               <Card key={s.id} style={s.status === 'voided' ? { opacity: 0.55 } : undefined}>

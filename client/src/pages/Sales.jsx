@@ -6,13 +6,22 @@ import { Ban } from 'lucide-react';
 
 const MARKETPLACE = ['Shopee','Lazada','Amazon','TikTok Shop'];
 
+function currentMonthRange() {
+  const now = new Date();
+  const from = new Date(now.getFullYear(), now.getMonth(), 1);
+  const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const fmt = d => d.toISOString().slice(0, 10);
+  return { from: fmt(from), to: fmt(to) };
+}
+
 export default function Sales() {
   const nav = useNavigate();
   const [sales,    setSales]    = useState([]);
   const [brands,   setBrands]   = useState([]);
   const [partners, setPartners] = useState([]);
   const [loading,  setLoading]  = useState(true);
-  const [filters,  setFilters]  = useState({ brand_id:'', partner_id:'', date_from:'', date_to:'', market:'' });
+  const defaultRange = currentMonthRange();
+  const [filters,  setFilters]  = useState({ brand_id:'', partner_id:'', date_from:defaultRange.from, date_to:defaultRange.to, market:'' });
   const [voidConfirm, setVoidConfirm] = useState(null); // sale id pending void
 
   useEffect(() => {
@@ -34,7 +43,10 @@ export default function Sales() {
   useEffect(() => { load(); }, [filters]);
 
   const setF = (k, v) => setFilters(f => ({ ...f, [k]: v }));
-  const hasFilter = Object.values(filters).some(v => v !== '');
+  // "Has filter" now only flags brand/partner/market — the date range always has
+  // a value (defaults to this month), so it shouldn't make Clear appear permanently.
+  const hasFilter = filters.brand_id || filters.partner_id || filters.market;
+  const isCurrentMonthOnly = filters.date_from === defaultRange.from && filters.date_to === defaultRange.to;
 
   const totals = sales.reduce((a, s) => ({
     r: a.r + (s.revenue||0), p: a.p + (s.profit||0), q: a.q + s.qty
@@ -91,8 +103,16 @@ export default function Sales() {
         </Select>
         <Input label="From" type="date" value={filters.date_from} onChange={e=>setF('date_from',e.target.value)} style={{width:150}}/>
         <Input label="To"   type="date" value={filters.date_to}   onChange={e=>setF('date_to',e.target.value)}   style={{width:150}}/>
-        {hasFilter && <Btn variant="ghost" size="sm" onClick={()=>setFilters({brand_id:'',partner_id:'',date_from:'',date_to:'',market:''})}>Clear</Btn>}
+        {!isCurrentMonthOnly && (
+          <Btn variant="ghost" size="sm" onClick={()=>setFilters(f=>({...f,date_from:defaultRange.from,date_to:defaultRange.to}))}>This month</Btn>
+        )}
+        {hasFilter && <Btn variant="ghost" size="sm" onClick={()=>setFilters({brand_id:'',partner_id:'',date_from:'',date_to:'',market:''})}>Clear all filters (all time)</Btn>}
       </div>
+      {isCurrentMonthOnly && (
+        <div style={{ fontSize: 11, color: 'var(--cream-30)' }}>
+          Showing this month only ({defaultRange.from} to {defaultRange.to}). Adjust From/To above, or clear filters, to see other periods.
+        </div>
+      )}
 
       {/* Totals bar */}
       {!loading && sales.length > 0 && (

@@ -10,6 +10,7 @@ export default function RestockChecklist() {
   const [checklists, setChecklists] = useState([]);
   const [loading, setLoading] = useState(true);
   const [openId, setOpenId] = useState(null); // which checklist is open in detail view
+  const [statusFilter, setStatusFilter] = useState('pending'); // 'all' | 'pending' | 'done'
 
   const load = () => restockApi.getAll().then(c => { setChecklists(c); setLoading(false); });
   useEffect(() => { load(); }, []);
@@ -24,19 +25,44 @@ export default function RestockChecklist() {
     return <ChecklistDetail id={openId} onBack={() => { setOpenId(null); load(); }} />;
   }
 
+  const visible = checklists.filter(c => {
+    if (statusFilter === 'all') return true;
+    if (statusFilter === 'done') return c.status === 'completed';
+    return c.status !== 'completed'; // pending = draft or in_progress
+  });
+  const pendingCount = checklists.filter(c => c.status !== 'completed').length;
+  const doneCount = checklists.filter(c => c.status === 'completed').length;
+
   return (
     <Page
       title="Restock Checklist"
       subtitle="Prep a Storhub ↔ Home transfer, check items off as you collect them, then commit in one go"
       action={<Btn onClick={newChecklist}><Plus size={14} /> New checklist</Btn>}
     >
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+        {[
+          { key: 'pending', label: `Pending (${pendingCount})` },
+          { key: 'done', label: `Done (${doneCount})` },
+          { key: 'all', label: 'All' },
+        ].map(t => (
+          <button key={t.key} onClick={() => setStatusFilter(t.key)} style={{
+            padding: '6px 14px', borderRadius: 7, fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+            border: `1px solid ${statusFilter === t.key ? 'var(--orange)' : 'var(--border)'}`,
+            background: statusFilter === t.key ? 'rgba(243,111,74,.12)' : 'transparent',
+            color: statusFilter === t.key ? 'var(--orange)' : 'var(--cream-60)',
+          }}>{t.label}</button>
+        ))}
+      </div>
+
       {loading ? (
         <div style={{ padding: 40, textAlign: 'center', color: 'var(--cream-30)' }}>Loading…</div>
-      ) : checklists.length === 0 ? (
-        <Card><div style={{ padding: 40, textAlign: 'center', color: 'var(--cream-30)', fontSize: 13 }}>No checklists yet. Click "New checklist" to start one.</div></Card>
+      ) : visible.length === 0 ? (
+        <Card><div style={{ padding: 40, textAlign: 'center', color: 'var(--cream-30)', fontSize: 13 }}>
+          {statusFilter === 'pending' ? 'No pending checklists. Click "New checklist" to start one.' : 'Nothing here.'}
+        </div></Card>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {checklists.map(c => (
+          {visible.map(c => (
             <Card key={c.id}>
               <div onClick={() => setOpenId(c.id)} style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
                 <Truck size={18} style={{ color: 'var(--cream-30)', flexShrink: 0 }} />

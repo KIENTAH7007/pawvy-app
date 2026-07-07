@@ -100,7 +100,8 @@ export default function DocumentLibrary() {
   const [docs, setDocs] = useState([]);
   const [trends, setTrends] = useState([]);
   const [brands, setBrands] = useState([]);
-  const [filters, setFilters] = useState({ document_type: '', brand_id: '' });
+  const [shipmentList, setShipmentList] = useState([]);
+  const [filters, setFilters] = useState({ document_type: '', brand_id: '', shipment_id: '' });
   const [loading, setLoading] = useState(true);
   const [trendsLoading, setTrendsLoading] = useState(true);
 
@@ -112,9 +113,10 @@ export default function DocumentLibrary() {
     setTrendsLoading(true);
     shipmentsApi.trends(filters.brand_id ? { brand_id: filters.brand_id } : {}).then(t => { setTrends(t); setTrendsLoading(false); });
   };
-  useEffect(() => { load(); }, [filters.document_type, filters.brand_id]);
+  useEffect(() => { load(); }, [filters.document_type, filters.brand_id, filters.shipment_id]);
   useEffect(() => { loadTrends(); }, [filters.brand_id]);
   useEffect(() => { brandsApi.getAll().then(setBrands); }, []);
+  useEffect(() => { shipmentsApi.getAll().then(setShipmentList); }, []);
 
   async function download(doc) {
     const full = await shipmentsApi.documentGet(doc.id);
@@ -161,6 +163,10 @@ export default function DocumentLibrary() {
         <Select value={filters.document_type} onChange={e => setFilters(f => ({ ...f, document_type: e.target.value }))} style={{ width: 200 }}>
           <option value="">All document types</option>
           {DOC_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+        </Select>
+        <Select value={filters.shipment_id} onChange={e => setFilters(f => ({ ...f, shipment_id: e.target.value }))} style={{ width: 180 }}>
+          <option value="">All shipments</option>
+          {shipmentList.map(s => <option key={s.id} value={s.id}>{s.shipment_code}</option>)}
         </Select>
       </div>
 
