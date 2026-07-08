@@ -1,4 +1,5 @@
 const { Router } = require('express');
+const archiver = require('archiver');
 
 module.exports = function(db) {
   const router = Router();
@@ -23,6 +24,49 @@ module.exports = function(db) {
 
     sql += ' ORDER BY b.name, p.item_series, p.variation';
     res.json(db.query(sql, params));
+  });
+
+  // ── Export all product images as a ZIP ────────────────────────────
+  // Reads image_data (base64) directly from the live database this is
+  // running against — this only works meaningfully on the real deployed
+  // app, since that's where actual uploaded images live. Registered as a
+  // literal route before /:id so it isn't swallowed by that pattern.
+  router.get('/export-images', (req, res) => {
+    const products = db.query(`
+      SELECT p.id, p.item_series, p.variation, p.image_data, b.name AS brand_name
+      FROM products p JOIN brands b ON b.id = p.brand_id
+      WHERE p.image_data IS NOT NULL AND p.image_data != ''
+      ORDER BY b.name, p.item_series, p.variation
+    `);
+
+    if (!products.length) {
+      return res.status(404).json({ error: 'No product images found to export.' });
+    }
+
+    res.attachment('pawvy_product_images.zip');
+    const archive = archiver('zip', { zlib: { level: 9 } });
+    archive.on('error', err => { throw err; });
+    archive.pipe(res);
+
+    const usedNames = new Set();
+    products.forEach(p => {
+      const match = /^data:image\/(\w+);base64,(.+)$/.exec(p.image_data);
+      if (!match) return; // skip malformed entries rather than fail the whole export
+      const ext = match[1] === 'jpeg' ? 'jpg' : match[1];
+      const buffer = Buffer.from(match[2], 'base64');
+
+      let base = `${p.brand_name}_${p.item_series}${p.variation ? '_' + p.variation : ''}`
+        .replace(/[^a-zA-Z0-9_\-]/g, '_')
+        .replace(/_+/g, '_');
+      let filename = `${base}.${ext}`;
+      let n = 1;
+      while (usedNames.has(filename)) { filename = `${base}_${++n}.${ext}`; } // avoid collisions from identical names
+      usedNames.add(filename);
+
+      archive.append(buffer, { name: filename });
+    });
+
+    archive.finalize();
   });
 
   // GET single product

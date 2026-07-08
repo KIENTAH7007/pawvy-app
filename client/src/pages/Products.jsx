@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Download } from 'lucide-react';
 import { productsApi, brandsApi } from '../api';
 import { Page, Select, Input, Badge, Btn, Modal, FormRow, Divider } from '../components/ui';
 
@@ -92,6 +93,9 @@ export default function Products() {
     <Page title="PRODUCTS & PRICING" subtitle={`${activeCount} active SKUs${archivedCount > 0 && showArchived ? ` + ${archivedCount} archived` : ''}`}
       action={
         <div style={{display:'flex',gap:8}}>
+          <Btn variant="ghost" size="sm" onClick={() => { window.location.href = '/api/products/export-images'; }}>
+            <Download size={13} /> Export Images
+          </Btn>
           <Btn variant="ghost" size="sm" onClick={() => { setBrandForm({ name:'', color: BRAND_COLORS[0] }); setModal('addBrand'); }}>
             + Add Brand
           </Btn>
