@@ -444,6 +444,48 @@ module.exports = function(db) {
     res.json({ checked_products: allProductIds.size, mismatches_found: mismatches.length, mismatches });
   });
 
+  // ── Apply correction (write action) ────────────────────────────────
+  // Corrects Home's stock for one SKU by the exact amount its ledger-vs-
+  // inventory diff implies. Does NOT rewrite history — applies a single
+  // clearly-labeled 'Adjustment' movement, same mechanism as the existing
+  // manual Adjust function. A positive placement_diff means Home is
+  // currently too HIGH (a deduction never happened) — subtract it. A
+  // positive return_diff means Home is currently too LOW (a credit never
+  // happened) — add it. Net correction = return_diff - placement_diff.
+  router.post('/reconciliation/fix/:product_id', (req, res) => {
+    const pid = req.params.product_id;
+    const placedLedger = db.queryOne(`SELECT COALESCE(SUM(qty),0) AS n FROM consignment_placements WHERE product_id=?`, [pid])?.n || 0;
+    const placedMoved   = db.queryOne(`SELECT COALESCE(SUM(-qty_change),0) AS n FROM inventory_movements WHERE type='Consignment Placement' AND product_id=?`, [pid])?.n || 0;
+    const returnedLedger = db.queryOne(`SELECT COALESCE(SUM(qty),0) AS n FROM consignment_returns WHERE product_id=?`, [pid])?.n || 0;
+    const returnedMoved  = db.queryOne(`SELECT COALESCE(SUM(qty_change),0) AS n FROM inventory_movements WHERE type='Consignment Return' AND product_id=?`, [pid])?.n || 0;
+
+    const placementDiff = placedLedger - placedMoved;
+    const returnDiff = returnedLedger - returnedMoved;
+    const rawCorrection = returnDiff - placementDiff;
+
+    // Idempotency: a prior correction is recorded as type 'Adjustment' with
+    // reference 'data_check_fix', which is invisible to the diff calculation
+    // above (that only looks at Consignment Placement/Return movement types).
+    // Without accounting for it, clicking "Apply Correction" twice would
+    // apply the same fix twice. Subtract whatever's already been applied so
+    // repeated calls only ever act on the true outstanding amount.
+    const priorFixApplied = db.queryOne(`SELECT COALESCE(SUM(qty_change),0) AS n FROM inventory_movements WHERE type='Adjustment' AND reference='data_check_fix' AND product_id=?`, [pid])?.n || 0;
+    const correction = rawCorrection - priorFixApplied;
+
+    if (correction === 0) return res.status(400).json({ error: 'No correction needed for this SKU — already matches.' });
+    if (!recordMovement) return res.status(500).json({ error: 'Inventory hook not available' });
+
+    const today = new Date().toISOString().slice(0, 10);
+    recordMovement({
+      date: today, product_id: pid, location: 'Home', type: 'Adjustment',
+      qty_change: correction,
+      reference: 'data_check_fix',
+      notes: `Data Check correction (placement diff ${placementDiff >= 0 ? '+' : ''}${placementDiff}, return diff ${returnDiff >= 0 ? '+' : ''}${returnDiff})`,
+    });
+
+    res.json({ ok: true, product_id: pid, correction_applied: correction });
+  });
+
 
   let recordMovement = null;
   router._setInventoryHook = (fn) => { recordMovement = fn; };

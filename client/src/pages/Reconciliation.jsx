@@ -6,12 +6,29 @@ import { Page, Btn, Badge } from '../components/ui';
 export default function Reconciliation() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState(null);
+  const [error, setError] = useState('');
 
   const load = () => {
     setLoading(true);
     consignmentApi.reconciliation().then(d => { setData(d); setLoading(false); });
   };
   useEffect(() => { load(); }, []);
+
+  async function applyFix(m) {
+    const correction = m.return_diff - m.placement_diff;
+    const msg = `Apply correction to ${m.item_series}${m.variation ? ' — ' + m.variation : ''}?\n\nThis will adjust Home stock by ${correction >= 0 ? '+' : ''}${correction} unit${Math.abs(correction) !== 1 ? 's' : ''}, bringing it in line with the consignment ledger. This writes a real Adjustment to Inventory — cannot be auto-undone.`;
+    if (!window.confirm(msg)) return;
+    setBusyId(m.product_id); setError('');
+    try {
+      await consignmentApi.applyFix(m.product_id);
+      load();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   return (
     <Page
@@ -34,6 +51,12 @@ export default function Reconciliation() {
             </div>
           </div>
 
+          {error && (
+            <div style={{ background: 'rgba(226,75,74,.1)', border: '1px solid rgba(226,75,74,.3)', color: '#E24B4A', padding: '10px 14px', borderRadius: 7, fontSize: 12, marginBottom: 12 }}>
+              {error}
+            </div>
+          )}
+
           {data.mismatches_found === 0 ? (
             <div style={{ padding: 40, textAlign: 'center', color: '#7fc93e', fontSize: 13, background: 'var(--navy)', border: '1px solid var(--border)', borderRadius: 8 }}>
               No mismatches — every consignment placement and return has a matching inventory movement record.
@@ -42,8 +65,8 @@ export default function Reconciliation() {
             <div style={{ background: 'var(--navy)', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead><tr style={{ background: 'rgba(245,242,235,.05)' }}>
-                  {['Brand','Product','Placed: Ledger','Placed: Inventory','Placed Diff','Returned: Ledger','Returned: Inventory','Return Diff'].map(h => (
-                    <th key={h} style={{ padding: '8px 10px', textAlign: h==='Brand'||h==='Product' ? 'left' : 'right', fontSize: 9.5, fontWeight: 700, letterSpacing: .5, textTransform: 'uppercase', color: 'var(--cream-30)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
+                  {['Brand','Product','Placed: Ledger','Placed: Inventory','Placed Diff','Returned: Ledger','Returned: Inventory','Return Diff',''].map(h => (
+                    <th key={h} style={{ padding: '8px 10px', textAlign: h==='Brand'||h==='Product'||h==='' ? 'left' : 'right', fontSize: 9.5, fontWeight: 700, letterSpacing: .5, textTransform: 'uppercase', color: 'var(--cream-30)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr></thead>
                 <tbody>
@@ -62,6 +85,11 @@ export default function Reconciliation() {
                       <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: m.return_diff !== 0 ? '#f87171' : '#7fc93e' }}>
                         {m.return_diff !== 0 ? (m.return_diff > 0 ? '+' : '') + m.return_diff : '✓'}
                         {m.return_diff !== 0 && <AlertTriangle size={11} style={{ marginLeft: 4, verticalAlign: -1 }} />}
+                      </td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right' }}>
+                        <Btn size="sm" onClick={() => applyFix(m)} disabled={busyId === m.product_id}>
+                          {busyId === m.product_id ? 'Applying…' : 'Apply Correction'}
+                        </Btn>
                       </td>
                     </tr>
                   ))}
