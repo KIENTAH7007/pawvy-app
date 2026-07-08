@@ -3,7 +3,7 @@ import { Routes, Route, NavLink, useLocation, useNavigate } from 'react-router-d
 import {
   LayoutDashboard, PlusCircle, Package, Store, Tag,
   FileText, Users, Receipt, Settings, TrendingUp, ClipboardList,
-  ShoppingBag, Menu, X, Inbox, Truck, Coins, FolderOpen, Scale, ListChecks
+  ShoppingBag, Menu, X, Inbox, Truck, Coins, FolderOpen, Scale, ListChecks, ShieldCheck
 } from 'lucide-react';
 import { ordersApi } from './api';
 
@@ -17,6 +17,7 @@ import Partners       from './pages/Partners';
 import Costs          from './pages/Costs';
 import Reports        from './pages/Reports';
 import Consignment    from './pages/Consignment';
+import Reconciliation from './pages/Reconciliation';
 import RestockChecklist from './pages/RestockChecklist';
 import Invoices       from './pages/Invoices';
 import PendingOrders  from './pages/PendingOrders';
@@ -40,6 +41,7 @@ const NAV = [
     { path: '/inventory',    label: 'Inventory',       icon: Package },
     { path: '/restock',      label: 'Restock Checklist', icon: ListChecks },
     { path: '/consignment',  label: 'Consignment',     icon: Store },
+    { path: '/data-check',   label: 'Data Check',      icon: ShieldCheck },
   ]},
   { section: 'Catalogue',   items: [
     { path: '/products',     label: 'Products & Pricing', icon: Tag },
@@ -252,6 +254,7 @@ export default function App() {
             <Route path="/inventory"     element={<Inventory />} />
             <Route path="/restock"       element={<RestockChecklist />} />
             <Route path="/consignment"   element={<Consignment />} />
+            <Route path="/data-check"    element={<Reconciliation />} />
             <Route path="/products"      element={<Products />} />
             <Route path="/invoices"      element={<Invoices />} />
             <Route path="/shipments"     element={<Shipments />} />

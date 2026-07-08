@@ -327,9 +327,15 @@ module.exports = function(db) {
   router.delete('/reset/:partner_id', (req, res) => {
     const pid = req.params.partner_id;
 
-    // 1. Capture product IDs and count IDs before any deletes
+    // 1. Capture product IDs (for recomputing inventory_levels afterward) AND
+    // the exact placement/return IDs for THIS partner, BEFORE deleting them —
+    // these ids are what let us build the EXACT movement references to clean
+    // up, rather than sweeping by product_id (which would also catch other
+    // partners' legitimate movements for a SKU shared across partners).
     const productIds = db.query('SELECT DISTINCT product_id FROM consignment_placements WHERE partner_id=?', [pid]).map(r=>r.product_id);
     const countIds   = db.query('SELECT id FROM consignment_counts WHERE partner_id=?', [pid]).map(r=>r.id);
+    const placementIds = db.query('SELECT id FROM consignment_placements WHERE partner_id=?', [pid]).map(r=>r.id);
+    const returnIds     = db.query('SELECT id FROM consignment_returns WHERE partner_id=?', [pid]).map(r=>r.id);
 
     // 2. Void Consignment Sale records for this partner
     db.run(`UPDATE sales SET voided=1, updated_at=CURRENT_TIMESTAMP WHERE partner_id=? AND channel='Consignment Sale'`, [pid]);
@@ -345,15 +351,24 @@ module.exports = function(db) {
     db.run('DELETE FROM consignment_returns     WHERE partner_id=?', [pid]);
     db.run('DELETE FROM consignment_snapshots   WHERE partner_id=?', [pid]);
 
-    // 5. Reverse the inventory movements that were created for these placements/returns
-    if (productIds.length) {
+    // 5. Reverse ONLY the inventory movements THIS partner's placements/returns
+    // actually created — matched by their exact reference (e.g. 'placement_42',
+    // 'return_17', plus '_void' reversal variants), never by product_id alone.
+    // A SKU can be consigned to multiple partners at once; deleting by product
+    // would also wipe out a different partner's legitimate movement history
+    // for that same SKU, which is exactly the bug this fixes.
+    const refs = [
+      ...placementIds.flatMap(id => [`placement_${id}`, `placement_${id}_void`]),
+      ...returnIds.flatMap(id => [`return_${id}`, `return_${id}_void`]),
+    ];
+    if (refs.length) {
       db.run(
-        `DELETE FROM inventory_movements
-         WHERE type IN ('Consignment Placement','Consignment Return','Placement Reversal','Return Reversal')
-           AND product_id IN (${productIds.map(()=>'?').join(',')})`,
-        productIds
+        `DELETE FROM inventory_movements WHERE reference IN (${refs.map(()=>'?').join(',')})`,
+        refs
       );
-      // Recalculate inventory_levels for affected products
+    }
+    // Recalculate inventory_levels for affected products
+    if (productIds.length) {
       productIds.forEach(pid2 => {
         ['Home','Storhub'].forEach(loc => {
           const net = db.queryOne(`SELECT COALESCE(SUM(qty_change),0) AS n FROM inventory_movements WHERE product_id=? AND location=?`, [pid2, loc])?.n || 0;
@@ -382,7 +397,54 @@ module.exports = function(db) {
     res.status(201).json({ ok:true, items_snapshotted: items.length, date, period_label });
   });
 
-  // Inventory hook — injected after both routers exist (avoids circular require)
+  // ── Reconciliation (diagnostic, read-only) ────────────────────────
+  // Cross-checks consignment_placements/returns ledger totals against the
+  // corresponding inventory_movements totals, per product. In normal
+  // operation these should always match exactly, since every placement/
+  // return is supposed to create exactly one corresponding movement row.
+  // A mismatch here means some ledger entries never made it into
+  // inventory_movements (or vice versa) — this surfaces exactly which
+  // SKUs are affected and by how much, without changing anything.
+  router.get('/reconciliation', (req, res) => {
+    const placedByProduct = db.query(`SELECT product_id, SUM(qty) AS ledger_total FROM consignment_placements GROUP BY product_id`);
+    const returnedByProduct = db.query(`SELECT product_id, SUM(qty) AS ledger_total FROM consignment_returns GROUP BY product_id`);
+    const movedPlacementByProduct = db.query(`SELECT product_id, SUM(-qty_change) AS movement_total FROM inventory_movements WHERE type='Consignment Placement' GROUP BY product_id`);
+    const movedReturnByProduct = db.query(`SELECT product_id, SUM(qty_change) AS movement_total FROM inventory_movements WHERE type='Consignment Return' GROUP BY product_id`);
+
+    function toMap(rows, key) { const m = {}; rows.forEach(r => { m[r.product_id] = r[key]; }); return m; }
+    const placedMap = toMap(placedByProduct, 'ledger_total');
+    const returnedMap = toMap(returnedByProduct, 'ledger_total');
+    const movedPlacedMap = toMap(movedPlacementByProduct, 'movement_total');
+    const movedReturnedMap = toMap(movedReturnByProduct, 'movement_total');
+
+    function productInfo(pid) {
+      return db.queryOne(`SELECT p.item_series, p.variation, b.name AS brand_name FROM products p JOIN brands b ON b.id=p.brand_id WHERE p.id=?`, [pid]);
+    }
+
+    const mismatches = [];
+    const allProductIds = new Set([...Object.keys(placedMap), ...Object.keys(returnedMap), ...Object.keys(movedPlacedMap), ...Object.keys(movedReturnedMap)].map(Number));
+    allProductIds.forEach(pid => {
+      const placedLedger = placedMap[pid] || 0;
+      const placedMoved = movedPlacedMap[pid] || 0;
+      const returnedLedger = returnedMap[pid] || 0;
+      const returnedMoved = movedReturnedMap[pid] || 0;
+      const placementDiff = placedLedger - placedMoved;
+      const returnDiff = returnedLedger - returnedMoved;
+      if (placementDiff !== 0 || returnDiff !== 0) {
+        const info = productInfo(pid);
+        mismatches.push({
+          product_id: pid, ...info,
+          placed_ledger_total: placedLedger, placed_inventory_moved: placedMoved, placement_diff: placementDiff,
+          returned_ledger_total: returnedLedger, returned_inventory_moved: returnedMoved, return_diff: returnDiff,
+        });
+      }
+    });
+
+    mismatches.sort((a,b) => (Math.abs(b.placement_diff)+Math.abs(b.return_diff)) - (Math.abs(a.placement_diff)+Math.abs(a.return_diff)));
+    res.json({ checked_products: allProductIds.size, mismatches_found: mismatches.length, mismatches });
+  });
+
+
   let recordMovement = null;
   router._setInventoryHook = (fn) => { recordMovement = fn; };
 
