@@ -4,12 +4,11 @@ import { CheckCircle, Plus, Trash2, Eye, EyeOff } from 'lucide-react';
 import { brandsApi, productsApi, partnersApi, salesApi } from '../api';
 import { Page, Card, Input, Select, Btn, Divider, fmt } from '../components/ui';
 
-const B2C_CHANNELS = ['Shopee', 'Lazada', 'Amazon', 'TikTok Shop', 'Pawvy Direct'];
+const B2C_CHANNELS = ['Shopee', 'Lazada', 'Amazon', 'TikTok Shop'];
 const B2B_CHANNELS = ['Wholesale Order', 'Consignment Sale'];
 const PLATFORM_FEES = { Shopee: 9, Lazada: 9, 'TikTok Shop': 8, Amazon: 15 };
 const IS_MARKETPLACE = ch => ['Shopee', 'Lazada', 'Amazon', 'TikTok Shop'].includes(ch);
 const IS_B2B        = ch => B2B_CHANNELS.includes(ch);
-const IS_PAWVY_DIRECT = ch => ch === 'Pawvy Direct';
 
 function useIsMobile() {
   const [mobile, setMobile] = useState(window.innerWidth < 768);
@@ -95,7 +94,6 @@ export default function RecordSale() {
   const [deliveryCharge, setDeliveryCharge] = useState('');
   const [shippingCharged, setShippingCharged] = useState('');
   const [shippingCost,    setShippingCost]    = useState('');
-  const [processingFee,   setProcessingFee]   = useState('');
   const [lines,     setLines]     = useState([{ ...EMPTY_LINE }]);
   const [brands,    setBrands]    = useState([]);
   const [partners,  setPartners]  = useState([]);
@@ -170,7 +168,6 @@ export default function RecordSale() {
   const subtotal    = lineCalcs.reduce((s, l) => s + l.revenue,    0); // post-item-discount
   const totalProfit = lineCalcs.reduce((s, l) => s + l.lineProfit, 0);
   const mktFeeAmt   = IS_MARKETPLACE(channel) ? subtotal * (feePct / 100) : 0;
-  const processingFeeAmt = IS_PAWVY_DIRECT(channel) ? (parseFloat(processingFee) || 0) : 0;
 
   const discount    = IS_B2B(channel) && selectedPartner ? calcDiscount(selectedPartner, subtotal) : { amount: 0, label: null, type: 'none' };
   const delivery    = IS_B2B(channel) && channel === 'Wholesale Order' ? getDelivery(selectedPartner, subtotal, channel) : null;
@@ -181,7 +178,7 @@ export default function RecordSale() {
   const shipCost    = parseFloat(shippingCost) || 0;
   const shipProfit  = shipCharged - shipCost;
 
-  const netProfit   = totalProfit - mktFeeAmt - processingFeeAmt - (discountAffectsProfit ? discount.amount : 0) + shipProfit;
+  const netProfit   = totalProfit - mktFeeAmt - (discountAffectsProfit ? discount.amount : 0) + shipProfit;
 
   const invoiceTotal = IS_B2B(channel)
     ? subtotal + delivAmt - (discountAffectsProfit ? discount.amount : 0) + shipCharged
@@ -222,9 +219,6 @@ export default function RecordSale() {
         shipCharged > 0
           ? `Shipping: charged $${shipCharged.toFixed(2)}, cost $${shipCost.toFixed(2)}`
           : null,
-        processingFeeAmt > 0
-          ? `Processing fee: $${processingFeeAmt.toFixed(2)}`
-          : null,
       ].filter(Boolean).join(' | ') || null;
 
       for (let i = 0; i < validLines.length; i++) {
@@ -235,7 +229,7 @@ export default function RecordSale() {
         const netPrice = lc.netPrice;  // catalog price minus per-item clearance discount
         const cost     = parseFloat(l.unit_cost) || 0;
 
-        // Platform fee (marketplace), Pawvy Direct processing fee, or B2B partner discount — all stored in platform_fee_amt
+        // Platform fee (marketplace) or B2B partner discount stored in platform_fee_amt
         let feeAmt = 0;
         let feePctToSave = 0;
         if (IS_MARKETPLACE(channel)) {
@@ -243,10 +237,6 @@ export default function RecordSale() {
           feeAmt = parseFloat((qty * netPrice * feePct / 100).toFixed(2));
         } else if (IS_B2B(channel)) {
           feeAmt = getPerLineDiscountAmt(origIdx); // proportioned from post-item-discount revenue
-          feePctToSave = 0;
-        } else if (IS_PAWVY_DIRECT(channel)) {
-          // Flat per-order fee, not per-line — only the first line carries it, same pattern as shipping below.
-          feeAmt = (i === 0) ? processingFeeAmt : 0;
           feePctToSave = 0;
         }
 
@@ -420,12 +410,12 @@ export default function RecordSale() {
             </div>
           </Card>
 
-          {/* Shipping (Fix #10) — shown for B2B Wholesale orders and Pawvy Direct */}
-          {((IS_B2B(channel) && channel === 'Wholesale Order') || IS_PAWVY_DIRECT(channel)) && (
+          {/* Shipping (Fix #10) — shown for B2B Wholesale orders */}
+          {IS_B2B(channel) && channel === 'Wholesale Order' && (
             <Card title="SHIPPING (OPTIONAL)">
               <div style={{padding:'12px 16px',display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
                 <Input
-                  label={IS_PAWVY_DIRECT(channel) ? "Shipping Charged to Customer (SGD)" : "Shipping Charged to Partner (SGD)"}
+                  label="Shipping Charged to Partner (SGD)"
                   type="number" step="0.01"
                   value={shippingCharged}
                   onChange={e => setShippingCharged(e.target.value)}
@@ -444,20 +434,6 @@ export default function RecordSale() {
                   Shipping profit: SGD {shipProfit.toFixed(2)} (charged SGD {shipCharged.toFixed(2)} − cost SGD {shipCost.toFixed(2)})
                 </div>
               )}
-            </Card>
-          )}
-
-          {IS_PAWVY_DIRECT(channel) && (
-            <Card title="PROCESSING FEE (OPTIONAL)">
-              <div style={{padding:'12px 16px'}}>
-                <Input
-                  label="Processing Fee (SGD)"
-                  type="number" step="0.01"
-                  value={processingFee}
-                  onChange={e => setProcessingFee(e.target.value)}
-                  placeholder="0.00"
-                />
-              </div>
             </Card>
           )}
 
@@ -480,10 +456,6 @@ export default function RecordSale() {
 
               {IS_MARKETPLACE(channel) && mktFeeAmt > 0 && (
                 <Row label={`Marketplace fee (${feePct}%)`} value={`− ${fmt.sgd(mktFeeAmt)}`} muted />
-              )}
-
-              {IS_PAWVY_DIRECT(channel) && processingFeeAmt > 0 && (
-                <Row label="Processing fee" value={`− ${fmt.sgd(processingFeeAmt)}`} muted />
               )}
 
               {IS_B2B(channel) && discount.label && (

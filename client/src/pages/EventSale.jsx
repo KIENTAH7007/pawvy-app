@@ -17,6 +17,7 @@ const PAYMENT = {
 
 const EMPTY = { brand_id:'', product_id:'', qty:'', unit_price:'', discount_pct:'0', _unit_cost:0 };
 const sgd = v => `SGD ${parseFloat(v||0).toFixed(2)}`;
+const CHANNEL_OPTIONS = ['Event Sale', 'Direct Online Sale', 'Direct Offline Sale'];
 
 function useIsMobile() {
   const [mobile, setMobile] = useState(window.innerWidth < 768);
@@ -30,6 +31,7 @@ function useIsMobile() {
 
 export default function EventSale() {
   const [date,   setDate]  = useState(new Date().toISOString().slice(0,10));
+  const [channel, setChannel] = useState('Event Sale');
   const [lines,  setLines] = useState([{ ...EMPTY }]);
   const [notes,  setNotes] = useState('');
   const [brands, setBrands]= useState([]);
@@ -37,6 +39,9 @@ export default function EventSale() {
   const [saving, setSaving]= useState(false);
   const [saved,  setSaved] = useState(false);
   const [error,  setError] = useState('');
+  const [shippingCharged, setShippingCharged] = useState('');
+  const [shippingCost,    setShippingCost]    = useState('');
+  const [processingFee,   setProcessingFee]   = useState('');
   const isMobile = useIsMobile();
 
   useEffect(() => { brandsApi.getAll().then(setBrands); }, []);
@@ -82,7 +87,11 @@ export default function EventSale() {
 
   const subtotal  = calcs.reduce((s,c) => s + c.qty * c.price, 0);
   const totalDisc = calcs.reduce((s,c) => s + c.qty * c.discAmt, 0);
-  const payable   = subtotal - totalDisc;
+  const shipCharged = parseFloat(shippingCharged) || 0;
+  const shipCost     = parseFloat(shippingCost) || 0;
+  const shipProfit   = shipCharged - shipCost;
+  const processingFeeAmt = parseFloat(processingFee) || 0;
+  const payable   = subtotal - totalDisc + shipCharged;
 
   async function handleSave() {
     const valid = lines.filter(l => l.product_id && l.qty && l.unit_price);
@@ -92,27 +101,38 @@ export default function EventSale() {
       for (const l of valid) {
         const i = lines.indexOf(l);
         const c = calcs[i];
+        const isFirst = (i === 0);
         // Fix: save unit_price = full RRP (price before discount), and store the
         // discount as platform_fee_amt — same pattern as B2B sales. This lets the
         // Sales Ledger display "Disc" for Event Sale lines instead of hiding it.
         // Revenue/profit formulas already subtract platform_fee_amt, so the math
         // works out identically to the old netPrice approach.
+        // Processing fee is a per-order flat cost, not per-line — only the first
+        // line carries it, combined with that line's own item discount amount
+        // (both live in the same platform_fee_amt "deductions" field; the notes
+        // below document what's included so it's never ambiguous).
+        const itemDiscAmt = parseFloat((c.qty * c.discAmt).toFixed(2));
+        const lineFeeAmt = isFirst ? parseFloat((itemDiscAmt + processingFeeAmt).toFixed(2)) : itemDiscAmt;
         await salesApi.create({
           date, product_id: l.product_id, partner_id: null,
-          channel: 'Event Sale', market: 'SG',
+          channel, market: 'SG',
           qty:              parseInt(l.qty),
           unit_cost:        c.cost,
           unit_price:       c.price,                              // full RRP, not net
           platform_fee_pct: c.disc,                                // discount % for display
-          platform_fee_amt: parseFloat((c.qty * c.discAmt).toFixed(2)), // total discount $ for the line
+          platform_fee_amt: lineFeeAmt,
+          shipping_charged: isFirst ? shipCharged : 0,
+          shipping_cost:    isFirst ? shipCost    : 0,
           notes: [
             notes || null,
             c.disc > 0 ? `Event discount ${c.disc}% off RRP SGD ${c.price.toFixed(2)}` : null,
+            isFirst && shipCharged > 0 ? `Shipping: charged $${shipCharged.toFixed(2)}, cost $${shipCost.toFixed(2)}` : null,
+            isFirst && processingFeeAmt > 0 ? `Processing fee: $${processingFeeAmt.toFixed(2)}` : null,
           ].filter(Boolean).join(' | ') || null,
         });
       }
       setSaved(true);
-      setTimeout(() => { setSaved(false); setLines([{ ...EMPTY }]); setNotes(''); }, 2000);
+      setTimeout(() => { setSaved(false); setLines([{ ...EMPTY }]); setNotes(''); setShippingCharged(''); setShippingCost(''); setProcessingFee(''); }, 2000);
     } catch(e) { setError(e.message); }
     finally { setSaving(false); }
   }
@@ -122,11 +142,13 @@ export default function EventSale() {
       <div style={{display:'flex',flexDirection:'column',gap:12}}>
 
         <Card>
-          <div style={{padding:'12px 16px',display:'flex',alignItems:'center',gap:16}}>
+          <div style={{padding:'12px 16px',display:'flex',alignItems:'center',gap:16,flexWrap:isMobile?'wrap':'nowrap'}}>
             <Input label="Date" type="date" value={date} onChange={e=>setDate(e.target.value)} style={{width:170}}/>
+            <Select label="Channel" value={channel} onChange={e=>setChannel(e.target.value)} style={{width:200}}>
+              {CHANNEL_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+            </Select>
             <div style={{fontSize:11,color:'var(--cream-30)',paddingTop:20}}>
-              Channel: <strong style={{color:'var(--orange)'}}>Event Sale / Direct Sale</strong>
-              &nbsp;·&nbsp; Price: <strong style={{color:'var(--orange)'}}>RRP</strong>
+              Price: <strong style={{color:'var(--orange)'}}>RRP</strong>
             </div>
           </div>
         </Card>
@@ -212,6 +234,42 @@ export default function EventSale() {
           </div>
         </Card>
 
+        <Card title="SHIPPING (OPTIONAL)">
+          <div style={{padding:'12px 16px',display:'grid',gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',gap:12}}>
+            <Input
+              label="Shipping Charged to Customer (SGD)"
+              type="number" step="0.01"
+              value={shippingCharged}
+              onChange={e => setShippingCharged(e.target.value)}
+              placeholder="0.00"
+            />
+            <Input
+              label="Actual Shipping Cost (SGD)"
+              type="number" step="0.01"
+              value={shippingCost}
+              onChange={e => setShippingCost(e.target.value)}
+              placeholder="0.00"
+            />
+          </div>
+          {shipCharged > 0 && (
+            <div style={{padding:'0 16px 12px',fontSize:11,color:'#7fc93e'}}>
+              Shipping profit: SGD {shipProfit.toFixed(2)} (charged SGD {shipCharged.toFixed(2)} − cost SGD {shipCost.toFixed(2)})
+            </div>
+          )}
+        </Card>
+
+        <Card title="PROCESSING FEE (OPTIONAL)">
+          <div style={{padding:'12px 16px'}}>
+            <Input
+              label="Processing Fee (SGD)"
+              type="number" step="0.01"
+              value={processingFee}
+              onChange={e => setProcessingFee(e.target.value)}
+              placeholder="0.00"
+            />
+          </div>
+        </Card>
+
         <Card>
           <div style={{padding:14,display:'flex',gap:10,alignItems:'flex-end',flexWrap:isMobile?'wrap':'nowrap'}}>
             <div style={{flex:1,minWidth:isMobile?'100%':undefined}}>
@@ -236,9 +294,15 @@ export default function EventSale() {
                   <span style={{fontSize:12,color:'#7fc93e'}}>Discount</span>
                   <span style={{fontSize:12,color:'#7fc93e',fontWeight:700}}>− {sgd(totalDisc)}</span>
                 </div>
-                <div style={{height:1,background:'var(--border)'}}/>
               </>
             )}
+            {shipCharged > 0 && (
+              <div style={{display:'flex',justifyContent:'space-between'}}>
+                <span style={{fontSize:12,color:'var(--cream-60)'}}>Shipping</span>
+                <span style={{fontSize:12,color:'var(--cream)'}}>+ {sgd(shipCharged)}</span>
+              </div>
+            )}
+            {(totalDisc > 0 || shipCharged > 0) && <div style={{height:1,background:'var(--border)'}}/>}
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
               <span style={{fontSize:14,fontWeight:700,color:'var(--cream)'}}>Amount Payable</span>
               <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:30,color:'var(--orange)',letterSpacing:1,lineHeight:1}}>
