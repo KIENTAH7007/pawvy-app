@@ -39,8 +39,6 @@ export const invoicesApi = {
   markUnpaid:      (id)   => api.patch(`/invoices/${id}/unpay`, {}),
   monitoring:      ()     => api.get('/invoices/monitoring'),
   delete:          (id)   => api.delete(`/invoices/${id}`),
-  // TEMPORARY — see server/routes/invoices.js for removal notes
-  recalculateDiscount: (id) => api.post(`/invoices/${id}/recalculate-discount`, {}),
 };
 export const inventoryApi = {
   levels:        (q)    => api.get(`/inventory/levels${qs(q)}`),
