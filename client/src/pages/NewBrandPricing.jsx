@@ -22,6 +22,61 @@ function statusFor(pawvyMargin) {
 const fmtSgd = (v) => (isFinite(v) ? `S$${v.toFixed(2)}` : '—');
 const fmtPct = (v) => (isFinite(v) ? `${v.toFixed(1)}%` : '—');
 
+// Parses one pasted line into { name, cost, msrp } — handles three real-world
+// formats without asking the person to pick one:
+//   1. Simple:        "Salmon Oil 250ml, 8, 24"                  (comma, 3 fields)
+//   2. Excel tab-paste: "SKU\tFreeze Dried\tPollack\t125g\t$11.24\t96\t$31.50"
+//   3. Plain-text paste (columns aligned with runs of spaces), same shape as #2
+// Strategy: split into cells using whichever delimiter the line actually has
+// (tab > multi-space > comma), then find price columns by their $ prefix —
+// first $ value is cost, last $ value is MSRP. Everything else becomes the
+// name, except bare integer cells (like a case-quantity column, e.g. "96"),
+// which are dropped since they're not descriptive text.
+function splitCells(line) {
+  if (line.includes('\t')) return line.split('\t').map(c => c.trim());
+  if (/\s{2,}/.test(line)) return line.split(/\s{2,}/).map(c => c.trim());
+  return line.split(',').map(c => c.trim());
+}
+
+function parseNumeric(cell) {
+  const n = parseFloat(String(cell).replace(/[$,]/g, '').trim());
+  return isNaN(n) ? null : n;
+}
+
+function parsePriceListLine(line) {
+  const cells = splitCells(line).filter(c => c !== '');
+  if (cells.length < 2) return null;
+
+  const dollarIdx = [];
+  cells.forEach((c, i) => { if (/^\$/.test(c) && parseNumeric(c) !== null) dollarIdx.push(i); });
+
+  let costIdx, msrpIdx;
+  if (dollarIdx.length >= 2) {
+    costIdx = dollarIdx[0];
+    msrpIdx = dollarIdx[dollarIdx.length - 1];
+  } else if (cells.length === 3) {
+    // Legacy simple format: name, cost, msrp — no $ signs needed
+    costIdx = 1; msrpIdx = 2;
+  } else {
+    const numericIdx = [];
+    cells.forEach((c, i) => { if (parseNumeric(c) !== null) numericIdx.push(i); });
+    if (numericIdx.length < 2) return null;
+    costIdx = numericIdx[0];
+    msrpIdx = numericIdx[numericIdx.length - 1];
+  }
+
+  const cost = parseNumeric(cells[costIdx]);
+  const msrp = parseNumeric(cells[msrpIdx]);
+  if (cost === null || msrp === null) return null;
+
+  const name = cells
+    .filter((c, i) => i !== costIdx && i !== msrpIdx && !/^\d+$/.test(c)) // drop bare-integer qty columns
+    .join(' ')
+    .trim();
+
+  return { name: name || `SKU ${cost}/${msrp}`, cost, msrp };
+}
+
 const cellInput = {
   background: 'var(--navy-light)', border: '1px solid var(--border)', borderRadius: 6,
   padding: '6px 8px', color: 'var(--cream)', fontSize: 12,
@@ -32,7 +87,7 @@ let nextId = 1;
 // Defined at module scope, not nested inside NewBrandPricing — nested row
 // components remount on every parent render and wipe input focus on each
 // keystroke (bit the team before on Restock Checklist / Cost Reference).
-function SkuRow({ sku, calc, universal, onChange, onRemove }) {
+function SkuRow({ sku, calc, universal, globalMargin, onChange, onRemove }) {
   return (
     <tr style={{ borderBottom: '1px solid rgba(245,242,235,.06)' }}>
       <td style={{ padding: '6px 4px' }}>
@@ -56,7 +111,7 @@ function SkuRow({ sku, calc, universal, onChange, onRemove }) {
       </td>
       <td style={{ padding: '6px 4px', textAlign: 'right' }}>
         {universal
-          ? <span style={{ color: 'var(--cream-30)' }}>{sku.retMargin}%</span>
+          ? <span style={{ color: 'var(--cream-30)' }}>{globalMargin}%</span>
           : <input type="number" step="1" value={sku.retMargin}
               onChange={e => onChange(sku.id, 'retMargin', parseFloat(e.target.value) || 0)}
               style={{ ...cellInput, width: 56, textAlign: 'right' }} />}
@@ -96,6 +151,7 @@ export default function NewBrandPricing() {
   const [universal, setUniversal] = useState(true);
   const [globalMargin, setGlobalMargin] = useState(40);
   const [csvText, setCsvText]     = useState('');
+  const [importWarning, setImportWarning] = useState('');
   const [skus, setSkus] = useState([
     { id: nextId++, name: 'Sample SKU', cost: 10, msrp: 30, retMargin: 40, selected: true },
   ]);
@@ -115,16 +171,20 @@ export default function NewBrandPricing() {
   function addSku() {
     setSkus(list => [...list, { id: nextId++, name: 'New SKU', cost: 10, msrp: 30, retMargin: globalMargin, selected: true }]);
   }
-  function importCsv() {
+  function importPriceList() {
     const lines = csvText.split('\n').map(l => l.trim()).filter(Boolean);
     const added = [];
+    const failed = [];
     lines.forEach(line => {
-      const parts = line.split(',').map(p => p.trim());
-      if (parts.length >= 3 && !isNaN(parseFloat(parts[1])) && !isNaN(parseFloat(parts[2]))) {
-        added.push({ id: nextId++, name: parts[0], cost: parseFloat(parts[1]), msrp: parseFloat(parts[2]), retMargin: globalMargin, selected: true });
+      const parsed = parsePriceListLine(line);
+      if (parsed) {
+        added.push({ id: nextId++, name: parsed.name, cost: parsed.cost, msrp: parsed.msrp, retMargin: globalMargin, selected: true });
+      } else {
+        failed.push(line);
       }
     });
     if (added.length) setSkus(list => [...list, ...added]);
+    setImportWarning(failed.length ? `Couldn't read ${failed.length} line(s) — check they have at least a cost and an MSRP value.` : '');
     setCsvText('');
   }
 
@@ -216,13 +276,18 @@ export default function NewBrandPricing() {
 
       <Card title="Paste Price List">
         <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <textarea value={csvText} onChange={e => setCsvText(e.target.value)} rows={3}
-            placeholder={'SKU name, cost, MSRP — one per line\ne.g. Salmon Oil 250ml, 8, 24'}
+          <div style={{ fontSize: 11, color: 'var(--cream-30)' }}>
+            Paste directly from Excel, plain text, or type manually — cost and MSRP are found automatically
+            from values with a $ sign; everything else becomes the SKU name (quantity/case-count columns are dropped).
+          </div>
+          <textarea value={csvText} onChange={e => setCsvText(e.target.value)} rows={5}
+            placeholder={'Works with any of these, pasted directly:\nSalmon Oil 250ml, 8, 24\nEFDF-Pollack125\tFreeze Dried\tPollack\t125g\t$11.24\t96\t$31.50'}
             style={{ width: '100%', background: 'var(--navy-light)', border: '1px solid var(--border)',
               borderRadius: 7, padding: '9px 12px', color: 'var(--cream)', fontSize: 12,
-              fontFamily: 'monospace', resize: 'vertical' }} />
-          <div>
-            <Btn variant="secondary" size="sm" onClick={importCsv} disabled={!csvText.trim()}>Import Rows</Btn>
+              fontFamily: 'monospace', resize: 'vertical', whiteSpace: 'pre' }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Btn variant="secondary" size="sm" onClick={importPriceList} disabled={!csvText.trim()}>Import Rows</Btn>
+            {importWarning && <span style={{ fontSize: 11, color: '#F7B731' }}>⚠ {importWarning}</span>}
           </div>
         </div>
       </Card>
@@ -251,7 +316,7 @@ export default function NewBrandPricing() {
                     No SKUs yet — paste a price list above or add one manually.
                   </td></tr>
                 : skus.map(sku => (
-                    <SkuRow key={sku.id} sku={sku} calc={calcFor(sku)} universal={universal}
+                    <SkuRow key={sku.id} sku={sku} calc={calcFor(sku)} universal={universal} globalMargin={globalMargin}
                       onChange={updateSku} onRemove={removeSku} />
                   ))}
             </tbody>
