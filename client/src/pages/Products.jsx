@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Download } from 'lucide-react';
 import { productsApi, brandsApi } from '../api';
 import { Page, Select, Input, Badge, Btn, Modal, FormRow, Divider } from '../components/ui';
@@ -28,6 +29,8 @@ const BRAND_COLORS = [
 ];
 
 export default function Products() {
+  const location = useLocation();
+  const navigate  = useNavigate();
   const [products, setProducts] = useState([]);
   const [brands,   setBrands]   = useState([]);
   const [filterBrand, setFB]    = useState('');
@@ -39,6 +42,45 @@ export default function Products() {
   const [brandForm, setBrandForm] = useState({ name:'', color: BRAND_COLORS[0] });
   const [saving,   setSaving]   = useState(false);
   const [saveError, setSaveError] = useState('');
+
+  // Pre-filled SKUs handed off from New Brand Pricing — nothing here writes to the
+  // database until each one is individually reviewed and saved through the normal
+  // Add Product flow below. importTotal tracks the original batch size for the
+  // "X of Y" progress banner; importQueue holds what's left after the current one.
+  const [importQueue, setImportQueue] = useState([]);
+  const [importTotal, setImportTotal] = useState(0);
+
+  useEffect(() => {
+    const incoming = location.state?.pendingImport;
+    if (incoming && incoming.length) {
+      setImportTotal(incoming.length);
+      setImportQueue(incoming.slice(1));
+      setForm({ is_active: 1, ...incoming[0] });
+      setModal('add');
+      navigate(location.pathname, { replace: true, state: null }); // clear so back/refresh doesn't re-trigger
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function advanceImport() {
+    if (importQueue.length > 0) {
+      const [next, ...rest] = importQueue;
+      setForm({ is_active: 1, ...next });
+      setImportQueue(rest);
+      setSaveError('');
+    } else {
+      setModal(null);
+      setImportTotal(0);
+      setSaveError('');
+    }
+  }
+
+  function cancelImport() {
+    setImportQueue([]);
+    setImportTotal(0);
+    setModal(null);
+    setSaveError('');
+  }
 
   const load = () => {
     const q = {};
@@ -61,7 +103,9 @@ export default function Products() {
     try {
       if (modal === 'edit') await productsApi.update(form.id, form);
       else                  await productsApi.create(form);
-      load(); setModal(null); setSaveError('');
+      load();
+      if (importTotal > 0) advanceImport();
+      else { setModal(null); setSaveError(''); }
     } catch(e) {
       setSaveError(`Save failed: ${e.message || 'unknown error'}`);
     } finally { setSaving(false); }
@@ -89,10 +133,43 @@ export default function Products() {
   const activeCount   = products.filter(p => p.is_active !== 0).length;
   const archivedCount = products.filter(p => p.is_active === 0).length;
 
+  // Export whatever's currently in the table (respects brand/search/archived filters
+  // already applied) as CSV — client-side only, no backend round-trip needed since
+  // `products` already holds everything the export needs.
+  function exportProductsCsv() {
+    const headers = ['Brand','Item Series','Variation','Barcode','Unit Cost (SGD)',
+      'Wholesale SG','Consignment SG','RRP SG','Wholesale MY','RRP MY','Wholesale AU','RRP AU',
+      'Portal Order','Status','Notes'];
+    const esc = (v) => {
+      if (v === null || v === undefined) return '';
+      const s = String(v);
+      return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    };
+    const rows = products.map(p => [
+      p.brand_name, p.item_series, p.variation, p.barcode,
+      p.unit_cost, p.price_wholesale_sg, p.price_consignment_sg, p.price_rrp_sg,
+      p.price_wholesale_my, p.price_rrp_my, p.price_wholesale_au, p.price_rrp_au,
+      p.portal_sort_order, p.is_active === 0 ? 'Archived' : 'Active', p.notes,
+    ].map(esc).join(','));
+    const csv = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `pawvy-products-${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <Page title="PRODUCTS & PRICING" subtitle={`${activeCount} active SKUs${archivedCount > 0 && showArchived ? ` + ${archivedCount} archived` : ''}`}
       action={
         <div style={{display:'flex',gap:8}}>
+          <Btn variant="ghost" size="sm" onClick={exportProductsCsv}>
+            <Download size={13} /> Export CSV
+          </Btn>
           <Btn variant="ghost" size="sm" onClick={() => { window.location.href = '/api/products/export-images'; }}>
             <Download size={13} /> Export Images
           </Btn>
@@ -224,8 +301,20 @@ export default function Products() {
       </div>
 
       {/* Product Add / Edit Modal */}
-      <Modal open={modal==='add'||modal==='edit'} title={modal==='edit'?'EDIT PRODUCT':'ADD PRODUCT'} onClose={()=>{setModal(null);setSaveError('');}} width={640}>
+      <Modal open={modal==='add'||modal==='edit'} title={modal==='edit'?'EDIT PRODUCT':'ADD PRODUCT'} onClose={()=>{cancelImport();}} width={640}>
         <div style={{display:'flex',flexDirection:'column',gap:14}}>
+          {importTotal > 0 && (
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,
+              background:'rgba(243,111,74,.1)',border:'1px solid rgba(243,111,74,.3)',borderRadius:7,padding:'9px 14px'}}>
+              <span style={{fontSize:12,color:'var(--cream)'}}>
+                Importing from New Brand Pricing — SKU {importTotal - importQueue.length} of {importTotal}. Brand isn't set — pick one below.
+              </span>
+              <div style={{display:'flex',gap:6,flexShrink:0}}>
+                <Btn size="sm" variant="ghost" onClick={advanceImport}>Skip</Btn>
+                <Btn size="sm" variant="ghost" onClick={cancelImport}>Cancel import</Btn>
+              </div>
+            </div>
+          )}
           <FormRow cols={2}>
             <Select label="Brand *" value={form.brand_id||''} onChange={e=>sf('brand_id',e.target.value)}>
               <option value="">— Select brand —</option>
@@ -314,7 +403,9 @@ export default function Products() {
           )}
 
           <div style={{display:'flex',gap:10,paddingTop:4}}>
-            <Btn onClick={save} disabled={saving} size="lg" style={{flex:1,justifyContent:'center'}}>{saving?'Saving…':'Save Product'}</Btn>
+            <Btn onClick={save} disabled={saving} size="lg" style={{flex:1,justifyContent:'center'}}>
+              {saving ? 'Saving…' : (importTotal > 0 && importQueue.length > 0) ? 'Save & Next SKU' : 'Save Product'}
+            </Btn>
             {modal==='edit' && (
               form.is_active !== 0
                 ? <Btn variant="danger" onClick={async()=>{await productsApi.delete(form.id);load();setModal(null);}}>Archive</Btn>

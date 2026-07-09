@@ -3,7 +3,8 @@ import { Routes, Route, NavLink, useLocation, useNavigate } from 'react-router-d
 import {
   LayoutDashboard, PlusCircle, Package, Store, Tag,
   FileText, Users, Receipt, Settings, TrendingUp, ClipboardList,
-  ShoppingBag, Menu, X, Inbox, Truck, Coins, FolderOpen, Scale, ListChecks
+  ShoppingBag, Menu, X, Inbox, Truck, Coins, FolderOpen, Scale, ListChecks,
+  Calculator
 } from 'lucide-react';
 import { ordersApi } from './api';
 
@@ -12,6 +13,7 @@ import Sales          from './pages/Sales';
 import RecordSale     from './pages/RecordSale';
 import EventSale      from './pages/EventSale';
 import Products       from './pages/Products';
+import NewBrandPricing from './pages/NewBrandPricing';
 import Inventory      from './pages/Inventory';
 import Partners       from './pages/Partners';
 import Costs          from './pages/Costs';
@@ -43,6 +45,7 @@ const NAV = [
   ]},
   { section: 'Catalogue',   items: [
     { path: '/products',     label: 'Products & Pricing', icon: Tag },
+    { path: '/new-brand-pricing', label: 'New Brand Pricing', icon: Calculator },
   ]},
   { section: 'Procurement', items: [
     { path: '/shipments',    label: 'Shipments',       icon: Truck },
@@ -253,6 +256,7 @@ export default function App() {
             <Route path="/restock"       element={<RestockChecklist />} />
             <Route path="/consignment"   element={<Consignment />} />
             <Route path="/products"      element={<Products />} />
+            <Route path="/new-brand-pricing" element={<NewBrandPricing />} />
             <Route path="/invoices"      element={<Invoices />} />
             <Route path="/shipments"     element={<Shipments />} />
             <Route path="/variance-ledger" element={<VarianceLedger />} />
