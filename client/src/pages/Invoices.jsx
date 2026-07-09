@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { FileText, Truck, FileSpreadsheet, AlertCircle, CheckCircle, Clock, Trash2, Printer } from 'lucide-react';
+import { FileText, Truck, FileSpreadsheet, AlertCircle, CheckCircle, Clock, Trash2, Printer, RefreshCw } from 'lucide-react';
 import { invoicesApi, consignmentApi, partnersApi, partnerAddressesApi } from '../api';
 import { Page, Card, Select, Input, Btn, Badge, Modal } from '../components/ui';
 import { sgd, pawvyHeaderHtml, pawvyAddressBlockHtml, pawvyFooterHtml, pawvyPaymentInstructionsHtml, openPdfWindow } from '../utils/pawvyPdf';
@@ -690,6 +690,25 @@ export default function Invoices() {
     loadDocs();
   }
 
+  // TEMPORARY — recalculates discount/total for invoices generated before
+  // patch 70. Only touches sales.platform_fee_amt and invoices.discount/
+  // total, never inventory. Remove this handler + the button below once
+  // no longer needed (see server/routes/invoices.js for the matching route).
+  async function recalcDiscount(doc) {
+    if (!window.confirm(`Recalculate the discount for ${doc.invoice_number}? This corrects the stored discount/total to fix pre-patch-70 rounding — it does not touch inventory or quantities.`)) return;
+    try {
+      const result = await invoicesApi.recalculateDiscount(doc.id);
+      window.alert(
+        `${result.invoice_number} updated (${result.lines_updated} line${result.lines_updated===1?'':'s'}):\n` +
+        `Discount: ${sgd(result.before.discount)} → ${sgd(result.after.discount)}\n` +
+        `Total: ${sgd(result.before.total)} → ${sgd(result.after.total)}`
+      );
+      loadDocs();
+    } catch (e) {
+      window.alert(`Couldn't recalculate: ${e.message || 'unknown error'}`);
+    }
+  }
+
   const typeIcon = { Invoice: FileText, 'Delivery Order': Truck, SOA: FileSpreadsheet };
   const typeColor = { Invoice: '#f36f4a', 'Delivery Order': '#378ADD', SOA: '#7F77DD' };
 
@@ -771,6 +790,12 @@ export default function Invoices() {
                             <button onClick={()=>printDoc(doc)} title="Print" style={{background:'none',border:'none',color:'var(--cream-30)',cursor:'pointer',padding:4}}>
                               <Printer size={14}/>
                             </button>
+                            {/* TEMPORARY — remove with recalcDiscount() once pre-patch-70 invoices are cleaned up */}
+                            {doc.type === 'Invoice' && (
+                              <button onClick={()=>recalcDiscount(doc)} title="Recalculate discount (pre-patch-70 fix)" style={{background:'none',border:'none',color:'var(--cream-30)',cursor:'pointer',padding:4}}>
+                                <RefreshCw size={13}/>
+                              </button>
+                            )}
                             <button onClick={()=>voidDoc(doc.id)} title="Void" style={{background:'none',border:'none',color:'rgba(248,113,113,.5)',cursor:'pointer',padding:4}}>
                               <Trash2 size={13}/>
                             </button>

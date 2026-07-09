@@ -178,7 +178,104 @@ module.exports = function(db) {
     res.status(201).json({ ...db.queryOne('SELECT * FROM invoices WHERE id = ?', [invoiceId]), items_count: sales.length });
   });
 
-  // ── POST generate Delivery Order from selected sale rows ────────
+  // ════════════════════════════════════════════════════════════════
+  // TEMPORARY — one-off correction for invoices generated before
+  // patch 70 (fixed cash rebate rounding drift / hybrid sub-tier NaN).
+  // Recomputes each linked sale's platform_fee_amt using the same
+  // reconciliation logic as the fixed Record Sale, then updates the
+  // invoice's cached discount/total to match. Touches ONLY
+  // sales.platform_fee_amt and invoices.discount/total — never qty,
+  // product_id, or any inventory table, so it's safe to run without
+  // affecting stock counts.
+  // Requested for removal once no longer needed — safe to delete this
+  // whole route (and the matching UI button in Invoices.jsx) in a
+  // future patch.
+  // ────────────────────────────────────────────────────────────────
+  router.post('/:id/recalculate-discount', (req, res) => {
+    const invoice = db.queryOne('SELECT * FROM invoices WHERE id = ?', [req.params.id]);
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
+    if (invoice.type !== 'Invoice') return res.status(400).json({ error: 'Only applies to Invoice documents, not DO/SOA' });
+
+    const salesRows = db.query(
+      `SELECT * FROM sales WHERE invoice_id = ? AND COALESCE(voided,0) = 0`,
+      [invoice.id]
+    );
+    if (salesRows.length === 0) return res.status(400).json({ error: 'No linked sales found for this invoice' });
+
+    const partner = db.queryOne('SELECT * FROM partners WHERE id = ?', [invoice.partner_id]);
+    const subtotal = salesRows.reduce((s, r) => s + r.qty * r.unit_price, 0);
+
+    // Mirrors calcDiscount() in client/src/pages/RecordSale.jsx — same tiers.
+    function calcDiscount(p, sub) {
+      const dt = p?.discount_type || 'standard_rebate';
+      const dv = parseFloat(p?.discount_value) || 0;
+      const thresh = parseFloat(p?.discount_threshold) || 0;
+      if (dt === 'fixed_pct') return { amount: parseFloat((sub * dv / 100).toFixed(2)), pct: dv };
+      if (dt === 'threshold_pct') return sub >= thresh ? { amount: parseFloat((sub * dv / 100).toFixed(2)), pct: dv } : { amount: 0 };
+      if (dt === 'hybrid') {
+        if (sub >= thresh) return { amount: parseFloat((sub * dv / 100).toFixed(2)), pct: dv };
+        if (sub >= 400) return { amount: 12 };
+        return { amount: 0 };
+      }
+      if (dt === 'credit_note') return { amount: 0 }; // CN never stored in platform_fee_amt
+      if (dt === 'standard_rebate') {
+        if (sub >= 600) return { amount: 30 };
+        if (sub >= 400) return { amount: 12 };
+        return { amount: 0 };
+      }
+      return { amount: 0 };
+    }
+
+    const discount = calcDiscount(partner, subtotal);
+    const oldDiscountTotal = parseFloat(salesRows.reduce((s, r) => s + (r.platform_fee_amt || 0), 0).toFixed(2));
+
+    // Same reconciliation as the fixed computePerLineDiscountAmts() in Record Sale.
+    const isPercentage = discount.pct !== undefined && discount.pct !== null;
+    const perLine = {};
+    if (discount.amount === 0 || subtotal === 0) {
+      salesRows.forEach(r => { perLine[r.id] = 0; });
+    } else if (isPercentage) {
+      salesRows.forEach(r => {
+        perLine[r.id] = parseFloat((r.qty * r.unit_price * (discount.pct / 100)).toFixed(2));
+      });
+    } else {
+      const eligible = salesRows.filter(r => r.qty * r.unit_price > 0);
+      let running = 0;
+      eligible.forEach((r, i) => {
+        if (i === eligible.length - 1) {
+          perLine[r.id] = parseFloat((discount.amount - running).toFixed(2));
+        } else {
+          const share = (r.qty * r.unit_price) / subtotal;
+          const amt = parseFloat((discount.amount * share).toFixed(2));
+          perLine[r.id] = amt;
+          running += amt;
+        }
+      });
+      salesRows.forEach(r => { if (!(r.id in perLine)) perLine[r.id] = 0; });
+    }
+
+    salesRows.forEach(r => {
+      db.run('UPDATE sales SET platform_fee_amt = ? WHERE id = ?', [perLine[r.id], r.id]);
+    });
+
+    const newDiscountTotal = parseFloat(Object.values(perLine).reduce((s, v) => s + v, 0).toFixed(2));
+    const shipping = invoice.shipping || 0;
+    const newTotal = parseFloat((subtotal - newDiscountTotal + shipping).toFixed(2));
+    db.run('UPDATE invoices SET discount = ?, total = ? WHERE id = ?', [newDiscountTotal, newTotal, invoice.id]);
+
+    res.json({
+      ok: true,
+      invoice_number: invoice.invoice_number,
+      lines_updated: salesRows.length,
+      before: { discount: oldDiscountTotal, total: invoice.total },
+      after:  { discount: newDiscountTotal, total: newTotal },
+    });
+  });
+  // ════════════════════════════════════════════════════════════════
+  // END TEMPORARY recalculate-discount route
+  // ════════════════════════════════════════════════════════════════
+
+
   router.post('/generate-do', (req, res) => {
     const { partner_id, sale_ids, notes, do_date, outlet_address_id } = req.body;
     if (!partner_id || !sale_ids?.length) return res.status(400).json({ error: 'partner_id and sale_ids required' });
