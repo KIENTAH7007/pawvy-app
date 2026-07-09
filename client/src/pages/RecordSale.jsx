@@ -186,19 +186,68 @@ export default function RecordSale() {
 
   // Fix #7: Build per-line discount amounts for saving
   // For B2B, we store the discount in platform_fee_amt per line.
-  function getPerLineDiscountAmt(lineIdx) {
-    if (!IS_B2B(channel) || !discountAffectsProfit || discount.amount === 0) return 0;
-    const lc = lineCalcs[lineIdx];
-    if (subtotal === 0 || lc.revenue === 0) return 0;
-
-    const { type, pct } = discount;
-    if (type === 'fixed_pct' || type === 'hybrid' || type === 'threshold_pct') {
-      // Percentage discount — apply directly per line
-      return parseFloat((lc.qty * lc.price * (pct / 100)).toFixed(2));
+  //
+  // Two bugs fixed here (both lived in the old single-line version):
+  //
+  // 1. Percentage vs fixed-cash was decided by discount.type alone, but
+  //    'hybrid' covers BOTH cases: a genuine % once the partner's own
+  //    threshold is hit, but a flat $12 rebate below that (same as
+  //    standard_rebate's $400 tier) — and that flat-$12 case has no `pct`
+  //    on the discount object. Old code still branched into the percentage
+  //    formula, dividing by an undefined pct and writing NaN into
+  //    platform_fee_amt. Fixed by deciding on whether `pct` is actually
+  //    present, not on the type string.
+  //
+  // 2. Fixed cash rebates (flat $30, $12, etc.) were distributed
+  //    proportionally by revenue share, then each line's share was rounded
+  //    to 2dp independently. Summed across many lines, those independent
+  //    roundings can drift a couple of cents from the true flat total
+  //    (e.g. $30.02 shown on an invoice that should read exactly $30.00).
+  //    Fixed by rounding every line normally except the last contributing
+  //    one, which absorbs whatever remainder is needed so the stored total
+  //    always reconciles exactly to discount.amount.
+  function computePerLineDiscountAmts(validLines) {
+    const amounts = {};
+    validLines.forEach(l => { amounts[lines.indexOf(l)] = 0; });
+    if (!IS_B2B(channel) || !discountAffectsProfit || discount.amount === 0 || subtotal === 0) {
+      return amounts;
     }
-    // Fixed cash rebate — distribute proportionally across lines
-    const share = lc.revenue / subtotal;
-    return parseFloat((discount.amount * share).toFixed(2));
+
+    const isPercentage = discount.pct !== undefined && discount.pct !== null;
+
+    if (isPercentage) {
+      // Percentage discount — independent per line, off that line's own
+      // revenue. No shared total to reconcile, so no rounding-drift risk.
+      validLines.forEach(l => {
+        const idx = lines.indexOf(l);
+        const lc = lineCalcs[idx];
+        if (lc && lc.revenue !== 0) {
+          amounts[idx] = parseFloat((lc.qty * lc.price * (discount.pct / 100)).toFixed(2));
+        }
+      });
+      return amounts;
+    }
+
+    // Fixed cash rebate (standard_rebate's $30/$12, or hybrid's flat $12
+    // sub-tier) — distribute proportionally, last contributing line absorbs
+    // the rounding remainder.
+    const idxs = validLines
+      .map(l => lines.indexOf(l))
+      .filter(idx => lineCalcs[idx] && lineCalcs[idx].revenue > 0);
+    if (idxs.length === 0) return amounts;
+
+    let running = 0;
+    idxs.forEach((idx, i) => {
+      if (i === idxs.length - 1) {
+        amounts[idx] = parseFloat((discount.amount - running).toFixed(2));
+      } else {
+        const share = lineCalcs[idx].revenue / subtotal;
+        const amt = parseFloat((discount.amount * share).toFixed(2));
+        amounts[idx] = amt;
+        running += amt;
+      }
+    });
+    return amounts;
   }
 
   async function handleSave() {
@@ -221,6 +270,8 @@ export default function RecordSale() {
           : null,
       ].filter(Boolean).join(' | ') || null;
 
+      const perLineDiscounts = computePerLineDiscountAmts(validLines);
+
       for (let i = 0; i < validLines.length; i++) {
         const l = validLines[i];
         const qty   = parseInt(l.qty);
@@ -236,7 +287,7 @@ export default function RecordSale() {
           feePctToSave = feePct;
           feeAmt = parseFloat((qty * netPrice * feePct / 100).toFixed(2));
         } else if (IS_B2B(channel)) {
-          feeAmt = getPerLineDiscountAmt(origIdx); // proportioned from post-item-discount revenue
+          feeAmt = perLineDiscounts[origIdx] ?? 0; // proportioned, reconciled to exact total
           feePctToSave = 0;
         }
 
