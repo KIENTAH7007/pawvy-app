@@ -1,0 +1,107 @@
+const nodemailer = require('nodemailer');
+
+// ── Telegram ──────────────────────────────────────────────────────
+// Needs TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_IDS (comma-separated, one
+// per recipient) set as Railway environment variables. Uses Node's
+// built-in fetch — no extra dependency needed.
+async function notifyTelegram(text) {
+  const token   = process.env.TELEGRAM_BOT_TOKEN;
+  const chatIds = (process.env.TELEGRAM_CHAT_IDS || '').split(',').map(s => s.trim()).filter(Boolean);
+
+  if (!token || chatIds.length === 0) {
+    console.log('ℹ️  Telegram notification skipped — TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_IDS not set.');
+    return;
+  }
+
+  await Promise.all(chatIds.map(async (chatId) => {
+    try {
+      const resp = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'Markdown' }),
+      });
+      if (!resp.ok) {
+        const body = await resp.text();
+        console.error(`⚠️  Telegram send failed for chat ${chatId}: ${resp.status} ${body}`);
+      }
+    } catch (err) {
+      // Never let a notification failure affect the caller (e.g. order submission)
+      console.error(`⚠️  Telegram send error for chat ${chatId}:`, err.message);
+    }
+  }));
+}
+
+// ── Email (Gmail SMTP via app password) ──────────────────────────
+// Needs GMAIL_USER, GMAIL_APP_PASSWORD, and NOTIFY_EMAIL_TO
+// (comma-separated recipients) set as Railway environment variables.
+let cachedTransport = null;
+function getTransport() {
+  if (cachedTransport) return cachedTransport;
+  const user = process.env.GMAIL_USER;
+  const pass = process.env.GMAIL_APP_PASSWORD;
+  if (!user || !pass) return null;
+  cachedTransport = nodemailer.createTransport({
+    service: 'gmail',
+    auth: { user, pass },
+  });
+  return cachedTransport;
+}
+
+async function notifyEmail(subject, text, html) {
+  const to = process.env.NOTIFY_EMAIL_TO;
+  const transport = getTransport();
+
+  if (!transport || !to) {
+    console.log('ℹ️  Email notification skipped — GMAIL_USER / GMAIL_APP_PASSWORD / NOTIFY_EMAIL_TO not set.');
+    return;
+  }
+
+  try {
+    await transport.sendMail({
+      from: `"Pawvy Order Alerts" <${process.env.GMAIL_USER}>`,
+      to,
+      subject,
+      text,
+      html,
+    });
+  } catch (err) {
+    console.error('⚠️  Email send error:', err.message);
+  }
+}
+
+// ── Combined: new Order Portal submission ─────────────────────────
+// Fire-and-forget from the caller's perspective — both channels are
+// independently try/caught above, so a Telegram or email outage never
+// blocks or slows down the actual order submission response.
+function notifyNewPortalOrder({ orderId, companyName, notes, lines }) {
+  const itemLines = lines.map(l => `• ${l.qty}x ${l.name}`).join('\n');
+  const itemCount = lines.reduce((s, l) => s + l.qty, 0);
+
+  const telegramText =
+    `🐾 *New Order Portal order!*\n` +
+    `Company: ${companyName}\n` +
+    `${lines.length} SKU${lines.length === 1 ? '' : 's'}, ${itemCount} unit${itemCount === 1 ? '' : 's'} total:\n` +
+    `${itemLines}` +
+    (notes ? `\nNotes: ${notes}` : '') +
+    `\n\nReview in Pending Orders → Pawvy App.`;
+
+  const emailSubject = `New Order Portal submission — ${companyName}`;
+  const emailText =
+    `New order received from ${companyName}.\n\n` +
+    `${itemLines}` +
+    (notes ? `\n\nNotes: ${notes}` : '') +
+    `\n\nOrder #${orderId} — review and approve it in Pending Orders.`;
+  const emailHtml =
+    `<p>New order received from <strong>${companyName}</strong>.</p>` +
+    `<ul>${lines.map(l => `<li>${l.qty}x ${l.name}</li>`).join('')}</ul>` +
+    (notes ? `<p><em>Notes: ${notes}</em></p>` : '') +
+    `<p>Order #${orderId} — review and approve it in Pending Orders.</p>`;
+
+  // Deliberately not awaited by the caller — see notifyNewPortalOrder usage in portal.js.
+  Promise.all([
+    notifyTelegram(telegramText),
+    notifyEmail(emailSubject, emailText, emailHtml),
+  ]).catch(err => console.error('⚠️  notifyNewPortalOrder error:', err.message));
+}
+
+module.exports = { notifyTelegram, notifyEmail, notifyNewPortalOrder };

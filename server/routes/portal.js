@@ -1,4 +1,5 @@
 const { Router } = require('express');
+const { notifyNewPortalOrder } = require('../utils/notify');
 
 // Live stock bucket, per the agreed Order Portal design:
 // Available (>5) / Low Stock (1–5) / Out of Stock (0, blocked from ordering)
@@ -103,6 +104,28 @@ module.exports = function(db) {
         INSERT INTO portal_order_items (portal_order_id, product_id, qty)
         VALUES (?, ?, ?)
       `, [portalOrderId, line.product_id, parseInt(line.qty)]);
+    }
+
+    // Fire notification (Telegram + email) — never blocks the response, and
+    // each channel independently swallows its own errors (see notify.js),
+    // so a notification outage can never break order submission itself.
+    try {
+      const productIds = items.map(l => l.product_id);
+      const products = db.query(`
+        SELECT id, item_series, variation FROM products
+        WHERE id IN (${productIds.map(() => '?').join(',')})
+      `, productIds);
+      const nameById = {};
+      products.forEach(p => { nameById[p.id] = `${p.item_series}${p.variation ? ' · ' + p.variation : ''}`; });
+
+      notifyNewPortalOrder({
+        orderId: portalOrderId,
+        companyName: String(company_name).trim(),
+        notes: notes || null,
+        lines: items.map(l => ({ qty: parseInt(l.qty), name: nameById[l.product_id] || `Product #${l.product_id}` })),
+      });
+    } catch (err) {
+      console.error('⚠️  Failed to build/send new-order notification:', err.message);
     }
 
     res.status(201).json({ ok: true, order_id: portalOrderId });
