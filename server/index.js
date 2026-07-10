@@ -26,11 +26,17 @@ async function startServer() {
   app.post('/api/auth/logout', auth.logout);
   app.get('/api/auth/me', auth.requireAuth, auth.me);
 
-  // PIN gate — applies to every /api/* route EXCEPT /api/auth (handled above)
-  // and /api/portal (must stay reachable with no login, since Order Portal
-  // customers never see or use a PIN).
+  // Public healthcheck for Railway (see railway.json) — must never require
+  // a PIN, otherwise Railway's automated healthcheck request gets a 401
+  // and the deploy is marked unhealthy/failed.
+  app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
+
+  // PIN gate — applies to every /api/* route EXCEPT /api/auth (handled
+  // above), /api/health (Railway's healthcheck), and /api/portal (must
+  // stay reachable with no login, since Order Portal customers never see
+  // or use a PIN).
   app.use('/api', (req, res, next) => {
-    if (req.path.startsWith('/portal')) return next();
+    if (req.path.startsWith('/portal') || req.path === '/health') return next();
     return auth.requireAuth(req, res, next);
   });
 
