@@ -205,7 +205,7 @@ function reportsRouter(db) {
       FROM portal_order_items poi
       JOIN portal_orders po ON po.id = poi.portal_order_id
       LEFT JOIN products p ON p.id = poi.product_id
-      WHERE po.status = 'approved'
+      WHERE po.status = 'approved' AND po.voided_at IS NULL
       GROUP BY poi.source
     `);
     const result = { catalogue: { qty:0, amount:0 }, upsell: { qty:0, amount:0 } };
