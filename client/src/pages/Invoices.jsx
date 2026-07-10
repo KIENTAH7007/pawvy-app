@@ -517,6 +517,7 @@ function GenerateDOModal({ open, onClose, partners, onGenerated }) {
 function GenerateSOAModal({ open, onClose, partners, onGenerated }) {
   const [partnerId, setPartnerId] = useState('');
   const [month, setMonth]         = useState(() => new Date().toISOString().slice(0,7));
+  const [manualCn, setManualCn]   = useState(''); // one-off override — see server/routes/invoices.js
   const [preview, setPreview]     = useState(null);
   const [loading, setLoading]     = useState(false);
   const [saving, setSaving]       = useState(false);
@@ -526,7 +527,7 @@ function GenerateSOAModal({ open, onClose, partners, onGenerated }) {
   const soaPartners = partners.filter(p => p.billing_cycle === 'soa');
 
   useEffect(() => {
-    if (open) { setPartnerId(''); setPreview(null); setError(''); setResult(null); setMonth(new Date().toISOString().slice(0,7)); }
+    if (open) { setPartnerId(''); setPreview(null); setError(''); setResult(null); setManualCn(''); setMonth(new Date().toISOString().slice(0,7)); }
   }, [open]);
 
   function periodRange(monthStr) {
@@ -543,16 +544,20 @@ function GenerateSOAModal({ open, onClose, partners, onGenerated }) {
     if (!partnerId || !month) { setPreview(null); return; }
     setLoading(true);
     const { start, end } = periodRange(month);
-    invoicesApi.soaPreview(partnerId, { period_start: start, period_end: end })
+    const q = { period_start: start, period_end: end };
+    if (manualCn !== '') q.manual_cn_amount = manualCn;
+    invoicesApi.soaPreview(partnerId, q)
       .then(setPreview).catch(()=>setPreview(null)).finally(()=>setLoading(false));
-  }, [partnerId, month]);
+  }, [partnerId, month, manualCn]);
 
   async function generate() {
     setSaving(true); setError('');
     try {
       const { start, end } = periodRange(month);
       const label = new Date(start).toLocaleString('default',{month:'long',year:'numeric'});
-      const res = await invoicesApi.generateSOA({ partner_id: partnerId, period_start: start, period_end: end, period_label: label });
+      const body = { partner_id: partnerId, period_start: start, period_end: end, period_label: label };
+      if (manualCn !== '') body.manual_cn_amount = manualCn;
+      const res = await invoicesApi.generateSOA(body);
       setResult(res);
     } catch(e) { setError(e.message); }
     finally { setSaving(false); }
@@ -589,6 +594,20 @@ function GenerateSOAModal({ open, onClose, partners, onGenerated }) {
           <div style={{fontSize:12,color:'#fbbf24'}}>⚠ No partners set to "Monthly SOA" billing cycle yet. Set this in the Partners tab.</div>
         )}
 
+        {preview?.partner?.discount_type === 'credit_note' && (
+          <div style={{display:'flex',flexDirection:'column',gap:5}}>
+            <Input
+              label="Manual CN override (optional)"
+              type="number" step="0.01" placeholder="Leave blank to auto-calculate from prior month's sales in Pawvy App"
+              value={manualCn} onChange={e=>setManualCn(e.target.value)}
+              style={{width:340}}
+            />
+            <div style={{fontSize:10.5,color:'var(--cream-30)'}}>
+              Use this only when the prior month's sales aren't in Pawvy App yet (e.g. a partner's first SOA after switching over). Once real sales data covers the prior month, leave this blank — it'll calculate automatically as usual.
+            </div>
+          </div>
+        )}
+
         {!partnerId ? (
           <div style={{padding:30,textAlign:'center',color:'var(--cream-30)',fontSize:12}}>Select a partner and month to preview.</div>
         ) : loading ? (
@@ -597,7 +616,9 @@ function GenerateSOAModal({ open, onClose, partners, onGenerated }) {
           <>
             {preview.cn?.amount > 0 && (
               <div style={{background:'rgba(127,201,62,.1)',border:'1px solid rgba(127,201,62,.3)',borderRadius:8,padding:'10px 14px',fontSize:12,color:'#7fc93e'}}>
-                Credit Note: {preview.cn.pct}% on prior month total (SGD {preview.cn.subtotal.toFixed(2)}) = <strong>− {sgd(preview.cn.amount)}</strong> (first line credit)
+                {preview.cn.manual
+                  ? <>Credit Note: <strong>− {sgd(preview.cn.amount)}</strong> (manual entry, first line credit)</>
+                  : <>Credit Note: {preview.cn.pct}% on prior month total (SGD {preview.cn.subtotal.toFixed(2)}) = <strong>− {sgd(preview.cn.amount)}</strong> (first line credit)</>}
               </div>
             )}
             <div style={{overflowX:'auto',border:'1px solid var(--border)',borderRadius:8}}>

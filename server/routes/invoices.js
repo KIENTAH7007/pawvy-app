@@ -214,7 +214,7 @@ module.exports = function(db) {
 
   // ── GET SOA preview (dry-run, no save) ──────────────────────────
   router.get('/soa-preview/:partner_id', (req, res) => {
-    const { period_start, period_end } = req.query;
+    const { period_start, period_end, manual_cn_amount } = req.query;
     if (!period_start || !period_end) return res.status(400).json({ error: 'period_start and period_end required' });
 
     const partner = db.queryOne('SELECT * FROM partners WHERE id = ?', [req.params.partner_id]);
@@ -228,10 +228,18 @@ module.exports = function(db) {
 
     let cn = { subtotal: 0, pct: 0, amount: 0 };
     if (partner.discount_type === 'credit_note') {
-      // CN is earned from PRIOR period's order total, credited in THIS SOA
-      const priorStart = new Date(period_start); priorStart.setMonth(priorStart.getMonth()-1);
-      const priorEnd    = new Date(period_end);   priorEnd.setMonth(priorEnd.getMonth()-1);
-      cn = calcVanillapupCN(req.params.partner_id, priorStart.toISOString().slice(0,10), priorEnd.toISOString().slice(0,10));
+      // Manual override — for a partner's first SOA in Pawvy App, prior month's
+      // sales don't exist in the system yet (e.g. Vanillapup starting July 2026,
+      // whose June CN predates the app), so the automatic prior-month calculation
+      // has nothing to compute from. Lets the exact known amount be entered
+      // instead of the app deriving it from sales it never recorded.
+      if (manual_cn_amount !== undefined && manual_cn_amount !== '') {
+        cn = { subtotal: null, pct: null, amount: parseFloat(manual_cn_amount) || 0, manual: true };
+      } else {
+        const priorStart = new Date(period_start); priorStart.setMonth(priorStart.getMonth()-1);
+        const priorEnd    = new Date(period_end);   priorEnd.setMonth(priorEnd.getMonth()-1);
+        cn = calcVanillapupCN(req.params.partner_id, priorStart.toISOString().slice(0,10), priorEnd.toISOString().slice(0,10));
+      }
     }
 
     const subtotal = invoicesInPeriod.reduce((s,i) => s + (i.total||0), 0);
@@ -242,7 +250,7 @@ module.exports = function(db) {
 
   // ── POST generate SOA ────────────────────────────────────────────
   router.post('/generate-soa', (req, res) => {
-    const { partner_id, period_start, period_end, period_label, notes } = req.body;
+    const { partner_id, period_start, period_end, period_label, notes, manual_cn_amount } = req.body;
     if (!partner_id || !period_start || !period_end) return res.status(400).json({ error: 'partner_id, period_start, period_end required' });
 
     const partner = db.queryOne('SELECT * FROM partners WHERE id = ?', [partner_id]);
@@ -256,9 +264,13 @@ module.exports = function(db) {
 
     let cn = { subtotal: 0, pct: 0, amount: 0 };
     if (partner.discount_type === 'credit_note') {
-      const priorStart = new Date(period_start); priorStart.setMonth(priorStart.getMonth()-1);
-      const priorEnd    = new Date(period_end);   priorEnd.setMonth(priorEnd.getMonth()-1);
-      cn = calcVanillapupCN(partner_id, priorStart.toISOString().slice(0,10), priorEnd.toISOString().slice(0,10));
+      if (manual_cn_amount !== undefined && manual_cn_amount !== '' && manual_cn_amount !== null) {
+        cn = { subtotal: null, pct: null, amount: parseFloat(manual_cn_amount) || 0, manual: true };
+      } else {
+        const priorStart = new Date(period_start); priorStart.setMonth(priorStart.getMonth()-1);
+        const priorEnd    = new Date(period_end);   priorEnd.setMonth(priorEnd.getMonth()-1);
+        cn = calcVanillapupCN(partner_id, priorStart.toISOString().slice(0,10), priorEnd.toISOString().slice(0,10));
+      }
     }
 
     const subtotal = parseFloat(invoicesInPeriod.reduce((s,i) => s + (i.total||0), 0).toFixed(2));
@@ -278,9 +290,12 @@ module.exports = function(db) {
 
     // CN credit line goes FIRST (per requirement: "appears as first-line credit")
     if (cn.amount > 0) {
+      const cnDescription = cn.manual
+        ? `Credit Note — manual entry (prior to Pawvy App)`
+        : `Credit Note — ${cn.pct}% on prior month orders (SGD ${cn.subtotal.toFixed(2)})`;
       db.run(
         'INSERT INTO invoice_items (invoice_id, product_id, description, qty, unit_price, line_total) VALUES (?,?,?,?,?,?)',
-        [soaId, null, `Credit Note — ${cn.pct}% on prior month orders (SGD ${cn.subtotal.toFixed(2)})`, 1, -cn.amount, -cn.amount]
+        [soaId, null, cnDescription, 1, -cn.amount, -cn.amount]
       );
     }
 
