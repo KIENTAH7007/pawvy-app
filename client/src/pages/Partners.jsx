@@ -264,7 +264,7 @@ export default function Partners() {
             </div>
             <div style={{display:'flex',gap:8}}>
               {[
-                { value:'per_invoice', label:'Per-Invoice', desc:'Pay each invoice individually, ~7 day grace period' },
+                { value:'per_invoice', label:'Per-Invoice', desc:'Pay each invoice individually' },
                 { value:'soa',         label:'Monthly SOA', desc:'Invoices consolidated into one monthly statement' },
               ].map(opt => (
                 <button key={opt.value} onClick={()=>sf('billing_cycle', opt.value)}
@@ -275,6 +275,18 @@ export default function Partners() {
                   <div style={{fontSize:10,color:'var(--cream-30)',marginTop:2,lineHeight:1.4}}>{opt.desc}</div>
                 </button>
               ))}
+            </div>
+            <div style={{marginTop:12}}>
+              <Input label="Credit term (days until overdue)" type="number" step="1"
+                value={form.credit_term_days ?? 7}
+                onChange={e=>sf('credit_term_days', parseInt(e.target.value)||7)}
+                style={{width:160}} />
+              <div style={{fontSize:10,color:'var(--cream-30)',marginTop:5,lineHeight:1.4}}>
+                {form.billing_cycle === 'soa'
+                  ? `This partner's monthly SOA is flagged overdue ${form.credit_term_days ?? 7} days after it's generated.`
+                  : `Each invoice for this partner is flagged overdue ${form.credit_term_days ?? 7} days after it's issued.`}
+                {' '}Defaults to 7 — set once here, applies to every future document automatically.
+              </div>
             </div>
           </div>
 

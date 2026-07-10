@@ -2,7 +2,10 @@ const express = require('express');
 const cors    = require('cors');
 const path    = require('path');
 const fs      = require('fs');
-const { init } = require('./database');
+const cron    = require('node-cron');
+const { init, backupNow, getDbPath } = require('./database');
+const { runDailyDigest } = require('./jobs/dailyDigest');
+const { runDailyBackup } = require('./jobs/backup');
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
@@ -17,6 +20,19 @@ async function startServer() {
   const consignmentRouter = require('./routes/consignment')(db);
   const inventoryRouter   = require('./routes/inventory')(db, consignmentRouter);
   consignmentRouter._setInventoryHook(inventoryRouter._recordMovement); // resolve circular dependency
+
+  const auth = require('./auth')(db);
+  app.post('/api/auth/login',  auth.login);
+  app.post('/api/auth/logout', auth.logout);
+  app.get('/api/auth/me', auth.requireAuth, auth.me);
+
+  // PIN gate — applies to every /api/* route EXCEPT /api/auth (handled above)
+  // and /api/portal (must stay reachable with no login, since Order Portal
+  // customers never see or use a PIN).
+  app.use('/api', (req, res, next) => {
+    if (req.path.startsWith('/portal')) return next();
+    return auth.requireAuth(req, res, next);
+  });
 
   app.use('/api/consignment', consignmentRouter);
   app.use('/api/brands',      require('./routes/brands')(db));
@@ -70,6 +86,17 @@ async function startServer() {
       console.log(`🌐  Local: http://localhost:${PORT}\n`);
     }
   });
+
+  // ── Scheduled jobs (Singapore time, DST-free so a fixed cron is safe) ──
+  cron.schedule('0 9 * * *', () => {
+    console.log('⏰ Running daily digest…');
+    runDailyDigest(db).catch(err => console.error('⚠️  Daily digest failed:', err.message));
+  }, { timezone: 'Asia/Singapore' });
+
+  cron.schedule('0 3 * * *', () => {
+    console.log('⏰ Running daily backup…');
+    runDailyBackup(backupNow, getDbPath).catch(err => console.error('⚠️  Daily backup failed:', err.message));
+  }, { timezone: 'Asia/Singapore' });
 }
 
 startServer().catch(err => { console.error('Failed to start:', err); process.exit(1); });

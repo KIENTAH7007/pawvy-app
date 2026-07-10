@@ -69,6 +69,34 @@ async function notifyEmail(subject, text, html) {
   }
 }
 
+// ── Database backup email (separate recipient from order/digest alerts) ──
+// Deliberately its own function/recipient (BACKUP_EMAIL_TO) rather than
+// reusing NOTIFY_EMAIL_TO — per request, backups go to a dedicated inbox
+// so they don't clutter the main business inbox.
+async function notifyBackupEmail(subject, text, attachmentPath, attachmentName) {
+  const to = process.env.BACKUP_EMAIL_TO;
+  const transport = getTransport();
+
+  if (!transport || !to) {
+    console.log('ℹ️  Backup email skipped — GMAIL_USER / GMAIL_APP_PASSWORD / BACKUP_EMAIL_TO not set.');
+    return false;
+  }
+
+  try {
+    await transport.sendMail({
+      from: `"Pawvy Backups" <${process.env.GMAIL_USER}>`,
+      to,
+      subject,
+      text,
+      attachments: [{ filename: attachmentName, path: attachmentPath }],
+    });
+    return true;
+  } catch (err) {
+    console.error('⚠️  Backup email send error:', err.message);
+    return false;
+  }
+}
+
 // ── Combined: new Order Portal submission ─────────────────────────
 // Fire-and-forget from the caller's perspective — both channels are
 // independently try/caught above, so a Telegram or email outage never
@@ -104,4 +132,4 @@ function notifyNewPortalOrder({ orderId, companyName, notes, lines }) {
   ]).catch(err => console.error('⚠️  notifyNewPortalOrder error:', err.message));
 }
 
-module.exports = { notifyTelegram, notifyEmail, notifyNewPortalOrder };
+module.exports = { notifyTelegram, notifyEmail, notifyBackupEmail, notifyNewPortalOrder };

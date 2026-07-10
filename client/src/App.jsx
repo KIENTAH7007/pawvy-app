@@ -4,9 +4,9 @@ import {
   LayoutDashboard, PlusCircle, Package, Store, Tag,
   FileText, Users, Receipt, Settings, TrendingUp, ClipboardList,
   ShoppingBag, Menu, X, Inbox, Truck, Coins, FolderOpen, Scale, ListChecks,
-  Calculator
+  Calculator, LogOut
 } from 'lucide-react';
-import { ordersApi } from './api';
+import { ordersApi, authApi } from './api';
 
 import Dashboard      from './pages/Dashboard';
 import Sales          from './pages/Sales';
@@ -174,6 +174,10 @@ function Sidebar({ open, onClose }) {
         <div style={{ padding:'10px 8px', borderTop:'1px solid var(--border)' }}>
           <div style={{ display:'flex', alignItems:'center', gap:9, padding:'8px', fontSize:12, fontWeight:500, color:'var(--cream-30)', borderRadius:7, cursor:'pointer' }}>
             <Settings size={15} /> Settings
+          </div>
+          <div onClick={async()=>{ try{await authApi.logout();}catch(e){} localStorage.removeItem('pawvy_auth_token'); localStorage.removeItem('pawvy_auth_expires'); window.location.reload(); }}
+            style={{ display:'flex', alignItems:'center', gap:9, padding:'8px', fontSize:12, fontWeight:500, color:'var(--cream-30)', borderRadius:7, cursor:'pointer' }}>
+            <LogOut size={15} /> Log Out
           </div>
         </div>
       </nav>

@@ -10,7 +10,7 @@ const STOCK_LABEL = {
 
 const sgd = v => `SGD ${parseFloat(v || 0).toFixed(2)}`;
 
-export default function ProductCard({ product, cartQty, onAdd, onUpdateQty, onRemove, compact }) {
+export default function ProductCard({ product, cartQty, onAdd, onUpdateQty, onRemove, compact, rank }) {
   const [pendingQty, setPendingQty] = useState(1);
   const stock = STOCK_LABEL[product.stock_status] || STOCK_LABEL.available;
   const outOfStock = product.stock_status === 'out_of_stock';
@@ -18,6 +18,7 @@ export default function ProductCard({ product, cartQty, onAdd, onUpdateQty, onRe
 
   return (
     <div style={{
+      position: 'relative',
       border: '1px solid rgba(245,242,235,.1)',
       borderRadius: 10,
       background: 'rgba(245,242,235,.03)',
@@ -25,6 +26,17 @@ export default function ProductCard({ product, cartQty, onAdd, onUpdateQty, onRe
       overflow: 'hidden',
       opacity: outOfStock ? 0.55 : 1,
     }}>
+      {rank && rank <= 3 && (
+        <div style={{
+          position: 'absolute', top: 8, left: 8, zIndex: 2,
+          background: 'var(--orange)', color: 'var(--navy)',
+          fontSize: 10.5, fontWeight: 800, letterSpacing: .3,
+          borderRadius: 20, padding: '3px 8px',
+          boxShadow: '0 2px 6px rgba(0,0,0,.25)',
+        }}>
+          #{rank} Top Seller
+        </div>
+      )}
       <div style={{
         aspectRatio: '1 / 1', background: 'rgba(245,242,235,.05)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',

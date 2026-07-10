@@ -140,6 +140,8 @@ module.exports = function(db) {
     const { partner_id, sale_ids, notes, invoice_date, outlet_address_id } = req.body;
     if (!partner_id || !sale_ids?.length) return res.status(400).json({ error: 'partner_id and sale_ids required' });
 
+    const partner = db.queryOne('SELECT * FROM partners WHERE id = ?', [partner_id]);
+
     const sales = db.query(`
       SELECT s.*, p.item_series, p.variation, b.name AS brand_name
       FROM sales s JOIN products p ON p.id = s.product_id JOIN brands b ON b.id = p.brand_id
@@ -156,7 +158,7 @@ module.exports = function(db) {
     // Defaults to today (standard practice: invoice date = when issued), but can be
     // explicitly back-dated by the user to match the underlying order date if preferred.
     const issueDate = invoice_date || new Date().toISOString().slice(0,10);
-    const due_date  = addDays(issueDate, 7);
+    const due_date  = addDays(issueDate, partner?.credit_term_days || 7);
     const invoice_number = generateDocNumber('Invoice');
 
     const result = db.run(`
@@ -277,7 +279,7 @@ module.exports = function(db) {
     const total = parseFloat((subtotal - cn.amount).toFixed(2));
 
     const issueDate = new Date().toISOString().slice(0,10);
-    const due_date  = addDays(issueDate, 7);
+    const due_date  = addDays(issueDate, partner?.credit_term_days || 7);
     const soa_number = generateDocNumber('SOA');
 
     const result = db.run(`

@@ -47,6 +47,68 @@ module.exports = function(db) {
     res.json(catalogue);
   });
 
+  // GET /api/portal/top-sellers — top 8 products by qty sold in the last 3
+  // months, for the "Our Top Sellers" upsell section on Review Your Order.
+  // Same shape as /catalogue (so the same ProductCard renders both) plus a
+  // 1-indexed `rank` field for the #1/#2/#3 badge on the frontend.
+  router.get('/top-sellers', (req, res) => {
+    const since = new Date();
+    since.setMonth(since.getMonth() - 3);
+    const sinceStr = since.toISOString().slice(0, 10);
+
+    const ranked = db.query(`
+      SELECT s.product_id, SUM(s.qty) AS total_qty
+      FROM sales s
+      WHERE s.date >= ? AND COALESCE(s.voided,0) = 0
+      GROUP BY s.product_id
+      ORDER BY total_qty DESC
+      LIMIT 8
+    `, [sinceStr]);
+
+    if (ranked.length === 0) return res.json([]);
+
+    const ids = ranked.map(r => r.product_id);
+    const rows = db.query(`
+      SELECT
+        p.id, p.item_series, p.variation, p.image_data, p.is_active,
+        p.price_wholesale_sg, p.price_rrp_sg,
+        b.id AS brand_id, b.name AS brand_name, b.color AS brand_color,
+        COALESCE(home.qty, 0)    AS home_qty,
+        COALESCE(storhub.qty, 0) AS storhub_qty
+      FROM products p
+      JOIN brands b ON b.id = p.brand_id
+      LEFT JOIN inventory_levels home    ON home.product_id = p.id    AND home.location    = 'Home'
+      LEFT JOIN inventory_levels storhub ON storhub.product_id = p.id AND storhub.location = 'Storhub'
+      WHERE p.id IN (${ids.map(() => '?').join(',')})
+    `, ids);
+
+    const byId = {};
+    rows.forEach(r => { byId[r.id] = r; });
+
+    // Preserve the qty-sold ranking order, skip anything archived/deleted
+    // since it was ranked, and attach rank as a plain 1-indexed position
+    // among what's actually shown (not the raw sales-rank), so a skipped
+    // inactive product doesn't leave a gap like #1, #3, #4.
+    const topSellers = ranked
+      .map(r => byId[r.product_id])
+      .filter(r => r && r.is_active)
+      .map((r, idx) => ({
+        id: r.id,
+        brand_id: r.brand_id,
+        brand_name: r.brand_name,
+        brand_color: r.brand_color,
+        item_series: r.item_series,
+        variation: r.variation,
+        image_data: r.image_data || null,
+        price_wholesale_sg: r.price_wholesale_sg,
+        price_rrp_sg: r.price_rrp_sg,
+        stock_status: stockStatus(r.home_qty + r.storhub_qty),
+        rank: idx + 1,
+      }));
+
+    res.json(topSellers);
+  });
+
   // POST /api/portal/orders — public order submission
   router.post('/orders', (req, res) => {
     const { company_name, notes, items } = req.body;
@@ -100,10 +162,11 @@ module.exports = function(db) {
 
     const portalOrderId = orderResult.lastID;
     for (const line of items) {
+      const src = line.source === 'upsell' ? 'upsell' : 'catalogue';
       db.run(`
-        INSERT INTO portal_order_items (portal_order_id, product_id, qty)
-        VALUES (?, ?, ?)
-      `, [portalOrderId, line.product_id, parseInt(line.qty)]);
+        INSERT INTO portal_order_items (portal_order_id, product_id, qty, source)
+        VALUES (?, ?, ?, ?)
+      `, [portalOrderId, line.product_id, parseInt(line.qty), src]);
     }
 
     // Fire notification (Telegram + email) — never blocks the response, and

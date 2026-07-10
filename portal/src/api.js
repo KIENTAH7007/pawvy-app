@@ -8,6 +8,7 @@ async function handle(res) {
 
 export const portalApi = {
   getCatalogue: () => fetch(`${BASE}/catalogue`).then(handle),
+  getTopSellers: () => fetch(`${BASE}/top-sellers`).then(handle),
   submitOrder: (payload) => fetch(`${BASE}/orders`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

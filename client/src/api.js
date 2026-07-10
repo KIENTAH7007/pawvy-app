@@ -1,11 +1,20 @@
 const BASE = '/api';
 
 async function req(method, path, body) {
+  const token = localStorage.getItem('pawvy_auth_token');
+  const headers = body ? { 'Content-Type': 'application/json' } : {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
   const res = await fetch(`${BASE}${path}`, {
     method,
-    headers: body ? { 'Content-Type': 'application/json' } : {},
-    body:    body ? JSON.stringify(body) : undefined,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
   });
+  if (res.status === 401 && !path.startsWith('/auth')) {
+    localStorage.removeItem('pawvy_auth_token');
+    localStorage.removeItem('pawvy_auth_expires');
+    window.dispatchEvent(new Event('pawvy:session-expired'));
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(err.error || res.statusText);
@@ -78,7 +87,7 @@ export const consignmentApi = {
 export const salesApi = { getAll: (q) => api.get(`/sales${qs(q)}`), summary: (q) => api.get(`/sales/summary${qs(q)}`), create: (s) => api.post('/sales',s), update: (id,s) => api.put(`/sales/${id}`,s), delete: (id) => api.delete(`/sales/${id}`), void: (id) => api.patch(`/sales/${id}/void`, {}) };
 export const ordersApi     = { list: (q) => api.get(`/orders${qs(q)}`), get: (id) => api.get(`/orders/${id}`), update: (id,d) => api.put(`/orders/${id}`,d), approve: (id,d) => api.post(`/orders/${id}/approve`,d), reject: (id) => api.post(`/orders/${id}/reject`,{}), void: (id) => api.post(`/orders/${id}/void`,{}) };
 export const costsApi     = { getAll: (q) => api.get(`/costs${qs(q)}`), summary: (q) => api.get(`/costs/summary${qs(q)}`), trend: (q) => api.get(`/costs/trend${qs(q)}`), create: (c) => api.post('/costs',c), update: (id,c) => api.put(`/costs/${id}`,c), delete: (id) => api.delete(`/costs/${id}`) };
-export const reportsApi   = { pnl: (q) => api.get(`/reports/pnl${qs(q)}`), trend: (q) => api.get(`/reports/trend${qs(q)}`), partners: (q) => api.get(`/reports/partners${qs(q)}`), allChannels: (q) => api.get(`/reports/all-channels${qs(q)}`) };
+export const reportsApi   = { pnl: (q) => api.get(`/reports/pnl${qs(q)}`), trend: (q) => api.get(`/reports/trend${qs(q)}`), partners: (q) => api.get(`/reports/partners${qs(q)}`), allChannels: (q) => api.get(`/reports/all-channels${qs(q)}`), upsell: () => api.get('/reports/upsell') };
 export const partnerReportApi = { top: (q) => api.get(`/reports/partners${qs(q)}`) };
 export const adjApi       = { getAll: (q) => api.get(`/adjustments${qs(q)}`), create: (d) => api.post('/adjustments',d) };
 export const shipmentsApi = {
@@ -119,6 +128,12 @@ export const restockApi = {
   deleteItem: (itemId) => api.delete(`/restock/items/${itemId}`),
   suggestions: () => api.get('/restock/suggestions'),
   complete: (id) => api.post(`/restock/${id}/complete`, {}),
+};
+
+export const authApi = {
+  login:  (pin) => api.post('/auth/login', { pin }),
+  logout: ()    => api.post('/auth/logout', {}),
+  me:     ()    => api.get('/auth/me'),
 };
 
 // ── Sequential document number generator (localStorage counter per day) ──

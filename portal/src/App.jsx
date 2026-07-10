@@ -18,11 +18,12 @@ function useIsMobile() {
 export default function App() {
   const isMobile = useIsMobile();
   const [catalogue, setCatalogue] = useState([]);
+  const [topSellers, setTopSellers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [search, setSearch] = useState('');
   const [activeBrand, setActiveBrand] = useState('All');
-  const [cart, setCart] = useState({}); // { [product_id]: qty }
+  const [cart, setCart] = useState({}); // { [product_id]: { qty, source: 'catalogue'|'upsell' } }
   const [view, setView] = useState('catalogue'); // catalogue | review | success
   const [companyName, setCompanyName] = useState('');
   const [notes, setNotes] = useState('');
@@ -34,6 +35,9 @@ export default function App() {
       .then(setCatalogue)
       .catch(e => setLoadError(e.message))
       .finally(() => setLoading(false));
+    // Non-critical — if this fails, the upsell section just doesn't show.
+    // Doesn't block the catalogue from loading and shouldn't surface an error.
+    portalApi.getTopSellers().then(setTopSellers).catch(() => {});
   }, []);
 
   const byId = useMemo(() => {
@@ -67,18 +71,31 @@ export default function App() {
 
   const cartLines = useMemo(() => {
     return Object.entries(cart)
-      .map(([id, qty]) => ({ product: byId[id], qty }))
+      .map(([id, entry]) => ({ product: byId[id], qty: entry.qty, source: entry.source }))
       .filter(l => l.product);
   }, [cart, byId]);
 
   const cartCount = cartLines.reduce((s, l) => s + l.qty, 0);
   const cartSubtotal = cartLines.reduce((s, l) => s + l.qty * (l.product.price_wholesale_sg || 0), 0);
 
-  function addToCart(product, qty) {
-    setCart(prev => ({ ...prev, [product.id]: (prev[product.id] || 0) + qty }));
+  // source defaults to 'catalogue'; the upsell grid passes 'upsell' explicitly.
+  // If a product's already in the cart, the ORIGINAL source is kept even if
+  // qty is increased from the other section — first add is what genuinely
+  // reflects how the partner discovered it.
+  function addToCart(product, qty, source = 'catalogue') {
+    setCart(prev => {
+      const existing = prev[product.id];
+      return {
+        ...prev,
+        [product.id]: {
+          qty: (existing?.qty || 0) + qty,
+          source: existing?.source || source,
+        },
+      };
+    });
   }
   function updateQty(productId, qty) {
-    setCart(prev => ({ ...prev, [productId]: qty }));
+    setCart(prev => ({ ...prev, [productId]: { ...prev[productId], qty } }));
   }
   function removeFromCart(productId) {
     setCart(prev => {
@@ -96,7 +113,7 @@ export default function App() {
       await portalApi.submitOrder({
         company_name: companyName.trim(),
         notes: notes.trim() || null,
-        items: cartLines.map(l => ({ product_id: l.product.id, qty: l.qty })),
+        items: cartLines.map(l => ({ product_id: l.product.id, qty: l.qty, source: l.source })),
       });
       setView('success');
     } catch (e) {
@@ -225,6 +242,35 @@ export default function App() {
                 </Field>
               </div>
 
+              {topSellers.length > 0 && (
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--cream)', marginBottom: 3 }}>
+                    🔥 Our Top Sellers
+                  </div>
+                  <div style={{ fontSize: 11, color: 'rgba(245,242,235,.4)', marginBottom: 10, lineHeight: 1.4 }}>
+                    Popular with other retailers over the last 3 months — worth adding to your order?
+                  </div>
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)',
+                    gap: 10,
+                  }}>
+                    {topSellers.slice(0, isMobile ? 6 : 8).map(p => (
+                      <ProductCard
+                        key={p.id}
+                        product={p}
+                        rank={p.rank}
+                        cartQty={cart[p.id]?.qty || 0}
+                        onAdd={(prod, qty) => addToCart(prod, qty, 'upsell')}
+                        onUpdateQty={updateQty}
+                        onRemove={removeFromCart}
+                        compact
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {submitError && (
                 <div style={{ background: 'rgba(248,113,113,.12)', border: '1px solid rgba(248,113,113,.3)', borderRadius: 7, padding: '10px 12px', fontSize: 12, color: '#f87171' }}>
                   {submitError}
@@ -300,8 +346,8 @@ export default function App() {
               <ProductCard
                 key={p.id}
                 product={p}
-                cartQty={cart[p.id] || 0}
-                onAdd={addToCart}
+                cartQty={cart[p.id]?.qty || 0}
+                onAdd={(prod, qty) => addToCart(prod, qty, 'catalogue')}
                 onUpdateQty={updateQty}
                 onRemove={removeFromCart}
                 compact={isMobile}

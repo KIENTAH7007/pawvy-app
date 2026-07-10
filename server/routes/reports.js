@@ -192,6 +192,30 @@ function reportsRouter(db) {
     res.json(combined);
   });
 
+  // GET /api/reports/upsell — Order Portal catalogue-vs-upsell comparison.
+  // Scoped to APPROVED orders only, since that's when an order becomes a
+  // real business outcome rather than just interest. $ amount uses each
+  // product's CURRENT wholesale price as a proxy (portal_order_items only
+  // stores qty, not price-at-order-time) — directionally accurate for
+  // "is upsell working", not meant as an exact historical revenue figure.
+  router.get('/upsell', (req, res) => {
+    const rows = db.query(`
+      SELECT poi.source, SUM(poi.qty) AS total_qty,
+        SUM(poi.qty * COALESCE(p.price_wholesale_sg,0)) AS total_amount
+      FROM portal_order_items poi
+      JOIN portal_orders po ON po.id = poi.portal_order_id
+      LEFT JOIN products p ON p.id = poi.product_id
+      WHERE po.status = 'approved'
+      GROUP BY poi.source
+    `);
+    const result = { catalogue: { qty:0, amount:0 }, upsell: { qty:0, amount:0 } };
+    rows.forEach(r => {
+      const key = r.source === 'upsell' ? 'upsell' : 'catalogue';
+      result[key] = { qty: r.total_qty || 0, amount: parseFloat((r.total_amount || 0).toFixed(2)) };
+    });
+    res.json(result);
+  });
+
   return router;
 }
 

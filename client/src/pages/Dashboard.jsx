@@ -145,6 +145,7 @@ export default function Dashboard() {
   const [brands,      setBrands]      = useState([]);
   const [selectedBrand, setSelected] = useState(null); // { id, name, color }
   const [loading,     setLoading]     = useState(true);
+  const [upsell,      setUpsell]      = useState(null);
   const period  = thisMonth();
   const year    = thisYear();
   const curYear = new Date().getFullYear();
@@ -159,6 +160,7 @@ export default function Dashboard() {
     ]).then(([sum, tr, pts, br, ac]) => {
       setSummary(sum); setTrend(tr); setPartners(pts); setBrands(br); setAllChannels(ac); setLoading(false);
     }).catch(() => setLoading(false));
+    reportsApi.upsell().then(setUpsell).catch(() => {});
   }, []);
 
   const trendData = trend.map(r => ({
@@ -341,6 +343,57 @@ export default function Dashboard() {
               }
             </div>
           </div>
+
+          {/* Order Portal: Catalogue vs Upsell effectiveness */}
+          {upsell && (upsell.catalogue.qty > 0 || upsell.upsell.qty > 0) && (
+            <div style={{background:'var(--navy)',border:'1px solid var(--border)',borderRadius:'var(--radius)'}}>
+              <div style={{padding:'12px 16px',borderBottom:'1px solid var(--border)'}}>
+                <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:14,letterSpacing:1,color:'var(--cream)'}}>
+                  ORDER PORTAL · CATALOGUE VS UPSELL
+                </span>
+                <span style={{fontSize:10,color:'var(--cream-30)',marginLeft:8}}>Approved orders only</span>
+              </div>
+              <div style={{padding:'16px',display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+                <div>
+                  <div style={{fontSize:10,fontWeight:700,letterSpacing:.8,textTransform:'uppercase',color:'var(--cream-30)',marginBottom:8}}>Units Ordered</div>
+                  <ResponsiveContainer width="100%" height={140}>
+                    <BarChart data={[
+                      { name:'Catalogue', qty: upsell.catalogue.qty },
+                      { name:'Upsell',    qty: upsell.upsell.qty },
+                    ]} margin={{top:0,right:8,left:0,bottom:0}}>
+                      <XAxis dataKey="name" tick={{fill:'rgba(245,242,235,.5)',fontSize:11}} axisLine={false} tickLine={false}/>
+                      <YAxis tick={{fill:'rgba(245,242,235,.4)',fontSize:10}} axisLine={false} tickLine={false}/>
+                      <Tooltip content={<Tip/>}/>
+                      <Bar dataKey="qty" name="Units" radius={[4,4,0,0]}>
+                        <Cell fill="rgba(243,111,74,.45)"/>
+                        <Cell fill="#f36f4a"/>
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+                <div>
+                  <div style={{fontSize:10,fontWeight:700,letterSpacing:.8,textTransform:'uppercase',color:'var(--cream-30)',marginBottom:8}}>Estimated Amount (SGD)</div>
+                  <ResponsiveContainer width="100%" height={140}>
+                    <BarChart data={[
+                      { name:'Catalogue', amount: upsell.catalogue.amount },
+                      { name:'Upsell',    amount: upsell.upsell.amount },
+                    ]} margin={{top:0,right:8,left:0,bottom:0}}>
+                      <XAxis dataKey="name" tick={{fill:'rgba(245,242,235,.5)',fontSize:11}} axisLine={false} tickLine={false}/>
+                      <YAxis tick={{fill:'rgba(245,242,235,.4)',fontSize:10}} axisLine={false} tickLine={false} tickFormatter={v=>`$${v>=1000?(v/1000).toFixed(0)+'k':v}`}/>
+                      <Tooltip content={<Tip/>}/>
+                      <Bar dataKey="amount" name="Amount" radius={[4,4,0,0]}>
+                        <Cell fill="rgba(127,201,62,.45)"/>
+                        <Cell fill="#7fc93e"/>
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+              <div style={{padding:'0 16px 14px',fontSize:10,color:'var(--cream-30)',lineHeight:1.4}}>
+                Amount uses each product's current wholesale price as an estimate — directional, not an exact historical figure.
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>

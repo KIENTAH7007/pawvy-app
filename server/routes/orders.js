@@ -5,7 +5,7 @@ module.exports = function(db, inventoryRouter) {
 
   function withItems(order) {
     const items = db.query(`
-      SELECT poi.id, poi.product_id, poi.qty,
+      SELECT poi.id, poi.product_id, poi.qty, poi.source,
         p.item_series, p.variation, p.price_wholesale_sg, p.price_rrp_sg,
         b.name AS brand_name, b.color AS brand_color
       FROM portal_order_items poi
@@ -66,14 +66,22 @@ module.exports = function(db, inventoryRouter) {
     ]);
 
     if (Array.isArray(items)) {
+      // Preserve each product's existing source tag across an amend (KT
+      // editing qty/adding SKUs shouldn't silently wipe out whether the
+      // partner originally added something via the upsell section).
+      const existingSource = {};
+      db.query('SELECT product_id, source FROM portal_order_items WHERE portal_order_id = ?', [req.params.id])
+        .forEach(r => { existingSource[r.product_id] = r.source; });
+
       db.run('DELETE FROM portal_order_items WHERE portal_order_id = ?', [req.params.id]);
       for (const line of items) {
         const qty = parseInt(line.qty);
         if (!line.product_id || !qty || qty <= 0) continue;
+        const src = line.source || existingSource[line.product_id] || 'catalogue';
         db.run(`
-          INSERT INTO portal_order_items (portal_order_id, product_id, qty)
-          VALUES (?, ?, ?)
-        `, [req.params.id, line.product_id, qty]);
+          INSERT INTO portal_order_items (portal_order_id, product_id, qty, source)
+          VALUES (?, ?, ?, ?)
+        `, [req.params.id, line.product_id, qty, src]);
       }
     }
 

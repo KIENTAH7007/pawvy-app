@@ -98,6 +98,11 @@ function createSchema() {
   db.run('PRAGMA foreign_keys = ON;');
 
   const tables = [
+    `CREATE TABLE IF NOT EXISTS sessions (
+      token TEXT PRIMARY KEY,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      expires_at DATETIME NOT NULL
+    )`,
     `CREATE TABLE IF NOT EXISTS brands (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,
@@ -483,7 +488,19 @@ function createSchema() {
   // sale it created; that's done manually in the Sales Ledger by design.
   try { db.run("ALTER TABLE portal_orders ADD COLUMN voided_at DATETIME"); } catch(e) {}
 
+  // Per-partner credit term (days until an invoice/SOA is considered overdue).
+  // Defaults to 7 to match existing behavior for every partner that predates
+  // this field; editable per partner in Partners tab going forward.
+  try { db.run("ALTER TABLE partners ADD COLUMN credit_term_days INTEGER DEFAULT 7"); } catch(e) {}
+  try { db.run("UPDATE partners SET credit_term_days = 7 WHERE credit_term_days IS NULL"); } catch(e) {}
+
+  // Upselling (Order Portal): tags each cart line by how it was added, so
+  // Dashboard can compare catalogue-driven vs upsell-driven orders. Existing
+  // rows default to 'catalogue' since upselling didn't exist before this.
+  try { db.run("ALTER TABLE portal_order_items ADD COLUMN source TEXT DEFAULT 'catalogue'"); } catch(e) {}
+  try { db.run("UPDATE portal_order_items SET source = 'catalogue' WHERE source IS NULL"); } catch(e) {}
+
   console.log('✅ Schema ready');
 }
 
-module.exports = { init, getDb: () => ({ query, queryOne, run }) };
+module.exports = { init, getDb: () => ({ query, queryOne, run }), backupNow: () => persistToDisk(), getDbPath: () => DB_PATH };
