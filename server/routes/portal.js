@@ -47,22 +47,27 @@ module.exports = function(db) {
     res.json(catalogue);
   });
 
-  // GET /api/portal/top-sellers — top 8 products by qty sold in the last 3
-  // months, for the "Our Top Sellers" upsell section on Review Your Order.
-  // Same shape as /catalogue (so the same ProductCard renders both) plus a
-  // 1-indexed `rank` field for the #1/#2/#3 badge on the frontend.
+  // GET /api/portal/top-sellers — top 8 IN-STOCK products by qty sold in
+  // the last 3 months, for the "Our Top Sellers" upsell section on Review
+  // Your Order. Out-of-stock SKUs are skipped entirely (no point upselling
+  // something that can't be ordered) and backfilled from further down the
+  // ranking, rather than just showing fewer than 8 cards. Same shape as
+  // /catalogue (so the same ProductCard renders both) plus a 1-indexed
+  // `rank` field for the #1/#2/#3 badge on the frontend.
   router.get('/top-sellers', (req, res) => {
     const since = new Date();
     since.setMonth(since.getMonth() - 3);
     const sinceStr = since.toISOString().slice(0, 10);
 
+    // Pull more candidates than the 8 we need, since some near the top may
+    // turn out to be out of stock and get filtered out below.
     const ranked = db.query(`
       SELECT s.product_id, SUM(s.qty) AS total_qty
       FROM sales s
       WHERE s.date >= ? AND COALESCE(s.voided,0) = 0
       GROUP BY s.product_id
       ORDER BY total_qty DESC
-      LIMIT 8
+      LIMIT 30
     `, [sinceStr]);
 
     if (ranked.length === 0) return res.json([]);
@@ -85,14 +90,13 @@ module.exports = function(db) {
     const byId = {};
     rows.forEach(r => { byId[r.id] = r; });
 
-    // Preserve the qty-sold ranking order, skip anything archived/deleted
-    // since it was ranked, and attach rank as a plain 1-indexed position
-    // among what's actually shown (not the raw sales-rank), so a skipped
-    // inactive product doesn't leave a gap like #1, #3, #4.
+    // Preserve the qty-sold ranking order, drop anything archived/deleted
+    // or currently out of stock, then take the top 8 that remain and
+    // re-number them 1-8 cleanly (never a gap like #1, #3, #4).
     const topSellers = ranked
       .map(r => byId[r.product_id])
       .filter(r => r && r.is_active)
-      .map((r, idx) => ({
+      .map(r => ({
         id: r.id,
         brand_id: r.brand_id,
         brand_name: r.brand_name,
@@ -103,8 +107,10 @@ module.exports = function(db) {
         price_wholesale_sg: r.price_wholesale_sg,
         price_rrp_sg: r.price_rrp_sg,
         stock_status: stockStatus(r.home_qty + r.storhub_qty),
-        rank: idx + 1,
-      }));
+      }))
+      .filter(p => p.stock_status !== 'out_of_stock')
+      .slice(0, 8)
+      .map((p, idx) => ({ ...p, rank: idx + 1 }));
 
     res.json(topSellers);
   });

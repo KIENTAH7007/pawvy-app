@@ -17,14 +17,14 @@ function thisYear() {
   return { from:`${y}-01-01`, to:`${y}-12-31` };
 }
 
-const Tip = ({ active, payload, label }) => {
+const Tip = ({ active, payload, label, prefix = 'SGD ' }) => {
   if (!active || !payload?.length) return null;
   return (
     <div style={{background:'#14213d',border:'1px solid rgba(245,242,235,.15)',borderRadius:8,padding:'10px 14px',fontSize:12}}>
       <div style={{color:'var(--cream-60)',marginBottom:4}}>{label}</div>
       {payload.map((p,i) => (
         <div key={i} style={{color:p.color||'#7fc93e',fontWeight:600}}>
-          {p.name}: SGD {parseFloat(p.value||0).toFixed(0)}
+          {p.name}: {prefix}{parseFloat(p.value||0).toFixed(0)}
         </div>
       ))}
     </div>
@@ -363,7 +363,7 @@ export default function Dashboard() {
                     ]} margin={{top:0,right:8,left:0,bottom:0}}>
                       <XAxis dataKey="name" tick={{fill:'rgba(245,242,235,.5)',fontSize:11}} axisLine={false} tickLine={false}/>
                       <YAxis tick={{fill:'rgba(245,242,235,.4)',fontSize:10}} axisLine={false} tickLine={false}/>
-                      <Tooltip content={<Tip/>}/>
+                      <Tooltip content={<Tip prefix=""/>}/>
                       <Bar dataKey="qty" name="Units" radius={[4,4,0,0]}>
                         <Cell fill="rgba(243,111,74,.45)"/>
                         <Cell fill="#f36f4a"/>
