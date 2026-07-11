@@ -6,6 +6,7 @@ const cron    = require('node-cron');
 const { init, backupNow, getDbPath } = require('./database');
 const { runDailyDigest } = require('./jobs/dailyDigest');
 const { runDailyBackup } = require('./jobs/backup');
+const { runAutoRestock } = require('./jobs/autoRestock');
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
@@ -102,6 +103,11 @@ async function startServer() {
   cron.schedule('0 3 * * *', () => {
     console.log('⏰ Running daily backup…');
     runDailyBackup(backupNow, getDbPath).catch(err => console.error('⚠️  Daily backup failed:', err.message));
+  }, { timezone: 'Asia/Singapore' });
+
+  cron.schedule('0 8 * * *', () => {
+    console.log('⏰ Running auto-restock check…');
+    runAutoRestock(db).catch(err => console.error('⚠️  Auto-restock failed:', err.message));
   }, { timezone: 'Asia/Singapore' });
 }
 
