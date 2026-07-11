@@ -66,7 +66,7 @@ export default function AuthGate({ children }) {
       <div style={{minHeight:'100vh',background:'var(--navy)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
         <form onSubmit={submit} style={{width:280,display:'flex',flexDirection:'column',alignItems:'center',gap:20}}>
           <div style={{textAlign:'center', display:'flex', flexDirection:'column', alignItems:'center', gap:14}}>
-            <img src={PAWVY_ICON_B64} alt="Pawvy" style={{height:88, width:'auto'}} />
+            <img src={PAWVY_ICON_B64} alt="Pawvy" style={{height:130, width:'auto'}} />
             <div>
               <div style={{fontFamily:"'Bebas Neue',sans-serif", fontSize:30, letterSpacing:1.5, color:'var(--cream)', lineHeight:1}}>PAWVY</div>
               <div style={{fontSize:9, letterSpacing:2.2, color:'var(--cream-30)', fontWeight:600, marginTop:5}}>MAKE INFORMED CHOICES</div>
