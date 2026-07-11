@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { authApi } from './api';
+import { PAWVY_ICON_B64 } from './pawvyIconB64';
 
 export default function AuthGate({ children }) {
   const [checking, setChecking] = useState(true);
@@ -64,9 +65,13 @@ export default function AuthGate({ children }) {
     return (
       <div style={{minHeight:'100vh',background:'var(--navy)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
         <form onSubmit={submit} style={{width:280,display:'flex',flexDirection:'column',alignItems:'center',gap:20}}>
-          <div style={{textAlign:'center'}}>
-            <div style={{fontFamily:"'Bebas Neue',sans-serif", fontSize:28, letterSpacing:1, color:'var(--cream)', marginBottom:4}}>PAWVY</div>
-            <div style={{fontSize:12,color:'var(--cream-30)'}}>Enter today's PIN to continue</div>
+          <div style={{textAlign:'center', display:'flex', flexDirection:'column', alignItems:'center', gap:14}}>
+            <img src={PAWVY_ICON_B64} alt="Pawvy" style={{height:88, width:'auto'}} />
+            <div>
+              <div style={{fontFamily:"'Bebas Neue',sans-serif", fontSize:30, letterSpacing:1.5, color:'var(--cream)', lineHeight:1}}>PAWVY</div>
+              <div style={{fontSize:9, letterSpacing:2.2, color:'var(--cream-30)', fontWeight:600, marginTop:5}}>MAKE INFORMED CHOICES</div>
+            </div>
+            <div style={{fontSize:12, color:'var(--cream-30)', marginTop:2}}>Enter today's PIN to continue</div>
           </div>
           <input
             ref={inputRef}
