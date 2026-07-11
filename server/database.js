@@ -500,6 +500,14 @@ function createSchema() {
   try { db.run("ALTER TABLE portal_order_items ADD COLUMN source TEXT DEFAULT 'catalogue'"); } catch(e) {}
   try { db.run("UPDATE portal_order_items SET source = 'catalogue' WHERE source IS NULL"); } catch(e) {}
 
+  // POS System: optional mailing details captured at checkout when an item
+  // needs to be mailed rather than collected in person. Denormalized onto
+  // every sales row from that checkout (simple — no separate orders table
+  // needed since POS sales go straight to Sales Ledger, no approval step).
+  try { db.run("ALTER TABLE sales ADD COLUMN mailing_name TEXT"); } catch(e) {}
+  try { db.run("ALTER TABLE sales ADD COLUMN mailing_address TEXT"); } catch(e) {}
+  try { db.run("ALTER TABLE sales ADD COLUMN mailing_phone TEXT"); } catch(e) {}
+
   console.log('✅ Schema ready');
 }
 

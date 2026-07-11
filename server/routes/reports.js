@@ -216,6 +216,51 @@ function reportsRouter(db) {
     res.json(result);
   });
 
+  // GET /api/reports/channel-performance — filter Profit/Revenue/Units/Brand
+  // breakdown by channel + date range. Built for monitoring a specific
+  // event (channel='Event Sale', the event's date range), but works for
+  // any channel — same underlying revenue/profit formulas as the rest of
+  // Reports & P&L, so the numbers are consistent with everything else.
+  router.get('/channel-performance', (req, res) => {
+    const { channel, date_from, date_to } = req.query;
+    if (!channel || !date_from || !date_to) {
+      return res.status(400).json({ error: 'channel, date_from, date_to are required' });
+    }
+
+    const totals = db.queryOne(`
+      SELECT
+        COALESCE(SUM(s.qty), 0) AS units,
+        ROUND(COALESCE(SUM(${REVENUE_SQL}), 0), 2) AS revenue,
+        ROUND(COALESCE(SUM(${PROFIT_SQL}), 0), 2) AS profit,
+        COUNT(*) AS transactions
+      FROM sales s
+      WHERE s.channel = ? AND s.date BETWEEN ? AND ? AND ${VOIDED_FILTER}
+    `, [channel, date_from, date_to]);
+
+    const byBrand = db.query(`
+      SELECT b.id AS brand_id, b.name AS brand_name, b.color AS brand_color,
+        SUM(s.qty) AS units,
+        ROUND(SUM(${REVENUE_SQL}), 2) AS revenue,
+        ROUND(SUM(${PROFIT_SQL}), 2) AS profit
+      FROM sales s
+      JOIN products p ON p.id = s.product_id
+      JOIN brands   b ON b.id = p.brand_id
+      WHERE s.channel = ? AND s.date BETWEEN ? AND ? AND ${VOIDED_FILTER}
+      GROUP BY b.id ORDER BY profit DESC
+    `, [channel, date_from, date_to]);
+
+    res.json({
+      channel, period: { from: date_from, to: date_to },
+      totals: {
+        units: totals?.units || 0,
+        revenue: totals?.revenue || 0,
+        profit: totals?.profit || 0,
+        transactions: totals?.transactions || 0,
+      },
+      byBrand,
+    });
+  });
+
   return router;
 }
 

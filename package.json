@@ -7,7 +7,7 @@
   },
   "scripts": {
     "start": "node server/index.js",
-    "build": "cd client && npm install && npm run build && cd .. && (cd portal && npm install && npm run build || echo '⚠️  Portal build failed — internal app will still deploy normally.')",
+    "build": "cd client && npm install && npm run build && cd .. && (cd portal && npm install && npm run build || echo '⚠️  Portal build failed — internal app will still deploy normally.') && (cd pos && npm install && npm run build || echo '⚠️  POS build failed — internal app will still deploy normally.')",
     "migrate": "node migrate.js"
   },
   "dependencies": {

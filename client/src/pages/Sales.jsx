@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { salesApi, brandsApi, partnersApi } from '../api';
-import { Page, Select, Input, Badge, Btn, fmt } from '../components/ui';
-import { Ban } from 'lucide-react';
+import { Page, Select, Input, Badge, Btn, Modal, fmt } from '../components/ui';
+import { Ban, Mail } from 'lucide-react';
 
 const MARKETPLACE = ['Shopee','Lazada','Amazon','TikTok Shop'];
 
@@ -23,6 +23,7 @@ export default function Sales() {
   const defaultRange = currentMonthRange();
   const [filters,  setFilters]  = useState({ brand_id:'', partner_id:'', date_from:defaultRange.from, date_to:defaultRange.to, market:'' });
   const [voidConfirm, setVoidConfirm] = useState(null); // sale id pending void
+  const [mailingInfoModal, setMailingInfoModal] = useState(null); // sale row pending mailing-info view
 
   useEffect(() => {
     brandsApi.getAll().then(setBrands);
@@ -141,6 +142,21 @@ export default function Sales() {
         </div>
       )}
 
+      {/* Mailing info modal — populated by the POS System when a sale needs
+          to be posted out rather than collected in person. */}
+      <Modal open={!!mailingInfoModal} title="MAILING DETAILS" onClose={() => setMailingInfoModal(null)} width={380}>
+        {mailingInfoModal && (
+          <div style={{display:'flex',flexDirection:'column',gap:12}}>
+            <div style={{fontSize:12,color:'var(--cream-30)'}}>
+              {mailingInfoModal.item_series}{mailingInfoModal.variation ? ` · ${mailingInfoModal.variation}` : ''} — {fmt.date(mailingInfoModal.date)}
+            </div>
+            <MailingRow label="Name" value={mailingInfoModal.mailing_name} />
+            <MailingRow label="Address" value={mailingInfoModal.mailing_address} />
+            <MailingRow label="Phone" value={mailingInfoModal.mailing_phone} />
+          </div>
+        )}
+      </Modal>
+
       {/* Table */}
       <div style={{background:'var(--navy)',border:'1px solid var(--border)',borderRadius:'var(--radius)'}}>
         {loading
@@ -172,6 +188,12 @@ export default function Sales() {
                           <td style={{padding:'8px 10px'}}><Badge color={s.brand_color}>{s.brand_name}</Badge></td>
                           <td style={{padding:'8px 10px',color:'var(--cream)',maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
                             {s.item_series}{s.variation ? ` · ${s.variation}` : ''}
+                            {(s.mailing_name || s.mailing_address || s.mailing_phone) && (
+                              <button onClick={() => setMailingInfoModal(s)} title="View mailing details"
+                                style={{background:'none',border:'none',color:'var(--orange)',cursor:'pointer',padding:0,marginLeft:6,verticalAlign:'middle'}}>
+                                <Mail size={12} />
+                              </button>
+                            )}
                           </td>
                           <td style={{padding:'8px 10px',color:'var(--cream-60)',whiteSpace:'nowrap'}}>{s.channel}</td>
                           <td style={{padding:'8px 10px',color:'var(--cream-60)',maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.partner_name||'—'}</td>
@@ -224,5 +246,14 @@ export default function Sales() {
         }
       </div>
     </Page>
+  );
+}
+
+function MailingRow({ label, value }) {
+  return (
+    <div>
+      <div style={{fontSize:10,fontWeight:700,letterSpacing:.5,textTransform:'uppercase',color:'var(--cream-30)',marginBottom:3}}>{label}</div>
+      <div style={{fontSize:13,color:value ? 'var(--cream)' : 'var(--cream-30)'}}>{value || 'Not provided'}</div>
+    </div>
   );
 }

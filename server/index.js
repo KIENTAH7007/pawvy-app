@@ -33,11 +33,11 @@ async function startServer() {
   app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 
   // PIN gate — applies to every /api/* route EXCEPT /api/auth (handled
-  // above), /api/health (Railway's healthcheck), and /api/portal (must
-  // stay reachable with no login, since Order Portal customers never see
-  // or use a PIN).
+  // above), /api/health (Railway's healthcheck), /api/portal and /api/pos
+  // (must stay reachable with no login — Order Portal and POS System
+  // customers never see or use a PIN).
   app.use('/api', (req, res, next) => {
-    if (req.path.startsWith('/portal') || req.path === '/health') return next();
+    if (req.path.startsWith('/portal') || req.path.startsWith('/pos') || req.path === '/health') return next();
     return auth.requireAuth(req, res, next);
   });
 
@@ -53,6 +53,7 @@ async function startServer() {
   app.use('/api/adjustments', adj(db));
   app.use('/api/invoices',    require('./routes/invoices')(db));
   app.use('/api/portal',      require('./routes/portal')(db));
+  app.use('/api/pos',         require('./routes/pos')(db, inventoryRouter));
   app.use('/api/orders',      require('./routes/orders')(db, inventoryRouter));
   app.use('/api/shipments',   require('./routes/shipments')(db, inventoryRouter));
   app.use('/api/restock',     require('./routes/restock')(db, inventoryRouter));
@@ -67,6 +68,17 @@ async function startServer() {
     console.log(`📁  Order Portal: ${portalBuild}`);
   } else {
     console.log('⚠️   No Order Portal build found (skipping — internal app is unaffected).');
+  }
+
+  // POS System (public-facing, separate build) — served under /pos, same
+  // pattern as the Order Portal above.
+  const posBuild = path.join(__dirname, '..', 'pos', 'dist');
+  if (fs.existsSync(path.join(posBuild, 'index.html'))) {
+    app.use('/pos', express.static(posBuild));
+    app.get('/pos/*', (req, res) => res.sendFile(path.join(posBuild, 'index.html')));
+    console.log(`📁  POS System: ${posBuild}`);
+  } else {
+    console.log('⚠️   No POS System build found (skipping — internal app is unaffected).');
   }
 
   // Serve React frontend — check multiple locations

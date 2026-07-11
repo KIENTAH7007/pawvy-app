@@ -6,6 +6,7 @@ import { salesApi, reportsApi, partnerReportApi, brandsApi, brandSkuApi } from '
 import { KpiCard, Btn, Badge, fmt } from '../components/ui';
 
 const MONTH_LABELS = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const ALL_CHANNELS = ['Event Sale', 'Direct Online Sale', 'Direct Offline Sale', 'Shopee', 'Lazada', 'Amazon', 'TikTok Shop', 'Wholesale Order', 'Consignment Sale'];
 
 function thisMonth() {
   const now = new Date();
@@ -146,6 +147,12 @@ export default function Dashboard() {
   const [selectedBrand, setSelected] = useState(null); // { id, name, color }
   const [loading,     setLoading]     = useState(true);
   const [upsell,      setUpsell]      = useState(null);
+  const [perfChannel, setPerfChannel] = useState('Event Sale');
+  const [perfFrom,    setPerfFrom]    = useState(new Date().toISOString().slice(0,10));
+  const [perfTo,      setPerfTo]      = useState(new Date().toISOString().slice(0,10));
+  const [perfResult,  setPerfResult]  = useState(null);
+  const [perfLoading, setPerfLoading] = useState(false);
+  const [perfError,   setPerfError]   = useState('');
   const period  = thisMonth();
   const year    = thisYear();
   const curYear = new Date().getFullYear();
@@ -162,6 +169,15 @@ export default function Dashboard() {
     }).catch(() => setLoading(false));
     reportsApi.upsell().then(setUpsell).catch(() => {});
   }, []);
+
+  function runPerfQuery() {
+    if (!perfFrom || !perfTo) return;
+    setPerfLoading(true); setPerfError('');
+    reportsApi.channelPerformance({ channel: perfChannel, date_from: perfFrom, date_to: perfTo })
+      .then(setPerfResult)
+      .catch(e => setPerfError(e.message))
+      .finally(() => setPerfLoading(false));
+  }
 
   const trendData = trend.map(r => ({
     month:   MONTH_LABELS[parseInt(r.month?.slice(5) || '0')],
@@ -394,8 +410,82 @@ export default function Dashboard() {
               </div>
             </div>
           )}
+
+          {/* Event / Channel Performance — filter Profit/Revenue/Units/Brand
+              breakdown by channel + date range, e.g. to monitor how a
+              specific physical event (Channel = Event Sale) performed. */}
+          <div style={{background:'var(--navy)',border:'1px solid var(--border)',borderRadius:'var(--radius)'}}>
+            <div style={{padding:'12px 16px',borderBottom:'1px solid var(--border)'}}>
+              <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:14,letterSpacing:1,color:'var(--cream)'}}>
+                EVENT / CHANNEL PERFORMANCE
+              </span>
+              <span style={{fontSize:10,color:'var(--cream-30)',marginLeft:8}}>Filter by channel + date range</span>
+            </div>
+            <div style={{padding:16,display:'flex',flexWrap:'wrap',gap:10,alignItems:'flex-end'}}>
+              <div>
+                <div style={{fontSize:10,fontWeight:700,letterSpacing:.5,textTransform:'uppercase',color:'var(--cream-30)',marginBottom:5}}>Channel</div>
+                <select value={perfChannel} onChange={e=>setPerfChannel(e.target.value)}
+                  style={{height:36,borderRadius:7,border:'1px solid var(--border)',background:'var(--navy-light)',color:'var(--cream)',fontSize:13,padding:'0 10px'}}>
+                  {ALL_CHANNELS.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <div style={{fontSize:10,fontWeight:700,letterSpacing:.5,textTransform:'uppercase',color:'var(--cream-30)',marginBottom:5}}>From</div>
+                <input type="date" value={perfFrom} onChange={e=>setPerfFrom(e.target.value)}
+                  style={{height:36,borderRadius:7,border:'1px solid var(--border)',background:'var(--navy-light)',color:'var(--cream)',fontSize:13,padding:'0 10px'}}/>
+              </div>
+              <div>
+                <div style={{fontSize:10,fontWeight:700,letterSpacing:.5,textTransform:'uppercase',color:'var(--cream-30)',marginBottom:5}}>To</div>
+                <input type="date" value={perfTo} onChange={e=>setPerfTo(e.target.value)}
+                  style={{height:36,borderRadius:7,border:'1px solid var(--border)',background:'var(--navy-light)',color:'var(--cream)',fontSize:13,padding:'0 10px'}}/>
+              </div>
+              <Btn size="sm" onClick={runPerfQuery} disabled={perfLoading}>{perfLoading ? 'Loading…' : 'Run'}</Btn>
+            </div>
+
+            {perfError && <div style={{padding:'0 16px 16px',fontSize:12,color:'#f87171'}}>{perfError}</div>}
+
+            {perfResult && (
+              <div style={{padding:'0 16px 16px'}}>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(4, 1fr)',gap:10,marginBottom:16}}>
+                  <MiniStat label="Revenue" value={`SGD ${perfResult.totals.revenue.toFixed(2)}`} />
+                  <MiniStat label="Profit" value={`SGD ${perfResult.totals.profit.toFixed(2)}`} color={perfResult.totals.profit>=0?'#7fc93e':'#f87171'} />
+                  <MiniStat label="Units Sold" value={perfResult.totals.units} />
+                  <MiniStat label="Transactions" value={perfResult.totals.transactions} />
+                </div>
+                {perfResult.byBrand.length === 0 ? (
+                  <div style={{fontSize:12,color:'var(--cream-30)',textAlign:'center',padding:'12px 0'}}>No sales in this range for this channel.</div>
+                ) : (
+                  <div>
+                    <div style={{fontSize:10,fontWeight:700,letterSpacing:.5,textTransform:'uppercase',color:'var(--cream-30)',marginBottom:8}}>By Brand</div>
+                    {perfResult.byBrand.map(b => (
+                      <div key={b.brand_id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'7px 0',borderBottom:'1px solid rgba(245,242,235,.04)'}}>
+                        <div style={{display:'flex',alignItems:'center',gap:8}}>
+                          <span style={{width:8,height:8,borderRadius:'50%',background:b.brand_color,display:'inline-block'}}/>
+                          <span style={{fontSize:12.5,color:'var(--cream)'}}>{b.brand_name}</span>
+                        </div>
+                        <div style={{display:'flex',gap:16,fontSize:12}}>
+                          <span style={{color:'var(--cream-30)'}}>{b.units}u</span>
+                          <span style={{color:'var(--cream-60)'}}>SGD {b.revenue.toFixed(2)}</span>
+                          <strong style={{color:b.profit>=0?'#7fc93e':'#f87171'}}>SGD {b.profit.toFixed(2)}</strong>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </>
       )}
+    </div>
+  );
+}
+
+function MiniStat({ label, value, color }) {
+  return (
+    <div style={{background:'rgba(245,242,235,.03)',border:'1px solid rgba(245,242,235,.08)',borderRadius:8,padding:'10px 12px'}}>
+      <div style={{fontSize:9.5,fontWeight:700,letterSpacing:.5,textTransform:'uppercase',color:'var(--cream-30)',marginBottom:4}}>{label}</div>
+      <div style={{fontSize:16,fontWeight:700,color:color||'var(--cream)'}}>{value}</div>
     </div>
   );
 }
