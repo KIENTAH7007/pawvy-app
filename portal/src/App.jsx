@@ -233,11 +233,12 @@ export default function App() {
                   />
                 </Field>
                 <Field label="Notes (optional)">
-                  <input
+                  <textarea
                     value={notes}
                     onChange={e => setNotes(e.target.value)}
                     placeholder="e.g. delivery timing, special instructions"
-                    style={fieldInputStyle}
+                    rows={3}
+                    style={textareaStyle}
                   />
                 </Field>
               </div>
@@ -411,6 +412,13 @@ const fieldInputStyle = {
   height: 38, borderRadius: 8, border: '1px solid rgba(20,33,61,.15)',
   background: 'var(--cream)', color: 'var(--navy)', fontSize: 13.5,
   padding: '0 12px', fontFamily: "'Montserrat',sans-serif",
+};
+
+const textareaStyle = {
+  minHeight: 76, borderRadius: 8, border: '1px solid rgba(20,33,61,.15)',
+  background: 'var(--cream)', color: 'var(--navy)', fontSize: 13.5,
+  padding: '10px 12px', fontFamily: "'Montserrat',sans-serif",
+  resize: 'vertical', width: '100%', boxSizing: 'border-box',
 };
 
 const submitBtnStyle = {

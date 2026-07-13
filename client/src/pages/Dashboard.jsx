@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { PlusCircle, TrendingUp, Package, ChevronRight } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LineChart, Line, CartesianGrid, Legend } from 'recharts';
 import { salesApi, reportsApi, partnerReportApi, brandsApi, brandSkuApi } from '../api';
-import { KpiCard, Btn, Badge, fmt } from '../components/ui';
+import { KpiCard, Btn, Badge, Modal, fmt } from '../components/ui';
 
 const MONTH_LABELS = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const ALL_CHANNELS = ['Event Sale', 'Direct Online Sale', 'Direct Offline Sale', 'Shopee', 'Lazada', 'Amazon', 'TikTok Shop', 'Wholesale Order', 'Consignment Sale'];
@@ -147,6 +147,7 @@ export default function Dashboard() {
   const [selectedBrand, setSelected] = useState(null); // { id, name, color }
   const [loading,     setLoading]     = useState(true);
   const [upsell,      setUpsell]      = useState(null);
+  const [upsellDetailModal, setUpsellDetailModal] = useState(null); // { source, rows, loading }
   const [perfChannel, setPerfChannel] = useState('Event Sale');
   const [perfFrom,    setPerfFrom]    = useState(new Date().toISOString().slice(0,10));
   const [perfTo,      setPerfTo]      = useState(new Date().toISOString().slice(0,10));
@@ -169,6 +170,13 @@ export default function Dashboard() {
     }).catch(() => setLoading(false));
     reportsApi.upsell().then(setUpsell).catch(() => {});
   }, []);
+
+  function openUpsellDetail(source) {
+    setUpsellDetailModal({ source, rows: null, loading: true });
+    reportsApi.upsellDetail(source)
+      .then(rows => setUpsellDetailModal({ source, rows, loading: false }))
+      .catch(e => setUpsellDetailModal({ source, rows: [], loading: false, error: e.message }));
+  }
 
   function runPerfQuery() {
     if (!perfFrom || !perfTo) return;
@@ -408,6 +416,14 @@ export default function Dashboard() {
               <div style={{padding:'0 16px 14px',fontSize:10,color:'var(--cream-30)',lineHeight:1.4}}>
                 Amount uses each product's current wholesale price as an estimate — directional, not an exact historical figure.
               </div>
+              <div style={{padding:'0 16px 16px',display:'flex',gap:16}}>
+                <button onClick={()=>openUpsellDetail('catalogue')} style={{background:'none',border:'none',color:'var(--orange)',fontSize:11.5,fontWeight:600,cursor:'pointer',padding:0,textDecoration:'underline'}}>
+                  View Catalogue Orders →
+                </button>
+                <button onClick={()=>openUpsellDetail('upsell')} style={{background:'none',border:'none',color:'#7fc93e',fontSize:11.5,fontWeight:600,cursor:'pointer',padding:0,textDecoration:'underline'}}>
+                  View Upsell Orders →
+                </button>
+              </div>
             </div>
           )}
 
@@ -477,6 +493,47 @@ export default function Dashboard() {
           </div>
         </>
       )}
+
+      {/* Upsell drill-down — who ordered what under this source tag */}
+      <Modal
+        open={!!upsellDetailModal}
+        title={upsellDetailModal ? `${upsellDetailModal.source === 'upsell' ? 'UPSELL' : 'CATALOGUE'} ORDERS` : ''}
+        onClose={() => setUpsellDetailModal(null)}
+        width={520}
+      >
+        {upsellDetailModal && (
+          upsellDetailModal.loading ? (
+            <div style={{padding:'20px 0',textAlign:'center',color:'var(--cream-30)',fontSize:12}}>Loading…</div>
+          ) : upsellDetailModal.rows.length === 0 ? (
+            <div style={{padding:'20px 0',textAlign:'center',color:'var(--cream-30)',fontSize:12}}>No orders under this source.</div>
+          ) : (
+            <div style={{maxHeight:420,overflowY:'auto'}}>
+              <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                <thead>
+                  <tr>
+                    {['Partner','Product','Qty','Est. Amount','Date'].map(h=>(
+                      <th key={h} style={{textAlign:h==='Qty'||h==='Est. Amount'?'right':'left',padding:'6px 8px',fontSize:9.5,fontWeight:700,letterSpacing:.5,textTransform:'uppercase',color:'var(--cream-30)',borderBottom:'1px solid var(--border)'}}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {upsellDetailModal.rows.map((r,i) => (
+                    <tr key={i} style={{borderBottom:'1px solid rgba(245,242,235,.04)'}}>
+                      <td style={{padding:'6px 8px',color:'var(--cream)'}}>{r.company_name}</td>
+                      <td style={{padding:'6px 8px',color:'var(--cream-60)'}}>
+                        <span style={{color:r.brand_color}}>{r.brand_name}</span> {r.item_series}{r.variation ? ` · ${r.variation}` : ''}
+                      </td>
+                      <td style={{padding:'6px 8px',textAlign:'right',color:'var(--cream)'}}>{r.qty}</td>
+                      <td style={{padding:'6px 8px',textAlign:'right',color:'var(--cream-60)'}}>SGD {r.amount.toFixed(2)}</td>
+                      <td style={{padding:'6px 8px',color:'var(--cream-30)',whiteSpace:'nowrap'}}>{fmt.date(r.submitted_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        )}
+      </Modal>
     </div>
   );
 }

@@ -216,6 +216,44 @@ function reportsRouter(db) {
     res.json(result);
   });
 
+  // GET /api/reports/upsell/detail?source=upsell|catalogue — drill-down for
+  // the Catalogue vs Upsell chart: who ordered what, and how much, under
+  // that source tag. Same WHERE clause as /upsell (approved, not voided)
+  // so the totals always agree with what the chart shows.
+  router.get('/upsell/detail', (req, res) => {
+    const { source } = req.query;
+    if (source !== 'upsell' && source !== 'catalogue') {
+      return res.status(400).json({ error: "source must be 'upsell' or 'catalogue'" });
+    }
+
+    const rows = db.query(`
+      SELECT
+        po.company_name, po.submitted_at,
+        p.item_series, p.variation,
+        b.name AS brand_name, b.color AS brand_color,
+        poi.qty,
+        COALESCE(p.price_wholesale_sg, 0) AS unit_price
+      FROM portal_order_items poi
+      JOIN portal_orders po ON po.id = poi.portal_order_id
+      LEFT JOIN products p ON p.id = poi.product_id
+      LEFT JOIN brands   b ON b.id = p.brand_id
+      WHERE po.status = 'approved' AND po.voided_at IS NULL
+        AND COALESCE(poi.source, 'catalogue') = ?
+      ORDER BY po.submitted_at DESC
+    `, [source]);
+
+    res.json(rows.map(r => ({
+      company_name: r.company_name,
+      submitted_at: r.submitted_at,
+      item_series: r.item_series,
+      variation: r.variation,
+      brand_name: r.brand_name,
+      brand_color: r.brand_color,
+      qty: r.qty,
+      amount: parseFloat((r.qty * r.unit_price).toFixed(2)),
+    })));
+  });
+
   // GET /api/reports/channel-performance — filter Profit/Revenue/Units/Brand
   // breakdown by channel + date range. Built for monitoring a specific
   // event (channel='Event Sale', the event's date range), but works for

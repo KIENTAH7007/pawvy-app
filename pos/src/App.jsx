@@ -272,11 +272,12 @@ export default function App() {
                   />
                 </Field>
                 <Field label="Notes (optional)">
-                  <input
+                  <textarea
                     value={notes}
                     onChange={e => setNotes(e.target.value)}
                     placeholder="e.g. special instructions"
-                    style={fieldInputStyle}
+                    rows={3}
+                    style={textareaStyle}
                   />
                 </Field>
               </div>
@@ -293,7 +294,7 @@ export default function App() {
                     <input value={mailingName} onChange={e => setMailingName(e.target.value)} placeholder="Full name" style={fieldInputStyle} />
                   </Field>
                   <Field label="Mailing Address">
-                    <input value={mailingAddress} onChange={e => setMailingAddress(e.target.value)} placeholder="Address for delivery" style={fieldInputStyle} />
+                    <textarea value={mailingAddress} onChange={e => setMailingAddress(e.target.value)} placeholder="Address for delivery" rows={3} style={textareaStyle} />
                   </Field>
                   <Field label="Phone Number">
                     <input value={mailingPhone} onChange={e => setMailingPhone(e.target.value)} placeholder="For delivery coordination" style={fieldInputStyle} />
@@ -457,6 +458,13 @@ const fieldInputStyle = {
   height: 38, borderRadius: 8, border: '1px solid rgba(20,33,61,.15)',
   background: 'var(--cream)', color: 'var(--navy)', fontSize: 13.5,
   padding: '0 12px', fontFamily: "'Montserrat',sans-serif",
+};
+
+const textareaStyle = {
+  minHeight: 76, borderRadius: 8, border: '1px solid rgba(20,33,61,.15)',
+  background: 'var(--cream)', color: 'var(--navy)', fontSize: 13.5,
+  padding: '10px 12px', fontFamily: "'Montserrat',sans-serif",
+  resize: 'vertical', width: '100%', boxSizing: 'border-box',
 };
 
 const submitBtnStyle = {
