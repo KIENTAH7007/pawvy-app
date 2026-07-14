@@ -31,6 +31,7 @@ export default function App() {
   const [mailingName, setMailingName] = useState('');
   const [mailingAddress, setMailingAddress] = useState('');
   const [mailingPhone, setMailingPhone] = useState('');
+  const [shippingChannel, setShippingChannel] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const searchRef = useRef(null);
@@ -133,6 +134,7 @@ export default function App() {
         mailing_name: mailingName.trim() || null,
         mailing_address: mailingAddress.trim() || null,
         mailing_phone: mailingPhone.trim() || null,
+        shipping_channel: shippingChannel.trim() || null,
       });
       setView('success');
     } catch (e) {
@@ -144,7 +146,7 @@ export default function App() {
 
   function resetForNextSale() {
     setCart({}); setShipping(''); setNotes('');
-    setMailingName(''); setMailingAddress(''); setMailingPhone('');
+    setMailingName(''); setMailingAddress(''); setMailingPhone(''); setShippingChannel('');
     setView('catalogue'); setSearch('');
   }
 
@@ -298,6 +300,23 @@ export default function App() {
                   </Field>
                   <Field label="Phone Number">
                     <input value={mailingPhone} onChange={e => setMailingPhone(e.target.value)} placeholder="For delivery coordination" style={fieldInputStyle} />
+                  </Field>
+                  <Field label="Shipping Channel">
+                    <input
+                      value={shippingChannel}
+                      onChange={e => setShippingChannel(e.target.value)}
+                      placeholder="e.g. SPX, Ezyshipping, Ninja Van"
+                      list="shipping-channel-options"
+                      style={fieldInputStyle}
+                    />
+                    <datalist id="shipping-channel-options">
+                      <option value="SPX" />
+                      <option value="Ezyshipping" />
+                      <option value="Ninja Van" />
+                      <option value="J&T Express" />
+                      <option value="Qxpress" />
+                      <option value="Self Collection" />
+                    </datalist>
                   </Field>
                 </div>
               </div>

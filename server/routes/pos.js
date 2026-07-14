@@ -56,7 +56,7 @@ module.exports = function(db, inventoryRouter) {
   // returns straight away. No portal_orders row, no pending-approval step,
   // no notification — this is meant to feel instant at a live event.
   router.post('/checkout', (req, res) => {
-    const { items, shipping_charged, notes, mailing_name, mailing_address, mailing_phone } = req.body;
+    const { items, shipping_charged, notes, mailing_name, mailing_address, mailing_phone, shipping_channel } = req.body;
 
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'Cart is empty.' });
@@ -101,8 +101,8 @@ module.exports = function(db, inventoryRouter) {
         INSERT INTO sales
           (date, product_id, partner_id, channel, market, qty, unit_cost, unit_price,
            platform_fee_pct, platform_fee_amt, shipping_charged, shipping_cost, notes,
-           mailing_name, mailing_address, mailing_phone)
-        VALUES (?,?,?,?,?,?,?,?,0,0,?,0,?,?,?,?)
+           mailing_name, mailing_address, mailing_phone, shipping_channel)
+        VALUES (?,?,?,?,?,?,?,?,0,0,?,0,?,?,?,?,?)
       `, [
         today, line.product_id, null, 'Event Sale', 'SG', qty, unitCost, unitPrice,
         isFirst ? shipCharged : 0,
@@ -110,6 +110,7 @@ module.exports = function(db, inventoryRouter) {
         hasMailing ? (mailing_name || null) : null,
         hasMailing ? (mailing_address || null) : null,
         hasMailing ? (mailing_phone || null) : null,
+        shipping_channel?.trim() || null,
       ]);
       saleIds.push(result.lastID);
 

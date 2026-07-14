@@ -508,6 +508,12 @@ function createSchema() {
   try { db.run("ALTER TABLE sales ADD COLUMN mailing_address TEXT"); } catch(e) {}
   try { db.run("ALTER TABLE sales ADD COLUMN mailing_phone TEXT"); } catch(e) {}
 
+  // POS System: optional shipping channel/courier (e.g. "SPX", "Ezyshipping"),
+  // captured alongside mailing details. Different couriers carry different
+  // shipping costs, so this is kept as free text for reference in the Sales
+  // Ledger rather than a fixed list.
+  try { db.run("ALTER TABLE sales ADD COLUMN shipping_channel TEXT"); } catch(e) {}
+
   console.log('✅ Schema ready');
 }
 

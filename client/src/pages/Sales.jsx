@@ -74,12 +74,14 @@ export default function Sales() {
   // Shipping column — separate from discount for clarity
   function shippingCell(s) {
     const shipCharged = parseFloat(s.shipping_charged || 0);
-    if (shipCharged === 0) return null;
+    const channel = (s.shipping_channel || '').trim();
+    if (shipCharged === 0 && !channel) return null;
     const shipCost = parseFloat(s.shipping_cost || 0);
     const shipProfit = shipCharged - shipCost;
     return {
-      text: `+ ${fmt.sgd(shipCharged)}`,
-      sub: shipCost > 0 ? `net ${fmt.sgd(shipProfit)}` : null,
+      text: shipCharged > 0 ? `+ ${fmt.sgd(shipCharged)}` : null,
+      sub: shipCharged > 0 && shipCost > 0 ? `net ${fmt.sgd(shipProfit)}` : null,
+      channel: channel || null,
       color: '#7fc93e',
     };
   }
@@ -153,6 +155,7 @@ export default function Sales() {
             <MailingRow label="Name" value={mailingInfoModal.mailing_name} />
             <MailingRow label="Address" value={mailingInfoModal.mailing_address} />
             <MailingRow label="Phone" value={mailingInfoModal.mailing_phone} />
+            <MailingRow label="Shipping Channel" value={mailingInfoModal.shipping_channel} />
           </div>
         )}
       </Modal>
@@ -190,7 +193,7 @@ export default function Sales() {
                             <span style={{maxWidth:130,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
                               {s.item_series}{s.variation ? ` · ${s.variation}` : ''}
                             </span>
-                            {(s.mailing_name || s.mailing_address || s.mailing_phone) && (
+                            {(s.mailing_name || s.mailing_address || s.mailing_phone || s.shipping_channel) && (
                               <button onClick={() => setMailingInfoModal(s)} title="View mailing details"
                                 style={{flexShrink:0,background:'none',border:'none',color:'var(--orange)',cursor:'pointer',padding:0,display:'flex',alignItems:'center'}}>
                                 <Mail size={12} />
@@ -220,8 +223,9 @@ export default function Sales() {
                               if (!sh) return <span style={{color:'var(--cream-30)'}}>—</span>;
                               return (
                                 <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end'}}>
-                                  <span style={{fontSize:11,color:sh.color}}>{sh.text}</span>
+                                  {sh.text && <span style={{fontSize:11,color:sh.color}}>{sh.text}</span>}
                                   {sh.sub && <span style={{fontSize:9,color:'var(--cream-30)'}}>{sh.sub}</span>}
+                                  {sh.channel && <span style={{fontSize:9,color:'var(--cream-30)'}}>{sh.channel}</span>}
                                 </div>
                               );
                             })()}
