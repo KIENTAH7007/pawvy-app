@@ -137,10 +137,25 @@ export default function Shipments() {
   async function uploadDoc(documentType, file) {
     const reader = new FileReader();
     reader.onload = async () => {
-      await shipmentsApi.uploadDocument(detail.id, { document_type: documentType, file_name: file.name, file_data: reader.result });
-      refreshDetail(detail.id);
+      try {
+        await shipmentsApi.uploadDocument(detail.id, { document_type: documentType, file_name: file.name, file_data: reader.result });
+        await refreshDetail(detail.id);
+      } catch (e) {
+        setError(e.message || 'Upload failed. The file may be too large.');
+      }
     };
+    reader.onerror = () => setError('Could not read the selected file.');
     reader.readAsDataURL(file);
+  }
+
+  async function deleteDoc(docId) {
+    if (!window.confirm('Remove this uploaded document? You can upload a replacement afterward.')) return;
+    try {
+      await shipmentsApi.deleteDocument(docId);
+      await refreshDetail(detail.id);
+    } catch (e) {
+      setError(e.message || 'Failed to remove document.');
+    }
   }
 
   async function voidShipment(id) {
@@ -261,6 +276,7 @@ export default function Shipments() {
                     onCalculateCost={calculateCost}
                     onPreviewCost={previewCost}
                     onUploadDoc={uploadDoc}
+                    onDeleteDoc={deleteDoc}
                     onVoid={() => voidShipment(s.id)}
                     onDelete={() => deleteShipment(s.id)}
                   />
@@ -277,7 +293,7 @@ export default function Shipments() {
 function ShipmentDetailPanel({
   detail, brands, busy, error,
   onSaveHeader, onAddLine, onCommitLine, onRemoveLine, onSelectSku,
-  onMarkReceived, onCalculateCost, onPreviewCost, onUploadDoc, onVoid, onDelete,
+  onMarkReceived, onCalculateCost, onPreviewCost, onUploadDoc, onDeleteDoc, onVoid, onDelete,
 }) {
   const [header, setHeader] = useState(detail);
   const [lines, setLines] = useState(detail.line_items || []);
@@ -522,7 +538,19 @@ function ShipmentDetailPanel({
                 <FileText size={12} /> {t.label}
               </div>
               {uploaded.map(d => (
-                <div key={d.id} style={{ fontSize: 10, color: 'var(--cream-30)', marginBottom: 2 }}>{d.file_name || 'File'} ✓</div>
+                <div key={d.id} style={{ fontSize: 10, color: 'var(--cream-30)', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.file_name || 'File'} ✓</span>
+                  {!isVoided && (
+                    <button
+                      type="button"
+                      onClick={() => onDeleteDoc(d.id)}
+                      title="Remove document"
+                      style={{ flexShrink: 0, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--cream-30)', display: 'flex', alignItems: 'center' }}
+                    >
+                      <Trash2 size={11} />
+                    </button>
+                  )}
+                </div>
               ))}
               {!isVoided && (
                 <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--orange)', cursor: 'pointer' }}>

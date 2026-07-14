@@ -12,7 +12,11 @@ const app  = express();
 const PORT = process.env.PORT || 3001;
 
 app.use(cors());
-app.use(express.json());
+// Default express.json() body limit is 100kb, which silently rejects (413) larger
+// base64 payloads such as scanned PDFs/images uploaded via Shipments > Documents.
+// Raised to 15mb to comfortably cover multi-page scans and photos while still
+// bounding request size.
+app.use(express.json({ limit: '15mb' }));
 
 async function startServer() {
   const db  = await init();

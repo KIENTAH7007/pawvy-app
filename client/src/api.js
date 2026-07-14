@@ -104,6 +104,7 @@ export const shipmentsApi = {
   calculateCost: (id, data) => api.post(`/shipments/${id}/cost`, data || {}),
   previewCost:  (id, overrides) => api.post(`/shipments/${id}/preview`, { overrides: overrides || {} }),
   uploadDocument: (id, data) => api.post(`/shipments/${id}/documents`, data),
+  deleteDocument: (docId) => api.delete(`/shipments/documents/${docId}`),
   costReference:        (q)     => api.get(`/shipments/cost-reference${qs(q)}`),
   costReferenceHistory: (pid)   => api.get(`/shipments/cost-reference/${pid}/history`),
   addCostReference:     (data)  => api.post('/shipments/cost-reference', data),

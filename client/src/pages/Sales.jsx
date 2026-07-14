@@ -186,11 +186,13 @@ export default function Sales() {
                             {isVoided && <span style={{marginLeft:6,fontSize:9,fontWeight:700,color:'#f87171',background:'rgba(248,113,113,.15)',padding:'1px 5px',borderRadius:3}}>VOID</span>}
                           </td>
                           <td style={{padding:'8px 10px'}}><Badge color={s.brand_color}>{s.brand_name}</Badge></td>
-                          <td style={{padding:'8px 10px',color:'var(--cream)',maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-                            {s.item_series}{s.variation ? ` · ${s.variation}` : ''}
+                          <td style={{padding:'8px 10px',color:'var(--cream)',maxWidth:140,display:'flex',alignItems:'center',gap:6}}>
+                            <span style={{maxWidth:130,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                              {s.item_series}{s.variation ? ` · ${s.variation}` : ''}
+                            </span>
                             {(s.mailing_name || s.mailing_address || s.mailing_phone) && (
                               <button onClick={() => setMailingInfoModal(s)} title="View mailing details"
-                                style={{background:'none',border:'none',color:'var(--orange)',cursor:'pointer',padding:0,marginLeft:6,verticalAlign:'middle'}}>
+                                style={{flexShrink:0,background:'none',border:'none',color:'var(--orange)',cursor:'pointer',padding:0,display:'flex',alignItems:'center'}}>
                                 <Mail size={12} />
                               </button>
                             )}
