@@ -33,9 +33,10 @@ export default function App() {
   const [mailingPhone, setMailingPhone] = useState('');
   const [shippingChannel, setShippingChannel] = useState('');
   const [shippingCost, setShippingCost] = useState('');
-  const [discountMode, setDiscountMode] = useState('none'); // none | per_item | universal
+  const [discountMode, setDiscountMode] = useState('none'); // none | per_item | universal | manual_price
   const [itemDiscounts, setItemDiscounts] = useState({}); // { [product_id]: pct string }
   const [universalDiscountPct, setUniversalDiscountPct] = useState('');
+  const [itemPrices, setItemPrices] = useState({}); // { [product_id]: price string } — manual_price mode
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const searchRef = useRef(null);
@@ -98,6 +99,13 @@ export default function App() {
 
   const lineCalcs = cartLines.map(l => {
     const price = parseFloat(l.product.price_rrp_sg) || 0;
+    if (discountMode === 'manual_price') {
+      const raw = itemPrices[l.product.id];
+      const netPrice = (raw !== undefined && raw !== '') ? (parseFloat(raw) || 0) : price;
+      const discAmt = parseFloat((price - netPrice).toFixed(2));
+      const discPct = price > 0 ? parseFloat(((discAmt / price) * 100).toFixed(1)) : 0;
+      return { price, discPct, discAmt, netPrice, revenue: l.qty * netPrice };
+    }
     const discPct = discPctFor(l.product.id);
     const discAmt = parseFloat((price * discPct / 100).toFixed(2));
     const netPrice = parseFloat((price - discAmt).toFixed(2));
@@ -125,6 +133,9 @@ export default function App() {
   }
   function setItemDiscount(productId, pct) {
     setItemDiscounts(prev => ({ ...prev, [productId]: pct }));
+  }
+  function setItemPrice(productId, price) {
+    setItemPrices(prev => ({ ...prev, [productId]: price }));
   }
 
   // Barcode scanning: scanners act as fast keyboards ending in Enter. If
@@ -154,11 +165,17 @@ export default function App() {
       await posApi.checkout({
         items: cartLines.map((l, i) => {
           const calc = lineCalcs[i];
+          let lineNote = null;
+          if (discountMode === 'manual_price' && calc.discAmt !== 0) {
+            lineNote = `Sale price set to SGD ${calc.netPrice.toFixed(2)} (RRP SGD ${calc.price.toFixed(2)})`;
+          } else if (discountMode !== 'manual_price' && calc.discPct > 0) {
+            lineNote = `Item disc ${calc.discPct}% off SGD ${calc.price.toFixed(2)}`;
+          }
           return {
             product_id: l.product.id,
             qty: l.qty,
             unit_price: calc.netPrice,
-            line_note: calc.discPct > 0 ? `Item disc ${calc.discPct}% off SGD ${calc.price.toFixed(2)}` : null,
+            line_note: lineNote,
           };
         }),
         shipping_charged: shipAmt,
@@ -180,7 +197,7 @@ export default function App() {
   function resetForNextSale() {
     setCart({}); setShipping(''); setNotes(''); setShippingCost('');
     setMailingName(''); setMailingAddress(''); setMailingPhone(''); setShippingChannel('');
-    setDiscountMode('none'); setItemDiscounts({}); setUniversalDiscountPct('');
+    setDiscountMode('none'); setItemDiscounts({}); setUniversalDiscountPct(''); setItemPrices({});
     setView('catalogue'); setSearch('');
   }
 
@@ -240,7 +257,7 @@ export default function App() {
                 <div key={l.product.id} style={{
                   display: 'flex', alignItems: 'center', gap: 12, padding: 12,
                   border: '1px solid rgba(245,242,235,.1)', borderRadius: 10, background: 'rgba(245,242,235,.03)',
-                  flexWrap: discountMode === 'per_item' ? 'wrap' : 'nowrap',
+                  flexWrap: (discountMode === 'per_item' || discountMode === 'manual_price') ? 'wrap' : 'nowrap',
                 }}>
                   <div style={{
                     width: 48, height: 48, borderRadius: 8, flexShrink: 0, overflow: 'hidden',
@@ -257,10 +274,10 @@ export default function App() {
                     {l.product.item_series}
                     {l.product.variation && <span style={{ color: 'rgba(245,242,235,.5)' }}> · {l.product.variation}</span>}
                     <div style={{ fontSize: 11, color: 'rgba(245,242,235,.4)', fontWeight: 400, marginTop: 2 }}>
-                      {calc.discAmt > 0 && (
+                      {calc.discAmt !== 0 && (
                         <span style={{ textDecoration: 'line-through', marginRight: 6 }}>SGD {calc.price.toFixed(2)}</span>
                       )}
-                      <span style={calc.discAmt > 0 ? { color: '#fbbf24', fontWeight: 600 } : undefined}>
+                      <span style={calc.discAmt !== 0 ? { color: '#fbbf24', fontWeight: 600 } : undefined}>
                         SGD {calc.netPrice.toFixed(2)} / unit
                       </span>
                     </div>
@@ -279,19 +296,33 @@ export default function App() {
                       />
                     </div>
                   )}
+                  {discountMode === 'manual_price' && (
+                    <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
+                      <span style={{ fontSize: 10.5, color: 'rgba(245,242,235,.4)' }}>Sale Price</span>
+                      <input
+                        type="number" min="0" step="0.01"
+                        value={itemPrices[l.product.id] !== undefined ? itemPrices[l.product.id] : calc.price.toFixed(2)}
+                        onChange={e => setItemPrice(l.product.id, e.target.value)}
+                        style={{ ...fieldInputStyle, height: 30, width: 90, fontSize: 12, padding: '0 8px' }}
+                      />
+                      <span style={{ fontSize: 10, color: 'rgba(245,242,235,.3)' }}>RRP SGD {calc.price.toFixed(2)}</span>
+                    </div>
+                  )}
                 </div>
                 );
               })}
 
-              {/* Discount — either per-item (set on each line above) or a single
-                  universal % across the whole cart. Mutually exclusive, staff picks one. */}
+              {/* Discount — per-item %, a single universal % across the whole cart,
+                  or directly setting the sale price per item (for clearance items).
+                  Mutually exclusive, staff picks one. */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '4px 4px 0' }}>
-                <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: .5, textTransform: 'uppercase', color: 'rgba(245,242,235,.45)' }}>Discount</div>
+                <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: .5, textTransform: 'uppercase', color: 'rgba(245,242,235,.45)' }}>Discount / Price</div>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   {[
                     { key: 'none', label: 'No discount' },
-                    { key: 'per_item', label: 'Per item' },
+                    { key: 'per_item', label: 'Per item %' },
                     { key: 'universal', label: 'Universal %' },
+                    { key: 'manual_price', label: 'Set price' },
                   ].map(opt => (
                     <button
                       key={opt.key}
@@ -316,16 +347,21 @@ export default function App() {
                     style={{ ...fieldInputStyle, width: 200 }}
                   />
                 )}
+                {discountMode === 'manual_price' && (
+                  <div style={{ fontSize: 10.5, color: 'rgba(245,242,235,.35)', lineHeight: 1.4 }}>
+                    Sale Price on each line above is preloaded with RRP — edit any item you're clearing.
+                  </div>
+                )}
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'rgba(245,242,235,.6)', padding: '8px 4px' }}>
                 <span>Subtotal</span>
                 <strong style={{ color: 'var(--cream)' }}>SGD {cartSubtotal.toFixed(2)}</strong>
               </div>
-              {itemDiscountTotal > 0 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#fbbf24', padding: '0 4px' }}>
-                  <span>Discount</span>
-                  <strong>− SGD {itemDiscountTotal.toFixed(2)}</strong>
+              {itemDiscountTotal !== 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: itemDiscountTotal > 0 ? '#fbbf24' : '#f87171', padding: '0 4px' }}>
+                  <span>{itemDiscountTotal > 0 ? 'Discount' : 'Markup'}</span>
+                  <strong>{itemDiscountTotal > 0 ? '−' : '+'} SGD {Math.abs(itemDiscountTotal).toFixed(2)}</strong>
                 </div>
               )}
               {shipAmt > 0 && (
