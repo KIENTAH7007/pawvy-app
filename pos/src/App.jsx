@@ -32,6 +32,10 @@ export default function App() {
   const [mailingAddress, setMailingAddress] = useState('');
   const [mailingPhone, setMailingPhone] = useState('');
   const [shippingChannel, setShippingChannel] = useState('');
+  const [shippingCost, setShippingCost] = useState('');
+  const [discountMode, setDiscountMode] = useState('none'); // none | per_item | universal
+  const [itemDiscounts, setItemDiscounts] = useState({}); // { [product_id]: pct string }
+  const [universalDiscountPct, setUniversalDiscountPct] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const searchRef = useRef(null);
@@ -85,9 +89,26 @@ export default function App() {
   }, [cart, byId]);
 
   const cartCount = cartLines.reduce((s, l) => s + l.qty, 0);
-  const cartSubtotal = cartLines.reduce((s, l) => s + l.qty * (l.product.price_rrp_sg || 0), 0);
+
+  function discPctFor(productId) {
+    if (discountMode === 'per_item') return parseFloat(itemDiscounts[productId]) || 0;
+    if (discountMode === 'universal') return parseFloat(universalDiscountPct) || 0;
+    return 0;
+  }
+
+  const lineCalcs = cartLines.map(l => {
+    const price = parseFloat(l.product.price_rrp_sg) || 0;
+    const discPct = discPctFor(l.product.id);
+    const discAmt = parseFloat((price * discPct / 100).toFixed(2));
+    const netPrice = parseFloat((price - discAmt).toFixed(2));
+    return { price, discPct, discAmt, netPrice, revenue: l.qty * netPrice };
+  });
+
+  const cartSubtotal = lineCalcs.reduce((s, l, i) => s + cartLines[i].qty * l.price, 0); // pre-discount
+  const itemDiscountTotal = lineCalcs.reduce((s, l, i) => s + cartLines[i].qty * l.discAmt, 0);
+  const cartNetSubtotal = cartSubtotal - itemDiscountTotal; // post-discount
   const shipAmt = parseFloat(shipping) || 0;
-  const cartTotal = cartSubtotal + shipAmt;
+  const cartTotal = cartNetSubtotal + shipAmt;
 
   function addToCart(product, qty) {
     setCart(prev => ({ ...prev, [product.id]: (prev[product.id] || 0) + qty }));
@@ -101,6 +122,9 @@ export default function App() {
       delete next[productId];
       return next;
     });
+  }
+  function setItemDiscount(productId, pct) {
+    setItemDiscounts(prev => ({ ...prev, [productId]: pct }));
   }
 
   // Barcode scanning: scanners act as fast keyboards ending in Enter. If
@@ -128,8 +152,17 @@ export default function App() {
     setSubmitting(true); setSubmitError('');
     try {
       await posApi.checkout({
-        items: cartLines.map(l => ({ product_id: l.product.id, qty: l.qty })),
+        items: cartLines.map((l, i) => {
+          const calc = lineCalcs[i];
+          return {
+            product_id: l.product.id,
+            qty: l.qty,
+            unit_price: calc.netPrice,
+            line_note: calc.discPct > 0 ? `Item disc ${calc.discPct}% off SGD ${calc.price.toFixed(2)}` : null,
+          };
+        }),
         shipping_charged: shipAmt,
+        shipping_cost: parseFloat(shippingCost) || 0,
         notes: notes.trim() || null,
         mailing_name: mailingName.trim() || null,
         mailing_address: mailingAddress.trim() || null,
@@ -145,8 +178,9 @@ export default function App() {
   }
 
   function resetForNextSale() {
-    setCart({}); setShipping(''); setNotes('');
+    setCart({}); setShipping(''); setNotes(''); setShippingCost('');
     setMailingName(''); setMailingAddress(''); setMailingPhone(''); setShippingChannel('');
+    setDiscountMode('none'); setItemDiscounts({}); setUniversalDiscountPct('');
     setView('catalogue'); setSearch('');
   }
 
@@ -200,10 +234,13 @@ export default function App() {
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {cartLines.map(l => (
+              {cartLines.map((l, i) => {
+                const calc = lineCalcs[i];
+                return (
                 <div key={l.product.id} style={{
                   display: 'flex', alignItems: 'center', gap: 12, padding: 12,
                   border: '1px solid rgba(245,242,235,.1)', borderRadius: 10, background: 'rgba(245,242,235,.03)',
+                  flexWrap: discountMode === 'per_item' ? 'wrap' : 'nowrap',
                 }}>
                   <div style={{
                     width: 48, height: 48, borderRadius: 8, flexShrink: 0, overflow: 'hidden',
@@ -220,18 +257,77 @@ export default function App() {
                     {l.product.item_series}
                     {l.product.variation && <span style={{ color: 'rgba(245,242,235,.5)' }}> · {l.product.variation}</span>}
                     <div style={{ fontSize: 11, color: 'rgba(245,242,235,.4)', fontWeight: 400, marginTop: 2 }}>
-                      SGD {parseFloat(l.product.price_rrp_sg).toFixed(2)} / unit
+                      {calc.discAmt > 0 && (
+                        <span style={{ textDecoration: 'line-through', marginRight: 6 }}>SGD {calc.price.toFixed(2)}</span>
+                      )}
+                      <span style={calc.discAmt > 0 ? { color: '#fbbf24', fontWeight: 600 } : undefined}>
+                        SGD {calc.netPrice.toFixed(2)} / unit
+                      </span>
                     </div>
                   </div>
                   <QtyStepper value={l.qty} onChange={q => updateQty(l.product.id, q)} />
                   <button onClick={() => removeFromCart(l.product.id)} style={{ background: 'none', border: 'none', color: 'rgba(248,113,113,.7)', cursor: 'pointer', padding: 4 }}>✕</button>
+                  {discountMode === 'per_item' && (
+                    <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
+                      <span style={{ fontSize: 10.5, color: 'rgba(245,242,235,.4)' }}>Discount %</span>
+                      <input
+                        type="number" min="0" max="100" step="1"
+                        value={itemDiscounts[l.product.id] || ''}
+                        onChange={e => setItemDiscount(l.product.id, e.target.value)}
+                        placeholder="0"
+                        style={{ ...fieldInputStyle, height: 30, width: 70, fontSize: 12, padding: '0 8px' }}
+                      />
+                    </div>
+                  )}
                 </div>
-              ))}
+                );
+              })}
+
+              {/* Discount — either per-item (set on each line above) or a single
+                  universal % across the whole cart. Mutually exclusive, staff picks one. */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '4px 4px 0' }}>
+                <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: .5, textTransform: 'uppercase', color: 'rgba(245,242,235,.45)' }}>Discount</div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {[
+                    { key: 'none', label: 'No discount' },
+                    { key: 'per_item', label: 'Per item' },
+                    { key: 'universal', label: 'Universal %' },
+                  ].map(opt => (
+                    <button
+                      key={opt.key}
+                      onClick={() => setDiscountMode(opt.key)}
+                      style={{
+                        padding: '5px 12px', borderRadius: 20, fontSize: 11.5, fontWeight: 600, cursor: 'pointer',
+                        border: `1px solid ${discountMode === opt.key ? 'var(--orange)' : 'rgba(245,242,235,.15)'}`,
+                        background: discountMode === opt.key ? 'rgba(243,111,74,.15)' : 'transparent',
+                        color: discountMode === opt.key ? 'var(--orange)' : 'rgba(245,242,235,.6)',
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                {discountMode === 'universal' && (
+                  <input
+                    type="number" min="0" max="100" step="1"
+                    value={universalDiscountPct}
+                    onChange={e => setUniversalDiscountPct(e.target.value)}
+                    placeholder="Discount % off every item"
+                    style={{ ...fieldInputStyle, width: 200 }}
+                  />
+                )}
+              </div>
 
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'rgba(245,242,235,.6)', padding: '8px 4px' }}>
                 <span>Subtotal</span>
                 <strong style={{ color: 'var(--cream)' }}>SGD {cartSubtotal.toFixed(2)}</strong>
               </div>
+              {itemDiscountTotal > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#fbbf24', padding: '0 4px' }}>
+                  <span>Discount</span>
+                  <strong>− SGD {itemDiscountTotal.toFixed(2)}</strong>
+                </div>
+              )}
               {shipAmt > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'rgba(245,242,235,.6)', padding: '0 4px' }}>
                   <span>Shipping</span>
@@ -317,6 +413,19 @@ export default function App() {
                       <option value="Qxpress" />
                       <option value="Self Collection" />
                     </datalist>
+                  </Field>
+                  <Field label="Shipping Cost (actual, ours)">
+                    <input
+                      type="number" min="0" step="0.01"
+                      value={shippingCost}
+                      onChange={e => setShippingCost(e.target.value)}
+                      placeholder="0.00"
+                      style={fieldInputStyle}
+                    />
+                    <div style={{ fontSize: 10.5, color: 'rgba(245,242,235,.35)', marginTop: 4, lineHeight: 1.4 }}>
+                      What the courier actually charges us — separate from the "Shipping (optional)"
+                      amount charged to the customer above. Affects profit, not the customer's total.
+                    </div>
                   </Field>
                 </div>
               </div>

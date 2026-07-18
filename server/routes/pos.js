@@ -56,7 +56,7 @@ module.exports = function(db, inventoryRouter) {
   // returns straight away. No portal_orders row, no pending-approval step,
   // no notification — this is meant to feel instant at a live event.
   router.post('/checkout', (req, res) => {
-    const { items, shipping_charged, notes, mailing_name, mailing_address, mailing_phone, shipping_channel } = req.body;
+    const { items, shipping_charged, shipping_cost, notes, mailing_name, mailing_address, mailing_phone, shipping_channel } = req.body;
 
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'Cart is empty.' });
@@ -87,26 +87,33 @@ module.exports = function(db, inventoryRouter) {
 
     const today = new Date().toISOString().slice(0, 10);
     const shipCharged = parseFloat(shipping_charged) || 0;
+    const shipCost = parseFloat(shipping_cost) || 0;
     const hasMailing = !!(mailing_name || mailing_address || mailing_phone);
     const saleIds = [];
 
     items.forEach((line, i) => {
       const qty = parseInt(line.qty);
       const product = db.queryOne('SELECT unit_cost, price_rrp_sg FROM products WHERE id = ?', [line.product_id]);
-      const unitPrice = product?.price_rrp_sg || 0;
       const unitCost = product?.unit_cost || 0;
+      // unit_price may arrive already net of a staff-applied discount (per-item
+      // or universal, computed client-side in the Review Order screen). Fall
+      // back to catalogue RRP if not supplied or not a sane number.
+      const parsedPrice = parseFloat(line.unit_price);
+      const unitPrice = Number.isFinite(parsedPrice) && parsedPrice >= 0 ? parsedPrice : (product?.price_rrp_sg || 0);
       const isFirst = i === 0;
+      const lineNotes = [notes || null, line.line_note || null].filter(Boolean).join(' | ') || null;
 
       const result = db.run(`
         INSERT INTO sales
           (date, product_id, partner_id, channel, market, qty, unit_cost, unit_price,
            platform_fee_pct, platform_fee_amt, shipping_charged, shipping_cost, notes,
            mailing_name, mailing_address, mailing_phone, shipping_channel)
-        VALUES (?,?,?,?,?,?,?,?,0,0,?,0,?,?,?,?,?)
+        VALUES (?,?,?,?,?,?,?,?,0,0,?,?,?,?,?,?,?)
       `, [
         today, line.product_id, null, 'Event Sale', 'SG', qty, unitCost, unitPrice,
         isFirst ? shipCharged : 0,
-        notes || null,
+        isFirst ? shipCost : 0,
+        lineNotes,
         hasMailing ? (mailing_name || null) : null,
         hasMailing ? (mailing_address || null) : null,
         hasMailing ? (mailing_phone || null) : null,
