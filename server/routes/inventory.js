@@ -80,7 +80,7 @@ module.exports = function(db, consignmentRouter) {
       SELECT * FROM inventory_movements WHERE product_id = ? ORDER BY date DESC, id DESC
     `, [req.params.product_id]);
     const writeoffs = db.query(`
-      SELECT id, date, 'Write-off' AS type, -qty_change AS qty_change, location, reason AS notes, created_at
+      SELECT id, date, 'Write-off' AS type, qty_change, location, reason AS notes, created_at
       FROM inventory_adjustments WHERE product_id = ? AND type = 'Write-off' ORDER BY date DESC, id DESC
     `, [req.params.product_id]);
     const combined = [...movements, ...writeoffs].sort((a,b) => (b.date.localeCompare(a.date)) || (b.id - a.id));
