@@ -3,6 +3,7 @@ import { reportsApi } from '../api';
 import { Page, KpiCard, Input, Select, Btn, Badge, fmt } from '../components/ui';
 export default function Reports() {
   const [pnl,setPnl]=useState(null);const [loading,setL]=useState(false);
+  const [expanded,setExpanded]=useState({}); // { opex: bool, writeoffs: bool } — toggled breakdown rows
   const [from,setFrom]=useState(`${new Date().getFullYear()}-01-01`);
   const [to,setTo]=useState(new Date().toISOString().slice(0,10));
   const [market,setMkt]=useState('');
@@ -31,18 +32,39 @@ export default function Reports() {
               {label:'Revenue',value:pnl.revenue,c:'var(--cream)'},
               {label:'− Cost of Goods Sold',value:`(${pnl.cogs})`,c:'#f87171'},
               {label:'= Gross Profit',value:pnl.gross_profit,c:'#7fc93e',bold:true},
-              {label:'− Operating Costs',value:`(${pnl.operating_costs})`,c:'#f87171'},
-              {label:'− Inventory Write-offs',value:`(${pnl.writeoffs})`,c:'#f87171'},
+              {label:'− Operating Costs',value:`(${pnl.operating_costs})`,c:'#f87171',breakdownKey:'opex',breakdown:pnl.cost_breakdown,breakdownLabelKey:'category'},
+              {label:'− Inventory Write-offs',value:`(${pnl.writeoffs})`,c:'#f87171',breakdownKey:'writeoffs',breakdown:pnl.writeoff_breakdown,breakdownLabelKey:'reason'},
               {label:'± Cost Variance (Shipments)',value:pnl.cost_variance,c:pnl.cost_variance>=0?'#7fc93e':'#f87171',signed:true},
               {label:'= Net Profit',value:pnl.net_profit,c:pnl.net_profit>=0?'#7fc93e':'#f87171',bold:true,big:true},
-            ].map(r=>(
-              <div key={r.label} style={{display:'flex',justifyContent:'space-between',padding:'9px 0',borderBottom:'1px solid var(--cream-05)'}}>
-                <span style={{fontSize:r.big?13:12,color:r.bold?'var(--cream)':'var(--cream-60)',fontWeight:r.bold?700:400}}>{r.label}</span>
-                <span style={{fontSize:r.big?17:13,fontFamily:r.big?"'Bebas Neue',sans-serif":'inherit',color:r.c,fontWeight:700}}>
-                  SGD {r.signed ? `${parseFloat(r.value)>=0?'+':''}${parseFloat(r.value).toFixed(2)}` : parseFloat(String(r.value).replace(/[()]/g,'')).toFixed(2)}
-                </span>
+            ].map(r=>{
+              const hasBreakdown = r.breakdownKey && r.breakdown?.length>0;
+              const isOpen = hasBreakdown && expanded[r.breakdownKey];
+              return (
+              <div key={r.label}>
+                <div
+                  onClick={hasBreakdown ? ()=>setExpanded(p=>({...p,[r.breakdownKey]:!p[r.breakdownKey]})) : undefined}
+                  style={{display:'flex',justifyContent:'space-between',padding:'9px 0',borderBottom:'1px solid var(--cream-05)',cursor:hasBreakdown?'pointer':'default'}}
+                >
+                  <span style={{fontSize:r.big?13:12,color:r.bold?'var(--cream)':'var(--cream-60)',fontWeight:r.bold?700:400}}>
+                    {r.label}{hasBreakdown && <span style={{fontSize:9,color:'var(--cream-30)',marginLeft:6}}>{isOpen?'▲ hide breakdown':'▼ breakdown'}</span>}
+                  </span>
+                  <span style={{fontSize:r.big?17:13,fontFamily:r.big?"'Bebas Neue',sans-serif":'inherit',color:r.c,fontWeight:700}}>
+                    SGD {r.signed ? `${parseFloat(r.value)>=0?'+':''}${parseFloat(r.value).toFixed(2)}` : parseFloat(String(r.value).replace(/[()]/g,'')).toFixed(2)}
+                  </span>
+                </div>
+                {isOpen && (
+                  <div style={{padding:'4px 0 8px 16px',display:'flex',flexDirection:'column',gap:4}}>
+                    {r.breakdown.map(b=>(
+                      <div key={b[r.breakdownLabelKey]} style={{display:'flex',justifyContent:'space-between',fontSize:11,color:'var(--cream-60)'}}>
+                        <span>{b[r.breakdownLabelKey]}{b.units!==undefined && <span style={{color:'var(--cream-30)'}}> · {b.units} unit{b.units===1?'':'s'}</span>}</span>
+                        <span>SGD {parseFloat(b.total).toFixed(2)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            ))}
+              );
+            })}
           </div>
           {pnl.by_brand?.length>0&&(
             <div style={{background:'var(--navy)',border:'1px solid var(--border)',borderRadius:'var(--radius)',padding:20}}>

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { salesApi, brandsApi, partnersApi } from '../api';
 import { Page, Select, Input, Badge, Btn, Modal, fmt } from '../components/ui';
-import { Ban, Mail } from 'lucide-react';
+import { Ban, Mail, Pencil } from 'lucide-react';
 
 const MARKETPLACE = ['Shopee','Lazada','Amazon','TikTok Shop'];
 
@@ -24,6 +24,9 @@ export default function Sales() {
   const [filters,  setFilters]  = useState({ brand_id:'', partner_id:'', date_from:defaultRange.from, date_to:defaultRange.to, market:'' });
   const [voidConfirm, setVoidConfirm] = useState(null); // sale id pending void
   const [mailingInfoModal, setMailingInfoModal] = useState(null); // sale row pending mailing-info view
+  const [editModal, setEditModal] = useState(null); // sale row pending shipping/mailing/notes edit
+  const [editForm, setEditForm] = useState(null);
+  const [editSaving, setEditSaving] = useState(false);
 
   useEffect(() => {
     brandsApi.getAll().then(setBrands);
@@ -57,6 +60,29 @@ export default function Sales() {
     await salesApi.void(id);
     setVoidConfirm(null);
     load();
+  }
+
+  function openEdit(s) {
+    setEditModal(s);
+    setEditForm({
+      shipping_charged: s.shipping_charged || '',
+      shipping_cost: s.shipping_cost || '',
+      shipping_channel: s.shipping_channel || '',
+      mailing_name: s.mailing_name || '',
+      mailing_address: s.mailing_address || '',
+      mailing_phone: s.mailing_phone || '',
+      notes: s.notes || '',
+    });
+  }
+  async function saveEdit() {
+    setEditSaving(true);
+    try {
+      await salesApi.updateDetails(editModal.id, editForm);
+      setEditModal(null);
+      load();
+    } finally {
+      setEditSaving(false);
+    }
   }
 
   // Discount / Fee column — separate from shipping for clarity
@@ -160,6 +186,45 @@ export default function Sales() {
         )}
       </Modal>
 
+      {/* Edit shipping/mailing/notes — deliberately scoped to fields that
+          don't affect inventory or the revenue/profit calc (product, qty,
+          price, channel still require void + re-record). Covers the common
+          case: customer decided to collect in person after all, so the
+          shipping charge/courier needs correcting after the sale was logged. */}
+      <Modal open={!!editModal} title="EDIT SALE DETAILS" onClose={() => setEditModal(null)} width={420}>
+        {editModal && editForm && (
+          <div style={{display:'flex',flexDirection:'column',gap:12}}>
+            <div style={{fontSize:12,color:'var(--cream-30)'}}>
+              {editModal.item_series}{editModal.variation ? ` · ${editModal.variation}` : ''} — {fmt.date(editModal.date)}
+            </div>
+            <div style={{fontSize:10.5,color:'var(--cream-30)',lineHeight:1.5}}>
+              Only shipping, mailing, and notes can be edited here — product, quantity,
+              price, and channel affect stock levels, so those still need a void + re-record.
+            </div>
+            <div style={{display:'flex',gap:10}}>
+              <Input label="Shipping Charged (SGD)" type="number" step="0.01"
+                value={editForm.shipping_charged} onChange={e=>setEditForm(f=>({...f,shipping_charged:e.target.value}))} />
+              <Input label="Shipping Cost (actual, SGD)" type="number" step="0.01"
+                value={editForm.shipping_cost} onChange={e=>setEditForm(f=>({...f,shipping_cost:e.target.value}))} />
+            </div>
+            <Input label="Shipping Channel" value={editForm.shipping_channel}
+              onChange={e=>setEditForm(f=>({...f,shipping_channel:e.target.value}))} placeholder="e.g. SPX, Self Collection" />
+            <Input label="Recipient Name" value={editForm.mailing_name}
+              onChange={e=>setEditForm(f=>({...f,mailing_name:e.target.value}))} />
+            <Input label="Mailing Address" value={editForm.mailing_address}
+              onChange={e=>setEditForm(f=>({...f,mailing_address:e.target.value}))} />
+            <Input label="Phone Number" value={editForm.mailing_phone}
+              onChange={e=>setEditForm(f=>({...f,mailing_phone:e.target.value}))} />
+            <Input label="Notes" value={editForm.notes}
+              onChange={e=>setEditForm(f=>({...f,notes:e.target.value}))} />
+            <div style={{display:'flex',gap:10,marginTop:4}}>
+              <Btn onClick={saveEdit} disabled={editSaving} style={{flex:1,justifyContent:'center'}}>{editSaving?'Saving…':'Save Changes'}</Btn>
+              <Btn variant="ghost" onClick={()=>setEditModal(null)} style={{flex:1,justifyContent:'center'}}>Cancel</Btn>
+            </div>
+          </div>
+        )}
+      </Modal>
+
       {/* Table */}
       <div style={{background:'var(--navy)',border:'1px solid var(--border)',borderRadius:'var(--radius)'}}>
         {loading
@@ -232,14 +297,22 @@ export default function Sales() {
                           </td>
                           <td style={{padding:'8px 10px',textAlign:'right',fontWeight:600,color:'var(--cream)'}}>{fmt.sgd(s.revenue)}</td>
                           <td style={{padding:'8px 10px',textAlign:'right',fontWeight:700,color:s.profit>=0?'#7fc93e':'#f87171'}}>{fmt.sgd(s.profit)}</td>
-                          <td style={{padding:'8px 6px',textAlign:'right'}}>
+                          <td style={{padding:'8px 6px',textAlign:'right',whiteSpace:'nowrap'}}>
                             {!isVoided && (
-                              <button onClick={() => setVoidConfirm(s.id)} title="Void this sale"
-                                style={{background:'none',border:'none',color:'rgba(248,113,113,.5)',cursor:'pointer',padding:4,display:'flex',alignItems:'center'}}
-                                onMouseEnter={e=>e.currentTarget.style.color='#f87171'}
-                                onMouseLeave={e=>e.currentTarget.style.color='rgba(248,113,113,.5)'}>
-                                <Ban size={13}/>
-                              </button>
+                              <>
+                                <button onClick={() => openEdit(s)} title="Edit shipping/mailing/notes"
+                                  style={{background:'none',border:'none',color:'rgba(245,242,235,.35)',cursor:'pointer',padding:4,display:'inline-flex',alignItems:'center'}}
+                                  onMouseEnter={e=>e.currentTarget.style.color='var(--orange)'}
+                                  onMouseLeave={e=>e.currentTarget.style.color='rgba(245,242,235,.35)'}>
+                                  <Pencil size={13}/>
+                                </button>
+                                <button onClick={() => setVoidConfirm(s.id)} title="Void this sale"
+                                  style={{background:'none',border:'none',color:'rgba(248,113,113,.5)',cursor:'pointer',padding:4,display:'inline-flex',alignItems:'center'}}
+                                  onMouseEnter={e=>e.currentTarget.style.color='#f87171'}
+                                  onMouseLeave={e=>e.currentTarget.style.color='rgba(248,113,113,.5)'}>
+                                  <Ban size={13}/>
+                                </button>
+                              </>
                             )}
                           </td>
                         </tr>

@@ -34,6 +34,12 @@ function reportsRouter(db) {
     const opCosts  = db.queryOne(`SELECT ROUND(COALESCE(SUM(amount),0),2) AS total FROM operating_costs ${cw}`, cp);
     const writeoffs= db.queryOne(`SELECT ROUND(COALESCE(SUM(cost_impact),0),2) AS total FROM inventory_adjustments WHERE date BETWEEN ? AND ? AND type='Write-off'`, [date_from,date_to]);
     const opBreak  = db.query(`SELECT category, ROUND(SUM(amount),2) AS total FROM operating_costs ${cw} GROUP BY category ORDER BY total DESC`, cp);
+    const writeoffBreak = db.query(`
+      SELECT COALESCE(reason,'Other') AS reason, ROUND(SUM(cost_impact),2) AS total, SUM(-qty_change) AS units
+      FROM inventory_adjustments
+      WHERE date BETWEEN ? AND ? AND type='Write-off'
+      GROUP BY COALESCE(reason,'Other') ORDER BY total DESC
+    `, [date_from,date_to]);
 
     // Cost variance (Phase 7, Step 5) — shipment landed-cost variance vs
     // Products & Pricing's set cost, matched by costed_date (logged_date)
@@ -67,7 +73,7 @@ function reportsRouter(db) {
       revenue:sales.revenue, cogs:sales.cogs, gross_profit:sales.gross_profit,
       operating_costs:opCosts.total, writeoffs:writeoffs.total, cost_variance:costVariance.total, net_profit:net,
       units_sold:sales.units_sold, transactions:sales.transactions,
-      by_brand:byBrand, cost_breakdown:opBreak,
+      by_brand:byBrand, cost_breakdown:opBreak, writeoff_breakdown:writeoffBreak,
     });
   });
 

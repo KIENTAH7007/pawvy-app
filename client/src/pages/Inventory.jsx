@@ -320,7 +320,7 @@ function WriteoffModal({ open, onClose, onSaved }) {
             </Select>
             <Input type="number" min="1" value={line.qty} onChange={e=>updateLine(idx,'qty',e.target.value)} placeholder="0"/>
             <Select value={line.reason} onChange={e=>updateLine(idx,'reason',e.target.value)}>
-              {['Damaged','Expired','Lost','Other'].map(r=><option key={r} value={r}>{r}</option>)}
+              {['Damaged','Expired','Lost','Marketing','Event Sponsor','Other'].map(r=><option key={r} value={r}>{r}</option>)}
             </Select>
             <button onClick={()=>removeLine(idx)} disabled={lines.length===1}
               style={{background:'none',border:'none',color:'rgba(248,113,113,.6)',cursor:'pointer',padding:'8px 0',display:'flex',alignItems:'center'}}>

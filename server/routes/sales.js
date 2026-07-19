@@ -205,6 +205,39 @@ module.exports = function(db, inventoryRouter) {
     res.json(sale);
   });
 
+  // PATCH edit shipping/mailing/notes only — deliberately narrower than PUT
+  // above. Product, qty, price, and channel affect inventory levels and
+  // revenue/profit integrity, so changing those still goes through
+  // void + re-record. This covers the common case of correcting shipping
+  // charges, courier, mailing details, or notes after the fact without
+  // touching anything that could desync stock.
+  router.patch('/:id/details', (req, res) => {
+    const sale = db.queryOne('SELECT id FROM sales WHERE id = ?', [req.params.id]);
+    if (!sale) return res.status(404).json({ error: 'Sale not found' });
+    const { shipping_charged, shipping_cost, shipping_channel, mailing_name, mailing_address, mailing_phone, notes } = req.body;
+
+    db.run(`
+      UPDATE sales SET
+        shipping_charged=?, shipping_cost=?, shipping_channel=?,
+        mailing_name=?, mailing_address=?, mailing_phone=?, notes=?,
+        updated_at=CURRENT_TIMESTAMP
+      WHERE id=?
+    `, [
+      parseFloat(shipping_charged) || 0, parseFloat(shipping_cost) || 0, shipping_channel?.trim() || null,
+      mailing_name?.trim() || null, mailing_address?.trim() || null, mailing_phone?.trim() || null,
+      notes?.trim() || null, req.params.id,
+    ]);
+
+    const updated = db.queryOne(`
+      SELECT s.*, p.item_series, p.variation, b.name AS brand_name, b.color AS brand_color,
+        ${REVENUE_EXPR} AS revenue,
+        ${PROFIT_EXPR} AS profit
+      FROM sales s JOIN products p ON p.id=s.product_id JOIN brands b ON b.id=p.brand_id
+      WHERE s.id=?
+    `, [req.params.id]);
+    res.json(updated);
+  });
+
   // PATCH void a sale (soft delete with audit trail)
   router.patch('/:id/void', (req, res) => {
     const sale = db.queryOne('SELECT * FROM sales WHERE id = ?', [req.params.id]);
