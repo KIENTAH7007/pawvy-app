@@ -56,10 +56,17 @@ module.exports = function(db, inventoryRouter) {
   // returns straight away. No portal_orders row, no pending-approval step,
   // no notification — this is meant to feel instant at a live event.
   router.post('/checkout', (req, res) => {
-    const { items, shipping_charged, shipping_cost, notes, mailing_name, mailing_address, mailing_phone, shipping_channel } = req.body;
+    const { items, shipping_charged, shipping_cost, notes, mailing_name, mailing_address, mailing_phone, shipping_channel, customer_email, pdpa_consent, pdpa_consent_text } = req.body;
 
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'Cart is empty.' });
+    }
+
+    // If an email is being collected, PDPA consent must be given for it —
+    // defense-in-depth in case a future caller (e.g. the new website) skips
+    // the frontend checkbox validation. No email, no consent needed.
+    if (customer_email && customer_email.trim() && !pdpa_consent) {
+      return res.status(400).json({ error: 'PDPA consent is required to save a customer email.' });
     }
 
     // Same defense-in-depth stock validation as the Order Portal.
@@ -89,6 +96,8 @@ module.exports = function(db, inventoryRouter) {
     const shipCharged = parseFloat(shipping_charged) || 0;
     const shipCost = parseFloat(shipping_cost) || 0;
     const hasMailing = !!(mailing_name || mailing_address || mailing_phone);
+    const hasConsentedEmail = !!(customer_email && customer_email.trim() && pdpa_consent);
+    const consentTimestamp = hasConsentedEmail ? new Date().toISOString() : null;
     const saleIds = [];
 
     items.forEach((line, i) => {
@@ -107,8 +116,9 @@ module.exports = function(db, inventoryRouter) {
         INSERT INTO sales
           (date, product_id, partner_id, channel, market, qty, unit_cost, unit_price,
            platform_fee_pct, platform_fee_amt, shipping_charged, shipping_cost, notes,
-           mailing_name, mailing_address, mailing_phone, shipping_channel)
-        VALUES (?,?,?,?,?,?,?,?,0,0,?,?,?,?,?,?,?)
+           mailing_name, mailing_address, mailing_phone, shipping_channel,
+           customer_email, pdpa_consent, pdpa_consent_text, pdpa_consent_at)
+        VALUES (?,?,?,?,?,?,?,?,0,0,?,?,?,?,?,?,?,?,?,?,?)
       `, [
         today, line.product_id, null, 'Event Sale', 'SG', qty, unitCost, unitPrice,
         isFirst ? shipCharged : 0,
@@ -118,6 +128,10 @@ module.exports = function(db, inventoryRouter) {
         hasMailing ? (mailing_address || null) : null,
         hasMailing ? (mailing_phone || null) : null,
         shipping_channel?.trim() || null,
+        hasConsentedEmail ? customer_email.trim() : null,
+        hasConsentedEmail ? 1 : 0,
+        hasConsentedEmail ? (pdpa_consent_text || null) : null,
+        consentTimestamp,
       ]);
       saleIds.push(result.lastID);
 

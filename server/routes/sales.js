@@ -211,21 +211,25 @@ module.exports = function(db, inventoryRouter) {
   // void + re-record. This covers the common case of correcting shipping
   // charges, courier, mailing details, or notes after the fact without
   // touching anything that could desync stock.
+  // customer_email is editable here too (e.g. fixing a typo), but
+  // pdpa_consent / pdpa_consent_text are deliberately NOT — consent is an
+  // audit trail of what was actually agreed to at checkout and shouldn't be
+  // silently rewritable after the fact.
   router.patch('/:id/details', (req, res) => {
     const sale = db.queryOne('SELECT id FROM sales WHERE id = ?', [req.params.id]);
     if (!sale) return res.status(404).json({ error: 'Sale not found' });
-    const { shipping_charged, shipping_cost, shipping_channel, mailing_name, mailing_address, mailing_phone, notes } = req.body;
+    const { shipping_charged, shipping_cost, shipping_channel, mailing_name, mailing_address, mailing_phone, notes, customer_email } = req.body;
 
     db.run(`
       UPDATE sales SET
         shipping_charged=?, shipping_cost=?, shipping_channel=?,
-        mailing_name=?, mailing_address=?, mailing_phone=?, notes=?,
+        mailing_name=?, mailing_address=?, mailing_phone=?, notes=?, customer_email=?,
         updated_at=CURRENT_TIMESTAMP
       WHERE id=?
     `, [
       parseFloat(shipping_charged) || 0, parseFloat(shipping_cost) || 0, shipping_channel?.trim() || null,
       mailing_name?.trim() || null, mailing_address?.trim() || null, mailing_phone?.trim() || null,
-      notes?.trim() || null, req.params.id,
+      notes?.trim() || null, customer_email?.trim() || null, req.params.id,
     ]);
 
     const updated = db.queryOne(`

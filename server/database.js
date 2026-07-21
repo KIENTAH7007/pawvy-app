@@ -514,6 +514,17 @@ function createSchema() {
   // Ledger rather than a fixed list.
   try { db.run("ALTER TABLE sales ADD COLUMN shipping_channel TEXT"); } catch(e) {}
 
+  // POS System: customer email + PDPA consent, captured at checkout as the
+  // "first-layer" step of the customer database / BUTTONS rewards program.
+  // Denormalized onto the sales row like the other POS-collected fields above.
+  // pdpa_consent_text stores the EXACT wording shown to the customer at the
+  // time of consent (not just a boolean) — needed as an audit trail in case
+  // the wording changes later or consent is ever disputed.
+  try { db.run("ALTER TABLE sales ADD COLUMN customer_email TEXT"); } catch(e) {}
+  try { db.run("ALTER TABLE sales ADD COLUMN pdpa_consent INTEGER DEFAULT 0"); } catch(e) {}
+  try { db.run("ALTER TABLE sales ADD COLUMN pdpa_consent_text TEXT"); } catch(e) {}
+  try { db.run("ALTER TABLE sales ADD COLUMN pdpa_consent_at TEXT"); } catch(e) {}
+
   console.log('✅ Schema ready');
 }
 

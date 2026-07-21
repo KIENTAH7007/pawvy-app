@@ -71,6 +71,7 @@ export default function Sales() {
       mailing_name: s.mailing_name || '',
       mailing_address: s.mailing_address || '',
       mailing_phone: s.mailing_phone || '',
+      customer_email: s.customer_email || '',
       notes: s.notes || '',
     });
   }
@@ -171,13 +172,20 @@ export default function Sales() {
       )}
 
       {/* Mailing info modal — populated by the POS System when a sale needs
-          to be posted out rather than collected in person. */}
-      <Modal open={!!mailingInfoModal} title="MAILING DETAILS" onClose={() => setMailingInfoModal(null)} width={380}>
+          to be posted out rather than collected in person, or when a
+          customer email was collected for the rewards program. */}
+      <Modal open={!!mailingInfoModal} title="CUSTOMER & MAILING DETAILS" onClose={() => setMailingInfoModal(null)} width={380}>
         {mailingInfoModal && (
           <div style={{display:'flex',flexDirection:'column',gap:12}}>
             <div style={{fontSize:12,color:'var(--cream-30)'}}>
               {mailingInfoModal.item_series}{mailingInfoModal.variation ? ` · ${mailingInfoModal.variation}` : ''} — {fmt.date(mailingInfoModal.date)}
             </div>
+            <MailingRow label="Email" value={mailingInfoModal.customer_email} />
+            {mailingInfoModal.customer_email && (
+              <div style={{fontSize:10.5,color:mailingInfoModal.pdpa_consent ? '#7fc93e' : '#f87171'}}>
+                {mailingInfoModal.pdpa_consent ? '✓ PDPA consent given' : '⚠ No PDPA consent on record'}
+              </div>
+            )}
             <MailingRow label="Name" value={mailingInfoModal.mailing_name} />
             <MailingRow label="Address" value={mailingInfoModal.mailing_address} />
             <MailingRow label="Phone" value={mailingInfoModal.mailing_phone} />
@@ -198,8 +206,10 @@ export default function Sales() {
               {editModal.item_series}{editModal.variation ? ` · ${editModal.variation}` : ''} — {fmt.date(editModal.date)}
             </div>
             <div style={{fontSize:10.5,color:'var(--cream-30)',lineHeight:1.5}}>
-              Only shipping, mailing, and notes can be edited here — product, quantity,
+              Only shipping, mailing, email, and notes can be edited here — product, quantity,
               price, and channel affect stock levels, so those still need a void + re-record.
+              PDPA consent itself isn't editable here — it's kept as a record of what the
+              customer actually agreed to at checkout.
             </div>
             <div style={{display:'flex',gap:10}}>
               <Input label="Shipping Charged (SGD)" type="number" step="0.01"
@@ -209,6 +219,8 @@ export default function Sales() {
             </div>
             <Input label="Shipping Channel" value={editForm.shipping_channel}
               onChange={e=>setEditForm(f=>({...f,shipping_channel:e.target.value}))} placeholder="e.g. SPX, Self Collection" />
+            <Input label="Customer Email" value={editForm.customer_email}
+              onChange={e=>setEditForm(f=>({...f,customer_email:e.target.value}))} placeholder="customer@email.com" />
             <Input label="Recipient Name" value={editForm.mailing_name}
               onChange={e=>setEditForm(f=>({...f,mailing_name:e.target.value}))} />
             <Input label="Mailing Address" value={editForm.mailing_address}
@@ -258,8 +270,8 @@ export default function Sales() {
                             <span style={{maxWidth:130,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
                               {s.item_series}{s.variation ? ` · ${s.variation}` : ''}
                             </span>
-                            {(s.mailing_name || s.mailing_address || s.mailing_phone || s.shipping_channel) && (
-                              <button onClick={() => setMailingInfoModal(s)} title="View mailing details"
+                            {(s.mailing_name || s.mailing_address || s.mailing_phone || s.shipping_channel || s.customer_email) && (
+                              <button onClick={() => setMailingInfoModal(s)} title="View customer / mailing details"
                                 style={{flexShrink:0,background:'none',border:'none',color:'var(--orange)',cursor:'pointer',padding:0,display:'flex',alignItems:'center'}}>
                                 <Mail size={12} />
                               </button>

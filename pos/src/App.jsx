@@ -6,6 +6,12 @@ import { QR_CODE, PAYMENT } from './paymentInfo.js'
 import ProductCard from './ProductCard.jsx'
 import QtyStepper from './QtyStepper.jsx'
 
+// Exact wording shown to the customer for PDPA consent — stored verbatim on
+// the sales row (see server/database.js) so there's an audit trail of what
+// was actually agreed to. If this wording ever changes, old rows still show
+// what the customer saw at the time, not the current text.
+const PDPA_CONSENT_TEXT = 'I agree to Pawvy creating an account for me using the information above, and to receive account-related emails (including reward/credit updates) and occasional product announcements. See our Privacy Policy.';
+
 function useIsMobile() {
   const [mobile, setMobile] = useState(window.innerWidth < 768);
   useEffect(() => {
@@ -31,6 +37,8 @@ export default function App() {
   const [mailingName, setMailingName] = useState('');
   const [mailingAddress, setMailingAddress] = useState('');
   const [mailingPhone, setMailingPhone] = useState('');
+  const [customerEmail, setCustomerEmail] = useState('');
+  const [pdpaConsent, setPdpaConsent] = useState(false);
   const [shippingChannel, setShippingChannel] = useState('');
   const [shippingCost, setShippingCost] = useState('');
   const [discountMode, setDiscountMode] = useState('none'); // none | per_item | universal | manual_price
@@ -160,6 +168,10 @@ export default function App() {
 
   async function handleCheckout() {
     if (cartLines.length === 0) { setSubmitError('Cart is empty.'); return; }
+    if (customerEmail.trim() && !pdpaConsent) {
+      setSubmitError('Please tick the consent checkbox to save this customer\'s email.');
+      return;
+    }
     setSubmitting(true); setSubmitError('');
     try {
       await posApi.checkout({
@@ -185,6 +197,9 @@ export default function App() {
         mailing_address: mailingAddress.trim() || null,
         mailing_phone: mailingPhone.trim() || null,
         shipping_channel: shippingChannel.trim() || null,
+        customer_email: customerEmail.trim() || null,
+        pdpa_consent: pdpaConsent,
+        pdpa_consent_text: pdpaConsent ? PDPA_CONSENT_TEXT : null,
       });
       setView('success');
     } catch (e) {
@@ -197,6 +212,7 @@ export default function App() {
   function resetForNextSale() {
     setCart({}); setShipping(''); setNotes(''); setShippingCost('');
     setMailingName(''); setMailingAddress(''); setMailingPhone(''); setShippingChannel('');
+    setCustomerEmail(''); setPdpaConsent(false);
     setDiscountMode('none'); setItemDiscounts({}); setUniversalDiscountPct(''); setItemPrices({});
     setView('catalogue'); setSearch('');
   }
@@ -414,6 +430,38 @@ export default function App() {
                     style={textareaStyle}
                   />
                 </Field>
+              </div>
+
+              {/* Customer Details — optional, first-layer data collection for the
+                  Pawvy customer database / BUTTONS rewards program. Independent
+                  of Mailing Details below (a walk-in customer can still sign up).
+                  Email is only saved if the consent checkbox is ticked — enforced
+                  again server-side in server/routes/pos.js. */}
+              <div style={{ marginTop: 4 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--cream)', marginBottom: 3 }}>Customer Details (optional)</div>
+                <div style={{ fontSize: 11, color: 'rgba(245,242,235,.4)', marginBottom: 10, lineHeight: 1.4 }}>
+                  Collect an email to sign the customer up for Pawvy rewards.
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <Field label="Email">
+                    <input
+                      type="email"
+                      value={customerEmail}
+                      onChange={e => setCustomerEmail(e.target.value)}
+                      placeholder="customer@email.com"
+                      style={fieldInputStyle}
+                    />
+                  </Field>
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 11.5, color: 'rgba(245,242,235,.75)', lineHeight: 1.4, cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={pdpaConsent}
+                      onChange={e => setPdpaConsent(e.target.checked)}
+                      style={{ accentColor: 'var(--orange)', marginTop: 2, flexShrink: 0 }}
+                    />
+                    <span>{PDPA_CONSENT_TEXT}</span>
+                  </label>
+                </div>
               </div>
 
               {/* Mailing details — optional, only needed when an item is being posted
