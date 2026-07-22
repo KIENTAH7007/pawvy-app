@@ -10,7 +10,7 @@ import QtyStepper from './QtyStepper.jsx'
 // the sales row (see server/database.js) so there's an audit trail of what
 // was actually agreed to. If this wording ever changes, old rows still show
 // what the customer saw at the time, not the current text.
-const PDPA_CONSENT_TEXT = 'I agree to Pawvy creating an account for me using the information above, and to receive account-related emails (including reward/credit updates) and occasional product announcements. See our Privacy Policy.';
+const PDPA_CONSENT_TEXT = 'I agree to Pawvy creating an account for me on Pawvy.co using the information above, and to receive account-related emails (including reward/credit updates) and occasional product announcements. See our Privacy Policy.';
 
 function useIsMobile() {
   const [mobile, setMobile] = useState(window.innerWidth < 768);
@@ -432,17 +432,31 @@ export default function App() {
                 </Field>
               </div>
 
-              {/* Customer Details — optional, first-layer data collection for the
-                  Pawvy customer database / BUTTONS rewards program. Independent
-                  of Mailing Details below (a walk-in customer can still sign up).
-                  Email is only saved if the consent checkbox is ticked — enforced
-                  again server-side in server/routes/pos.js. */}
+              {/* Customer Details — merged mailing + rewards-signup capture into one
+                  compact section (Patch 95, reordered in Patch 96), matching the actual
+                  event-booth flow: staff key in name/address/contact/email while talking
+                  to the customer, ask about rewards signup, THEN key in shipping channel
+                  and cost last — those two aren't customer-facing/interesting to the
+                  customer, so they don't need to be part of the conversation with them.
+                  Every field here is optional; the customer can still get a normal
+                  in-person sale with nothing filled in. Email is only saved if the
+                  consent checkbox is ticked — enforced again server-side in
+                  server/routes/pos.js. */}
               <div style={{ marginTop: 4 }}>
                 <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--cream)', marginBottom: 3 }}>Customer Details (optional)</div>
                 <div style={{ fontSize: 11, color: 'rgba(245,242,235,.4)', marginBottom: 10, lineHeight: 1.4 }}>
-                  Collect an email to sign the customer up for Pawvy rewards.
+                  Only needed if this needs to be mailed, or the customer wants to sign up for Pawvy rewards.
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <Field label="Pawrent Name">
+                    <input value={mailingName} onChange={e => setMailingName(e.target.value)} placeholder="Full name" style={fieldInputStyle} />
+                  </Field>
+                  <Field label="Mailing Address">
+                    <textarea value={mailingAddress} onChange={e => setMailingAddress(e.target.value)} placeholder="Address for delivery" rows={3} style={textareaStyle} />
+                  </Field>
+                  <Field label="Contact Number">
+                    <input value={mailingPhone} onChange={e => setMailingPhone(e.target.value)} placeholder="For delivery coordination" style={fieldInputStyle} />
+                  </Field>
                   <Field label="Email">
                     <input
                       type="email"
@@ -461,26 +475,6 @@ export default function App() {
                     />
                     <span>{PDPA_CONSENT_TEXT}</span>
                   </label>
-                </div>
-              </div>
-
-              {/* Mailing details — optional, only needed when an item is being posted
-                  rather than collected in person. All three fields optional. */}
-              <div style={{ marginTop: 4 }}>
-                <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--cream)', marginBottom: 3 }}>Mailing Details (optional)</div>
-                <div style={{ fontSize: 11, color: 'rgba(245,242,235,.4)', marginBottom: 10, lineHeight: 1.4 }}>
-                  Only needed if this needs to be mailed rather than collected in person.
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  <Field label="Recipient Name">
-                    <input value={mailingName} onChange={e => setMailingName(e.target.value)} placeholder="Full name" style={fieldInputStyle} />
-                  </Field>
-                  <Field label="Mailing Address">
-                    <textarea value={mailingAddress} onChange={e => setMailingAddress(e.target.value)} placeholder="Address for delivery" rows={3} style={textareaStyle} />
-                  </Field>
-                  <Field label="Phone Number">
-                    <input value={mailingPhone} onChange={e => setMailingPhone(e.target.value)} placeholder="For delivery coordination" style={fieldInputStyle} />
-                  </Field>
                   <Field label="Shipping Channel">
                     <input
                       value={shippingChannel}
