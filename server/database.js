@@ -660,6 +660,14 @@ function createSchema() {
   try { db.run("ALTER TABLE products ADD COLUMN discount_start DATE"); } catch(e) {}
   try { db.run("ALTER TABLE products ADD COLUMN discount_end DATE"); } catch(e) {}
 
+  // Primary-pet flag — the birthday-month multiplier and the profile-
+  // completion 50B bonus are both keyed off one designated pet, agreed as
+  // simpler than requiring every registered pet to qualify. The current UI
+  // only ever creates one pet per customer (so it's always primary by
+  // default), but the flag exists now so multi-pet support later doesn't
+  // need another schema change.
+  try { db.run("ALTER TABLE customer_pets ADD COLUMN is_primary INTEGER NOT NULL DEFAULT 1"); } catch(e) {}
+
   console.log('✅ Schema ready');
 }
 

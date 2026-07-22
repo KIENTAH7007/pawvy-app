@@ -39,9 +39,11 @@ async function startServer() {
   // PIN gate — applies to every /api/* route EXCEPT /api/auth (handled
   // above), /api/health (Railway's healthcheck), /api/portal and /api/pos
   // (must stay reachable with no login — Order Portal and POS System
-  // customers never see or use a PIN).
+  // customers never see or use a PIN), and /api/customers (the future
+  // pawvy.co website's own visitors — a completely separate customer-facing
+  // auth system, not the internal staff PIN).
   app.use('/api', (req, res, next) => {
-    if (req.path.startsWith('/portal') || req.path.startsWith('/pos') || req.path === '/health') return next();
+    if (req.path.startsWith('/portal') || req.path.startsWith('/pos') || req.path.startsWith('/customers') || req.path === '/health') return next();
     return auth.requireAuth(req, res, next);
   });
 
@@ -61,6 +63,7 @@ async function startServer() {
   app.use('/api/orders',      require('./routes/orders')(db, inventoryRouter));
   app.use('/api/shipments',   require('./routes/shipments')(db, inventoryRouter));
   app.use('/api/restock',     require('./routes/restock')(db, inventoryRouter));
+  app.use('/api/customers',   require('./routes/customers')(db));
 
   // Order Portal (public-facing, separate build) — served under /order.
   // Registered BEFORE the internal app's catch-all below, so /order/* requests

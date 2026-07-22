@@ -1,4 +1,5 @@
 const { Router } = require('express');
+const { upsertCustomerFromSignup } = require('../lib/customers');
 
 // Pawvy POS System — a separate public portal (like the Order Portal) used
 // at physical events, so staff never need to open the internal app in front
@@ -98,6 +99,26 @@ module.exports = function(db, inventoryRouter) {
     const hasMailing = !!(mailing_name || mailing_address || mailing_phone);
     const hasConsentedEmail = !!(customer_email && customer_email.trim() && pdpa_consent);
     const consentTimestamp = hasConsentedEmail ? new Date().toISOString() : null;
+
+    // Turn a consented POS email into a real customer account (creates a
+    // new unverified one, or just refreshes contact details on a returning
+    // email — never re-issues the signup bonus twice). Runs once per
+    // checkout, not once per line item. Wrapped defensively: a bug here
+    // should never block a customer's in-person sale from completing —
+    // it's logged loudly so it doesn't fail silently, but checkout proceeds
+    // either way. The sales row itself (below) is still the source of
+    // truth for what was actually sold either way.
+    if (hasConsentedEmail) {
+      try {
+        upsertCustomerFromSignup(db, {
+          email: customer_email, name: mailing_name, phone: mailing_phone, address: mailing_address,
+          pdpa_consent_text, source: 'event',
+        });
+      } catch (err) {
+        console.error('⚠️ Failed to create/update customer account from POS checkout (sale still proceeding):', err);
+      }
+    }
+
     const saleIds = [];
 
     items.forEach((line, i) => {
