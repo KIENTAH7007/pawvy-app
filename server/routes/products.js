@@ -1,6 +1,27 @@
 const { Router } = require('express');
 const archiver = require('archiver');
 
+// Computes whether a product's discount is active *today* and what the
+// resulting effective price is. discount_pct/start/end are plain columns
+// (Patch 96) — this is the one place that turns them into something a
+// caller (internal reports, or the future website) can use directly
+// without re-deriving the date-window logic itself. An open-ended
+// discount (no end date) is allowed by leaving discount_end null.
+function withEffectivePrice(product) {
+  const today = new Date().toISOString().slice(0, 10);
+  const hasDiscount = product.discount_pct > 0
+    && (!product.discount_start || product.discount_start <= today)
+    && (!product.discount_end || product.discount_end >= today);
+
+  return {
+    ...product,
+    is_discount_active: hasDiscount,
+    effective_price_rrp_sg: hasDiscount
+      ? Math.round(product.price_rrp_sg * (1 - product.discount_pct / 100) * 100) / 100
+      : product.price_rrp_sg,
+  };
+}
+
 module.exports = function(db) {
   const router = Router();
 
@@ -23,7 +44,7 @@ module.exports = function(db) {
     }
 
     sql += ' ORDER BY b.name, p.item_series, p.variation';
-    res.json(db.query(sql, params));
+    res.json(db.query(sql, params).map(withEffectivePrice));
   });
 
   // ── Export all product images as a ZIP ────────────────────────────
@@ -77,7 +98,7 @@ module.exports = function(db) {
       WHERE p.id = ?
     `, [req.params.id]);
     if (!product) return res.status(404).json({ error: 'Product not found' });
-    res.json(product);
+    res.json(withEffectivePrice(product));
   });
 
   // POST create product
@@ -153,6 +174,41 @@ module.exports = function(db) {
 
     const product = db.queryOne('SELECT p.*, b.name AS brand_name, b.color AS brand_color FROM products p JOIN brands b ON b.id = p.brand_id WHERE p.id = ?', [req.params.id]);
     res.json(product);
+  });
+
+  // PATCH /:id/discount — scoped discount management, deliberately separate
+  // from the full PUT above (same reasoning as sales.js's /:id/details
+  // endpoint: a narrow, purpose-built endpoint for one specific thing is
+  // safer than routing every discount change through the full product-edit
+  // form, and lets a future campaign/brand-launch admin UI manage discounts
+  // without needing every other product field). Powers both campaign
+  // discounts and brand-launch discounts described in the BUTTONS spec —
+  // the website reads discount_pct/is_discount_active/effective_price_rrp_sg
+  // (see withEffectivePrice above) rather than storing its own pricing.
+  router.patch('/:id/discount', (req, res) => {
+    const product = db.queryOne('SELECT id, price_rrp_sg FROM products WHERE id = ?', [req.params.id]);
+    if (!product) return res.status(404).json({ error: 'Product not found.' });
+
+    const { discount_pct, discount_start, discount_end } = req.body;
+    const pct = discount_pct === undefined || discount_pct === null ? 0 : Number(discount_pct);
+
+    if (Number.isNaN(pct) || pct < 0 || pct > 100) {
+      return res.status(400).json({ error: 'discount_pct must be a number between 0 and 100.' });
+    }
+    if (discount_start && discount_end && discount_end < discount_start) {
+      return res.status(400).json({ error: 'discount_end must be on or after discount_start.' });
+    }
+
+    db.run(`
+      UPDATE products SET discount_pct = ?, discount_start = ?, discount_end = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `, [pct, discount_start || null, discount_end || null, req.params.id]);
+
+    const updated = db.queryOne(`
+      SELECT p.*, b.name AS brand_name, b.color AS brand_color
+      FROM products p JOIN brands b ON b.id = p.brand_id WHERE p.id = ?
+    `, [req.params.id]);
+    res.json(withEffectivePrice(updated));
   });
 
   // DELETE (soft delete — set inactive)
