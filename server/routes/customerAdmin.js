@@ -2,6 +2,7 @@ const { Router } = require('express');
 const { generateToken, customerButtonsBalance, VERIFY_TOKEN_TTL_MS } = require('../lib/customers');
 const { sendCustomerEmail, sendTestEmail } = require('../utils/notify');
 const { baseUrl, buildVerifyEmail } = require('../lib/customerEmails');
+const { awardStamp, getStampCount } = require('../lib/stampCard');
 
 // Internal, staff-only view into the customer database — mounted at
 // /api/customer-admin (deliberately NOT under /api/customers, so it stays
@@ -26,7 +27,11 @@ module.exports = function(db) {
              referred_by_customer_id, signup_source, created_at
       FROM customers ORDER BY created_at DESC
     `);
-    const withBalances = rows.map(c => ({ ...c, buttons_balance: customerButtonsBalance(db, c.id) }));
+    const withBalances = rows.map(c => ({
+      ...c,
+      buttons_balance: customerButtonsBalance(db, c.id),
+      stamp_count: getStampCount(db, c.id),
+    }));
     res.json({ customers: withBalances });
   });
 
@@ -94,6 +99,28 @@ module.exports = function(db) {
         ok: false, sent: false, elapsed_ms: Date.now() - start,
         error: err.message, code: err.code || null, command: err.command || null,
       });
+    }
+  });
+
+  // POST /api/customer-admin/customers/:id/stamp — staff manually awards a
+  // stamp after checking the customer's tagged social post (see spec
+  // Section 5.5 — verification is manual by design, not automated).
+  // Enforces the 7-stamps/week cap and auto-credits 100B every 5th stamp.
+  // Body: { approved_by?: "staff name", note?: "link to the post" }
+  router.post('/customers/:id/stamp', (req, res) => {
+    const customer = db.queryOne('SELECT id FROM customers WHERE id = ?', [req.params.id]);
+    if (!customer) return res.status(404).json({ error: 'Customer not found.' });
+
+    try {
+      const result = awardStamp(db, {
+        customerId: customer.id,
+        approvedBy: req.body.approved_by || null,
+        note: req.body.note || null,
+      });
+      res.json({ ok: true, ...result });
+    } catch (err) {
+      if (err.code === 'WEEKLY_CAP_REACHED') return res.status(400).json({ error: err.message });
+      throw err;
     }
   });
 
