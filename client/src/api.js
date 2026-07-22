@@ -121,6 +121,7 @@ export const customerAdminApi = {
   getAll: () => api.get('/customer-admin/customers'),
   get: (id) => api.get(`/customer-admin/customers/${id}`),
   resendVerify: (id) => api.post(`/customer-admin/customers/${id}/resend-verify`, {}),
+  awardStamp: (id, body) => api.post(`/customer-admin/customers/${id}/stamp`, body),
 };
 export const restockApi = {
   getAll:  (q) => api.get(`/restock${qs(q)}`),

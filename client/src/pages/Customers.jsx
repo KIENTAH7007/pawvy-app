@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { customerAdminApi } from '../api';
-import { Page, Card, Badge, Btn, Table, Modal } from '../components/ui';
+import { Page, Card, Badge, Btn, Table, Modal, Input } from '../components/ui';
 
 // Internal, staff-only view of the customer database (behind the normal
 // staff PIN, unlike everything under /api/customers which is meant for
@@ -12,7 +12,9 @@ export default function Customers() {
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading]     = useState(true);
   const [linkModal, setLinkModal] = useState(null); // { customer, token, expires_at }
+  const [stampModal, setStampModal] = useState(null); // { customer, note, result }
   const [busyId, setBusyId]       = useState(null);
+  const [stampBusy, setStampBusy] = useState(false);
   const [copied, setCopied]       = useState(false);
 
   const load = () => customerAdminApi.getAll().then(d => setCustomers(d.customers)).finally(() => setLoading(false));
@@ -36,6 +38,21 @@ export default function Customers() {
     setCopied(true);
   }
 
+  async function submitStamp() {
+    setStampBusy(true);
+    try {
+      const result = await customerAdminApi.awardStamp(stampModal.customer.id, {
+        approved_by: 'Staff', note: stampModal.note || null,
+      });
+      setStampModal(m => ({ ...m, result, error: null }));
+      load(); // refresh so the Stamps column and BUTTONS balance update immediately
+    } catch (err) {
+      setStampModal(m => ({ ...m, error: err?.message || 'Could not award stamp — weekly cap may be reached.' }));
+    } finally {
+      setStampBusy(false);
+    }
+  }
+
   const cols = [
     { key: 'name', label: 'Pawrent' },
     { key: 'email', label: 'Email' },
@@ -45,6 +62,17 @@ export default function Customers() {
       render: v => <Badge color={v === 'verified' ? '#7fc93e' : '#f59e0b'}>{v === 'verified' ? 'Verified' : 'Unverified'}</Badge>,
     },
     { key: 'buttons_balance', label: 'BUTTONS', align: 'right', render: v => `${v}B` },
+    {
+      key: 'stamp_count', label: 'Stamps', align: 'right',
+      render: (v, row) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
+          <span>{v || 0}</span>
+          <Btn size="sm" variant="secondary" onClick={(e) => { e.stopPropagation(); setStampModal({ customer: row, note: '', result: null, error: null }); }}>
+            + Stamp
+          </Btn>
+        </div>
+      ),
+    },
     { key: 'referral_code', label: 'Referral Code' },
     { key: 'signup_source', label: 'Source', render: v => v || '—' },
     {
@@ -101,6 +129,47 @@ export default function Customers() {
               before running — this modal can't know it automatically. Running it marks this account
               verified and issues a session, same as clicking a real emailed link would.
             </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Digital stamp card (Patch 105) — staff manually verify a customer's
+          tagged social post, then award a stamp here. Every 5 stamps auto-
+          credits 100B; capped at 7 stamps/week per customer (rolling
+          window) — the backend enforces both, this just surfaces the
+          result/error. */}
+      <Modal open={!!stampModal} title="AWARD STAMP" onClose={() => setStampModal(null)} width={420}>
+        {stampModal && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ fontSize: 12, color: 'var(--cream-30)' }}>
+              For {stampModal.customer.name || stampModal.customer.email} — currently{' '}
+              <strong style={{ color: 'var(--cream)' }}>{stampModal.customer.stamp_count || 0} stamps</strong>.
+              Only award after checking their tagged post yourself.
+            </div>
+
+            {stampModal.result ? (
+              <div style={{ background: 'rgba(127,201,62,.12)', border: '1px solid rgba(127,201,62,.3)', borderRadius: 7, padding: '10px 12px', fontSize: 12.5, color: '#7fc93e', lineHeight: 1.6 }}>
+                ✓ Stamp awarded — {stampModal.result.totalStamps} total, {stampModal.result.stampsUntilNextReward} until next reward.
+                {stampModal.result.rewardsCredited > 0 && (
+                  <div style={{ marginTop: 4, fontWeight: 700 }}>🎉 100 BUTTONS credited for hitting 5 stamps!</div>
+                )}
+              </div>
+            ) : (
+              <>
+                <Input
+                  label="Note (optional)"
+                  value={stampModal.note}
+                  onChange={e => setStampModal(m => ({ ...m, note: e.target.value }))}
+                  placeholder="e.g. link to the IG story"
+                />
+                {stampModal.error && (
+                  <div style={{ background: 'rgba(248,113,113,.12)', border: '1px solid rgba(248,113,113,.3)', borderRadius: 7, padding: '10px 12px', fontSize: 12, color: '#f87171' }}>
+                    {stampModal.error}
+                  </div>
+                )}
+                <Btn onClick={submitStamp} disabled={stampBusy}>{stampBusy ? 'Awarding…' : 'Award Stamp'}</Btn>
+              </>
+            )}
           </div>
         )}
       </Modal>
