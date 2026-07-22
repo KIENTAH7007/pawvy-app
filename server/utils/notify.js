@@ -34,6 +34,16 @@ async function notifyTelegram(text) {
 // ── Email (Gmail SMTP via app password) ──────────────────────────
 // Needs GMAIL_USER, GMAIL_APP_PASSWORD, and NOTIFY_EMAIL_TO
 // (comma-separated recipients) set as Railway environment variables.
+//
+// Uses explicit host/port/STARTTLS config rather than the `service: 'gmail'`
+// shorthand. That shorthand connects via port 465 (implicit SSL) — which
+// timed out entirely in production (confirmed: even the existing daily
+// backup email, unrelated to anything added in Patch 99, has never
+// actually arrived either). Port 587 with STARTTLS is the more commonly
+// allowed outbound path on containerized hosts, so switching to it is the
+// fix being tried here. Timeouts are also shortened from nodemailer's
+// defaults (which run to several minutes) to ~15s, so a real network block
+// fails fast and visibly in the logs instead of hanging silently.
 let cachedTransport = null;
 function getTransport() {
   if (cachedTransport) return cachedTransport;
@@ -41,8 +51,14 @@ function getTransport() {
   const pass = process.env.GMAIL_APP_PASSWORD;
   if (!user || !pass) return null;
   cachedTransport = nodemailer.createTransport({
-    service: 'gmail',
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false,       // STARTTLS, not implicit SSL — see note above
+    requireTLS: true,
     auth: { user, pass },
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 15000,
   });
   return cachedTransport;
 }
@@ -65,7 +81,7 @@ async function notifyEmail(subject, text, html) {
       html,
     });
   } catch (err) {
-    console.error('⚠️  Email send error:', err.message);
+    console.error(`⚠️  Email send error [${err.code || 'unknown'}]:`, err.message);
   }
 }
 
@@ -92,7 +108,7 @@ async function notifyBackupEmail(subject, text, attachmentPath, attachmentName) 
     });
     return true;
   } catch (err) {
-    console.error('⚠️  Backup email send error:', err.message);
+    console.error(`⚠️  Backup email send error [${err.code || 'unknown'}]:`, err.message);
     return false;
   }
 }
@@ -155,9 +171,30 @@ async function sendCustomerEmail(to, subject, text, html) {
     });
     return true;
   } catch (err) {
-    console.error(`⚠️  Customer email send error (to ${to}):`, err.message);
+    console.error(`⚠️  Customer email send error (to ${to}) [${err.code || 'unknown'}]:`, err.message);
     return false;
   }
 }
 
-module.exports = { notifyTelegram, notifyEmail, notifyBackupEmail, notifyNewPortalOrder, sendCustomerEmail };
+// ── Debug helper: test-send that surfaces the real error ───────────
+// Unlike sendCustomerEmail above (which intentionally swallows errors so a
+// Gmail outage never breaks a real signup), this lets the error propagate
+// to the caller — used only by the staff-only test-email admin endpoint,
+// for fast connectivity debugging without digging through Railway logs.
+async function sendTestEmail(to) {
+  const transport = getTransport();
+  if (!transport) {
+    const err = new Error('GMAIL_USER / GMAIL_APP_PASSWORD not set on this deployment.');
+    err.code = 'NOT_CONFIGURED';
+    throw err;
+  }
+  return transport.sendMail({
+    from: `"Pawvy" <${process.env.GMAIL_USER}>`,
+    to,
+    subject: 'Pawvy test email',
+    text: 'If you got this, the Gmail connection is working.',
+    html: '<p>If you got this, the Gmail connection is working.</p>',
+  });
+}
+
+module.exports = { notifyTelegram, notifyEmail, notifyBackupEmail, notifyNewPortalOrder, sendCustomerEmail, sendTestEmail };

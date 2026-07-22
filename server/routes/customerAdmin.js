@@ -1,6 +1,6 @@
 const { Router } = require('express');
 const { generateToken, customerButtonsBalance, VERIFY_TOKEN_TTL_MS } = require('../lib/customers');
-const { sendCustomerEmail } = require('../utils/notify');
+const { sendCustomerEmail, sendTestEmail } = require('../utils/notify');
 const { baseUrl, buildVerifyEmail } = require('../lib/customerEmails');
 
 // Internal, staff-only view into the customer database — mounted at
@@ -74,6 +74,27 @@ module.exports = function(db) {
     }
 
     res.json({ ok: true, token, expires_at: expiresAt, email_sent: sent });
+  });
+
+  // POST /api/customer-admin/test-email — sends a bare test email and
+  // returns the result, including the raw Gmail error if it fails,
+  // directly in the response. Exists purely for debugging the connection
+  // quickly — faster than triggering a real resend and digging through
+  // Railway logs each time. Body: { to: "someone@example.com" }
+  router.post('/test-email', async (req, res) => {
+    const { to } = req.body;
+    if (!to || !to.trim()) return res.status(400).json({ error: 'to is required.' });
+
+    const start = Date.now();
+    try {
+      await sendTestEmail(to.trim());
+      res.json({ ok: true, sent: true, elapsed_ms: Date.now() - start });
+    } catch (err) {
+      res.status(500).json({
+        ok: false, sent: false, elapsed_ms: Date.now() - start,
+        error: err.message, code: err.code || null, command: err.command || null,
+      });
+    }
   });
 
   return router;
