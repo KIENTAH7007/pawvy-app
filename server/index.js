@@ -8,6 +8,7 @@ const { init, backupNow, getDbPath } = require('./database');
 const { runDailyDigest } = require('./jobs/dailyDigest');
 const { runDailyBackup } = require('./jobs/backup');
 const { runAutoRestock } = require('./jobs/autoRestock');
+const { runButtonsHoldCheck } = require('./jobs/buttonsHold');
 
 // Railway's container has no outbound IPv6 route — confirmed via a live
 // ENETUNREACH error connecting to smtp.gmail.com (Google's mail servers
@@ -74,6 +75,7 @@ async function startServer() {
   app.use('/api/restock',     require('./routes/restock')(db, inventoryRouter));
   app.use('/api/customers',   require('./routes/customers')(db));
   app.use('/api/customer-admin', require('./routes/customerAdmin')(db));
+  app.use('/api/campaigns',   require('./routes/campaigns')(db));
 
   // Order Portal (public-facing, separate build) — served under /order.
   // Registered BEFORE the internal app's catch-all below, so /order/* requests
@@ -137,6 +139,11 @@ async function startServer() {
   cron.schedule('0 8 * * *', () => {
     console.log('⏰ Running auto-restock check…');
     runAutoRestock(db).catch(err => console.error('⚠️  Auto-restock failed:', err.message));
+  }, { timezone: 'Asia/Singapore' });
+
+  cron.schedule('0 4 * * *', () => {
+    console.log('⏰ Running BUTTONS hold check…');
+    runButtonsHoldCheck(db).catch(err => console.error('⚠️  BUTTONS hold check failed:', err.message));
   }, { timezone: 'Asia/Singapore' });
 }
 
