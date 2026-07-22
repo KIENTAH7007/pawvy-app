@@ -4,7 +4,7 @@ import {
   LayoutDashboard, PlusCircle, Package, Store, Tag,
   FileText, Users, Receipt, Settings, TrendingUp, ClipboardList,
   ShoppingBag, Menu, X, Inbox, Truck, Coins, FolderOpen, Scale, ListChecks,
-  Calculator, LogOut
+  Calculator, LogOut, UserCircle
 } from 'lucide-react';
 import { ordersApi, authApi } from './api';
 
@@ -26,6 +26,7 @@ import Shipments      from './pages/Shipments';
 import CostReference  from './pages/CostReference';
 import DocumentLibrary from './pages/DocumentLibrary';
 import VarianceLedger from './pages/VarianceLedger';
+import Customers      from './pages/Customers';
 
 import { PAWVY_LOGO_WHITE } from './pawvyLogo.js';
 
@@ -55,6 +56,9 @@ const NAV = [
   ]},
   { section: 'Documents',   items: [
     { path: '/invoices',     label: 'Invoices & Docs', icon: FileText },
+  ]},
+  { section: 'Customers',   items: [
+    { path: '/customers',    label: 'Customers',       icon: UserCircle },
   ]},
   { section: 'Business',    items: [
     { path: '/partners',     label: 'Partners',        icon: Users },
@@ -267,6 +271,7 @@ export default function App() {
             <Route path="/cost-reference" element={<CostReference />} />
             <Route path="/documents"    element={<DocumentLibrary />} />
             <Route path="/partners"      element={<Partners />} />
+            <Route path="/customers"     element={<Customers />} />
             <Route path="/costs"         element={<Costs />} />
             <Route path="/reports"       element={<Reports />} />
           </Routes>
