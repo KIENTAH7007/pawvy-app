@@ -132,4 +132,32 @@ function notifyNewPortalOrder({ orderId, companyName, notes, lines }) {
   ]).catch(err => console.error('⚠️  notifyNewPortalOrder error:', err.message));
 }
 
-module.exports = { notifyTelegram, notifyEmail, notifyBackupEmail, notifyNewPortalOrder };
+// ── Customer-facing email (magic links) ────────────────────────────
+// Reuses the same Gmail transport/credentials as the internal notify
+// functions above, but sends to a customer-supplied address rather than a
+// fixed NOTIFY_EMAIL_TO/BACKUP_EMAIL_TO recipient. Kept as its own function
+// (not a generalized version of notifyEmail) so the "from" name is
+// customer-facing ("Pawvy") rather than internal ("Pawvy Order Alerts"),
+// and so a future swap to a dedicated transactional provider (Resend/Brevo/
+// SES) — more appropriate at real customer-email volume than a personal
+// Gmail account — only has this one call site to change, not every
+// internal notification too.
+async function sendCustomerEmail(to, subject, text, html) {
+  const transport = getTransport();
+  if (!transport) {
+    console.log(`ℹ️  Customer email skipped (GMAIL_USER/GMAIL_APP_PASSWORD not set) — would have sent "${subject}" to ${to}`);
+    return false;
+  }
+  try {
+    await transport.sendMail({
+      from: `"Pawvy" <${process.env.GMAIL_USER}>`,
+      to, subject, text, html,
+    });
+    return true;
+  } catch (err) {
+    console.error(`⚠️  Customer email send error (to ${to}):`, err.message);
+    return false;
+  }
+}
+
+module.exports = { notifyTelegram, notifyEmail, notifyBackupEmail, notifyNewPortalOrder, sendCustomerEmail };

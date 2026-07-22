@@ -1,8 +1,10 @@
 const { Router } = require('express');
 const {
-  generateToken, upsertCustomerFromSignup, customerButtonsBalance,
-  LOGIN_TOKEN_TTL_MS, SESSION_TOKEN_TTL_MS,
+  generateToken, upsertCustomerFromSignup, customerButtonsBalance, creditButtons,
+  SIGNUP_BONUS_B, LOGIN_TOKEN_TTL_MS, SESSION_TOKEN_TTL_MS,
 } = require('../lib/customers');
+const { sendCustomerEmail } = require('../utils/notify');
+const { baseUrl, htmlPage, buildVerifyEmail, buildLoginEmail } = require('../lib/customerEmails');
 
 // Customer-facing account endpoints for pawvy.co. Mounted publicly —
 // excluded from the internal staff PIN gate in server/index.js, same as
@@ -14,6 +16,20 @@ const {
 //   'verify'  — completes a brand-new signup (event or self-signup)
 //   'login'   — a returning customer's magic login link
 //   'session' — the long-lived bearer token issued after either succeeds
+//
+// Email delivery: reuses the Gmail SMTP transport already set up for
+// internal notifications (server/utils/notify.js) — see sendCustomerEmail
+// there. If GMAIL_USER/GMAIL_APP_PASSWORD aren't set on Railway, sending
+// silently no-ops and logs instead of failing signup — an account can
+// still be created and manually verified via the Customers admin page
+// (Patch 98) either way.
+//
+// Until the real pawvy.co website exists, the emailed link points at this
+// same backend's own GET /verify-link and /login-link routes below, which
+// render a small standalone confirmation page rather than trying to hand
+// off to a frontend that isn't built yet. Once the website exists, the
+// email template's URL should be updated to point there instead (noted
+// again at the top of buildVerifyEmail/buildLoginEmail below).
 module.exports = function(db) {
   const router = Router();
 
@@ -33,10 +49,63 @@ module.exports = function(db) {
     return token;
   }
 
+  function baseUrl(req) {
+    // Always https — Railway's public URLs always are, and reading the
+    // Host header directly avoids depending on Express's `trust proxy`
+    // setting (which isn't configured, and req.protocol would otherwise
+    // incorrectly report 'http' behind Railway's proxy).
+    return `https://${req.get('host')}`;
+  }
+
+  function htmlPage({ title, heading, body, ok }) {
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body{font-family:-apple-system,'Segoe UI',sans-serif;background:#12151f;color:#f5f2eb;
+    display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:24px;}
+  .card{max-width:420px;text-align:center;background:#1a1e2b;border:1px solid #2a2f40;
+    border-radius:14px;padding:36px 28px;}
+  h1{font-size:22px;margin:0 0 12px;color:${ok ? '#7fc93e' : '#f87171'};}
+  p{font-size:14px;line-height:1.6;color:rgba(245,242,235,.75);margin:0;}
+</style></head>
+<body><div class="card"><h1>${heading}</h1><p>${body}</p></div></body></html>`;
+  }
+
+  // ── Shared verification logic (used by both the JSON POST endpoints,
+  // for a future website, and the GET landing pages below, for direct
+  // email link clicks before that website exists) ──────────────────────
+  function completeToken(token, purpose) {
+    const record = db.queryOne(`
+      SELECT * FROM auth_tokens
+      WHERE token = ? AND purpose = ? AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP
+    `, [token, purpose]);
+    if (!record) return { ok: false, error: 'This link is invalid or has expired. Please request a new one.' };
+
+    db.run('UPDATE auth_tokens SET used_at = CURRENT_TIMESTAMP WHERE id = ?', [record.id]);
+
+    const customerBefore = db.queryOne('SELECT * FROM customers WHERE id = ?', [record.customer_id]);
+    const wasUnverified = customerBefore?.account_status !== 'verified';
+    db.run(`
+      UPDATE customers SET account_status = 'verified', updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND account_status != 'verified'
+    `, [record.customer_id]);
+
+    // 150B signup bonus is granted on first successful verification, not
+    // at signup — see the note in upsertCustomerFromSignup() for why.
+    // Guarded by wasUnverified so re-verifying an already-verified account
+    // (e.g. a staff "New login link" click) never re-grants it.
+    if (wasUnverified) {
+      creditButtons(db, { customer_id: record.customer_id, amount: SIGNUP_BONUS_B, source: 'signup', status: 'credited' });
+    }
+
+    const customer = db.queryOne('SELECT * FROM customers WHERE id = ?', [record.customer_id]);
+    return { ok: true, customer, session_token: issueSession(customer.id), wasUnverified };
+  }
+
   // POST /api/customers/signup
   // Called either directly by the future website (self-signup) or
   // server-side from POS checkout when a customer opts in with an email.
-  router.post('/signup', (req, res) => {
+  router.post('/signup', async (req, res) => {
     const { email, name, phone, address, pdpa_consent, pdpa_consent_text, source, referral_code } = req.body;
     if (!email || !email.trim()) return res.status(400).json({ error: 'Email is required.' });
     if (!pdpa_consent) return res.status(400).json({ error: 'PDPA consent is required to create an account.' });
@@ -52,85 +121,95 @@ module.exports = function(db) {
       });
     }
 
-    // TEMPORARY — real email delivery isn't built yet (pending the EDM
-    // service decision noted in the website planning doc). Returning the
-    // verify token directly so signup→verify→session can be tested
-    // end-to-end before that's wired up.
-    // ⚠️ REMOVE verify_token_DEV_ONLY once real email sending exists —
-    // shipping this as-is would let anyone self-verify any email address.
-    res.status(201).json({
+    const customer = db.queryOne('SELECT * FROM customers WHERE id = ?', [result.customer_id]);
+    const { subject, text, html } = buildVerifyEmail(baseUrl(req), customer, result.verify_token);
+    const sent = await sendCustomerEmail(email.trim(), subject, text, html);
+
+    const response = {
       ok: true, isNew: true, customer_id: result.customer_id,
-      account_status: 'unverified', referral_code: result.referral_code,
-      verify_token_DEV_ONLY: result.verify_token,
-    });
+      account_status: 'unverified', referral_code: result.referral_code, email_sent: sent,
+    };
+    // Fallback only when email genuinely couldn't be sent (no Gmail creds
+    // configured) — never expose the token alongside a real sent email.
+    if (!sent) response.verify_token_DEV_ONLY = result.verify_token;
+    res.status(201).json(response);
   });
 
-  // POST /api/customers/verify — completes signup via the magic link.
+  // POST /api/customers/verify — completes signup via the magic link
+  // (JSON endpoint, for a future website's own verify page to call).
   router.post('/verify', (req, res) => {
     const { token } = req.body;
     if (!token) return res.status(400).json({ error: 'Missing token.' });
+    const result = completeToken(token, 'verify');
+    if (!result.ok) return res.status(400).json({ error: result.error });
+    res.json({ ok: true, session_token: result.session_token, customer: customerPublicView(result.customer) });
+  });
 
-    const record = db.queryOne(`
-      SELECT * FROM auth_tokens
-      WHERE token = ? AND purpose = 'verify' AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP
-    `, [token]);
-    if (!record) return res.status(400).json({ error: 'This link is invalid or has expired. Please request a new one.' });
-
-    db.run('UPDATE auth_tokens SET used_at = CURRENT_TIMESTAMP WHERE id = ?', [record.id]);
-    db.run("UPDATE customers SET account_status = 'verified', updated_at = CURRENT_TIMESTAMP WHERE id = ?", [record.customer_id]);
-
-    const customer = db.queryOne('SELECT * FROM customers WHERE id = ?', [record.customer_id]);
-    res.json({ ok: true, session_token: issueSession(customer.id), customer: customerPublicView(customer) });
+  // GET /api/customers/verify-link — the actual link clicked from the
+  // emailed message. Renders a standalone confirmation page directly,
+  // since there's no website yet to hand off to.
+  router.get('/verify-link', (req, res) => {
+    const result = completeToken(req.query.token, 'verify');
+    if (!result.ok) {
+      return res.status(400).send(htmlPage({ title: 'Pawvy — Link invalid', heading: 'Link invalid or expired', body: result.error, ok: false }));
+    }
+    const balance = customerButtonsBalance(db, result.customer.id);
+    res.send(htmlPage({
+      title: 'Pawvy — Account verified',
+      heading: "You're verified! 🐾",
+      body: `Welcome to Pawvy, ${result.customer.name || ''}. Your account is active with <strong>${balance} BUTTONS</strong> ready to use once pawvy.co launches.`,
+      ok: true,
+    }));
   });
 
   // POST /api/customers/login — request a login link.
   // Always returns the same generic message regardless of whether the
   // email is registered, so this can't be used to probe which emails have
   // accounts.
-  router.post('/login', (req, res) => {
+  router.post('/login', async (req, res) => {
     const { email } = req.body;
     if (!email || !email.trim()) return res.status(400).json({ error: 'Email is required.' });
 
     const customer = db.queryOne('SELECT * FROM customers WHERE lower(email) = ?', [email.trim().toLowerCase()]);
     const genericResponse = { ok: true, message: 'If this email is registered, a login link has been sent.' };
-
     if (!customer) return res.json(genericResponse);
 
     const token = generateToken();
     db.run(`INSERT INTO auth_tokens (customer_id, token, purpose, expires_at) VALUES (?,?,'login',?)`,
       [customer.id, token, new Date(Date.now() + LOGIN_TOKEN_TTL_MS).toISOString()]);
 
-    // TEMPORARY — same email-service dependency as /signup above.
-    console.log(`[DEV] Login link for ${customer.email}: token=${token}`);
-    if (process.env.NODE_ENV !== 'production') {
+    const { subject, text, html } = buildLoginEmail(baseUrl(req), customer, token);
+    const sent = await sendCustomerEmail(customer.email, subject, text, html);
+
+    if (!sent && process.env.NODE_ENV !== 'production') {
       return res.json({ ...genericResponse, login_token_DEV_ONLY: token });
     }
     res.json(genericResponse);
   });
 
-  // POST /api/customers/login/verify — completes a login via the magic link.
+  // POST /api/customers/login/verify — completes a login via the magic
+  // link (JSON endpoint, for a future website to call).
   router.post('/login/verify', (req, res) => {
     const { token } = req.body;
     if (!token) return res.status(400).json({ error: 'Missing token.' });
+    const result = completeToken(token, 'login');
+    if (!result.ok) return res.status(400).json({ error: result.error });
+    res.json({ ok: true, session_token: result.session_token, customer: customerPublicView(result.customer) });
+  });
 
-    const record = db.queryOne(`
-      SELECT * FROM auth_tokens
-      WHERE token = ? AND purpose = 'login' AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP
-    `, [token]);
-    if (!record) return res.status(400).json({ error: 'This link is invalid or has expired. Please request a new one.' });
-
-    db.run('UPDATE auth_tokens SET used_at = CURRENT_TIMESTAMP WHERE id = ?', [record.id]);
-    // Successfully clicking a login link proves email ownership just as
-    // much as the dedicated verify link does — so an account that was
-    // still unverified (e.g. created at an event) becomes verified the
-    // moment they log in this way, without needing a separate step.
-    db.run(`
-      UPDATE customers SET account_status = 'verified', updated_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND account_status != 'verified'
-    `, [record.customer_id]);
-
-    const customer = db.queryOne('SELECT * FROM customers WHERE id = ?', [record.customer_id]);
-    res.json({ ok: true, session_token: issueSession(customer.id), customer: customerPublicView(customer) });
+  // GET /api/customers/login-link — the actual link clicked from the
+  // emailed message. Same standalone-confirmation approach as verify-link.
+  router.get('/login-link', (req, res) => {
+    const result = completeToken(req.query.token, 'login');
+    if (!result.ok) {
+      return res.status(400).send(htmlPage({ title: 'Pawvy — Link invalid', heading: 'Link invalid or expired', body: result.error, ok: false }));
+    }
+    res.send(htmlPage({
+      title: 'Pawvy — Logged in',
+      heading: "You're logged in! 🐾",
+      body: `Welcome back, ${result.customer.name || ''}. Once pawvy.co launches, logging in there will feel just like this.`,
+      ok: true,
+    }));
   });
 
   // Auth guard for any endpoint requiring a logged-in customer — used by

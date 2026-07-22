@@ -1,17 +1,21 @@
 const { Router } = require('express');
 const { generateToken, customerButtonsBalance, VERIFY_TOKEN_TTL_MS } = require('../lib/customers');
+const { sendCustomerEmail } = require('../utils/notify');
+const { baseUrl, buildVerifyEmail } = require('../lib/customerEmails');
 
 // Internal, staff-only view into the customer database — mounted at
 // /api/customer-admin (deliberately NOT under /api/customers, so it stays
 // covered by the normal staff PIN gate in server/index.js rather than
 // falling under the public-facing exclusion meant for pawvy.co visitors).
 //
-// Exists for two reasons right now:
+// Exists for two reasons:
 //   1. Lets staff actually see that a signup (from POS or, later, the
 //      website) went through, without needing direct database access.
-//   2. Stands in for the email service that doesn't exist yet — staff can
-//      pull a customer's pending verify link here and send it manually
-//      (e.g. via WhatsApp) until real transactional email is wired up.
+//   2. Gives staff a manual "resend" button — real email now sends
+//      automatically on signup, but this covers the case where it didn't
+//      arrive (spam filter, typo caught after the fact, etc.), and still
+//      falls back to returning the raw token/link if email genuinely
+//      isn't configured on this deployment.
 module.exports = function(db) {
   const router = Router();
 
@@ -46,11 +50,10 @@ module.exports = function(db) {
 
   // POST /api/customer-admin/customers/:id/resend-verify — issues a fresh
   // verify token (invalidating any older unused one, so there's only ever
-  // one valid link at a time) and returns it directly. There's nowhere to
-  // email it to yet, so this is meant to be copy-pasted — either straight
-  // into a POST /api/customers/verify call for testing, or sent to the
-  // customer manually as a stopgap.
-  router.post('/customers/:id/resend-verify', (req, res) => {
+  // one valid link at a time), sends it as a real email if Gmail is
+  // configured, and always returns the token too — either as a fallback
+  // (email not configured) or just for staff visibility/manual testing.
+  router.post('/customers/:id/resend-verify', async (req, res) => {
     const customer = db.queryOne('SELECT * FROM customers WHERE id = ?', [req.params.id]);
     if (!customer) return res.status(404).json({ error: 'Customer not found.' });
 
@@ -64,8 +67,15 @@ module.exports = function(db) {
     db.run(`INSERT INTO auth_tokens (customer_id, token, purpose, expires_at) VALUES (?,?,'verify',?)`,
       [customer.id, token, expiresAt]);
 
-    res.json({ ok: true, token, expires_at: expiresAt });
+    let sent = false;
+    if (customer.email) {
+      const { subject, text, html } = buildVerifyEmail(baseUrl(req), customer, token);
+      sent = await sendCustomerEmail(customer.email, subject, text, html);
+    }
+
+    res.json({ ok: true, token, expires_at: expiresAt, email_sent: sent });
   });
 
   return router;
 };
+

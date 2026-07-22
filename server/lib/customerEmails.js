@@ -1,0 +1,47 @@
+// Shared email template builders for customer-facing magic links — used by
+// both server/routes/customers.js (the real signup/login flow) and
+// server/routes/customerAdmin.js (staff manually resending a link).
+// Kept separate from lib/customers.js since that file is pure
+// data/ledger logic with no knowledge of HTTP requests or HTML.
+
+function baseUrl(req) {
+  // Always https — Railway's public URLs always are, and reading the Host
+  // header directly avoids depending on Express's `trust proxy` setting
+  // (not configured — req.protocol would otherwise report 'http' behind
+  // Railway's proxy).
+  return `https://${req.get('host')}`;
+}
+
+function htmlPage({ title, heading, body, ok }) {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body{font-family:-apple-system,'Segoe UI',sans-serif;background:#12151f;color:#f5f2eb;
+    display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:24px;}
+  .card{max-width:420px;text-align:center;background:#1a1e2b;border:1px solid #2a2f40;
+    border-radius:14px;padding:36px 28px;}
+  h1{font-size:22px;margin:0 0 12px;color:${ok ? '#7fc93e' : '#f87171'};}
+  p{font-size:14px;line-height:1.6;color:rgba(245,242,235,.75);margin:0;}
+</style></head>
+<body><div class="card"><h1>${heading}</h1><p>${body}</p></div></body></html>`;
+}
+
+// TODO once pawvy.co exists: point these links at the real website's own
+// verify/login pages (which would call the POST /api/customers/... JSON
+// endpoints themselves) instead of this backend's standalone GET landing
+// pages (verify-link / login-link in customers.js).
+function buildVerifyEmail(baseUrlStr, customer, token) {
+  const link = `${baseUrlStr}/api/customers/verify-link?token=${token}`;
+  const text = `Hi ${customer.name || 'there'},\n\nWelcome to Pawvy! Confirm your account to activate your 150 BUTTONS signup bonus:\n${link}\n\nThis link expires in 14 days.`;
+  const html = `<p>Hi ${customer.name || 'there'},</p><p>Welcome to Pawvy! Confirm your account to activate your <strong>150 BUTTONS</strong> signup bonus:</p><p><a href="${link}">${link}</a></p><p style="color:#888;font-size:12px;">This link expires in 14 days.</p>`;
+  return { subject: 'Activate your Pawvy account', text, html };
+}
+
+function buildLoginEmail(baseUrlStr, customer, token) {
+  const link = `${baseUrlStr}/api/customers/login-link?token=${token}`;
+  const text = `Hi ${customer.name || 'there'},\n\nHere's your Pawvy login link:\n${link}\n\nThis link expires in 15 minutes and can only be used once.`;
+  const html = `<p>Hi ${customer.name || 'there'},</p><p>Here's your Pawvy login link:</p><p><a href="${link}">${link}</a></p><p style="color:#888;font-size:12px;">This link expires in 15 minutes and can only be used once.</p>`;
+  return { subject: 'Your Pawvy login link', text, html };
+}
+
+module.exports = { baseUrl, htmlPage, buildVerifyEmail, buildLoginEmail };

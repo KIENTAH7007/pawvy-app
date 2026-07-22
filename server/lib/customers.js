@@ -88,7 +88,11 @@ function upsertCustomerFromSignup(db, { email, name, phone, address, pdpa_consen
 
   const customerId = insertResult.lastID;
 
-  creditButtons(db, { customer_id: customerId, amount: SIGNUP_BONUS_B, source: 'signup', status: 'credited' });
+  // The 150B signup bonus is intentionally NOT credited here. It's granted
+  // only once verification succeeds (see server/routes/customers.js
+  // /verify and /login/verify) — crediting it at signup would let it sit
+  // as a phantom liability on accounts that never actually confirm their
+  // email (expired link, typo, unattended POS signup at an event, etc.).
 
   const verifyToken = generateToken();
   db.run(`

@@ -55,7 +55,7 @@ export default function Customers() {
       key: 'id', label: '', align: 'right',
       render: (id, row) => (
         <Btn size="sm" variant="secondary" disabled={busyId === id} onClick={(e) => { e.stopPropagation(); getVerifyLink(row); }}>
-          {busyId === id ? '...' : (row.account_status === 'verified' ? 'New login link' : 'Get verify link')}
+          {busyId === id ? '...' : (row.account_status === 'verified' ? 'Resend login link' : 'Resend verify email')}
         </Btn>
       ),
     },
@@ -79,9 +79,9 @@ export default function Customers() {
         {linkModal && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div style={{ fontSize: 12, color: 'var(--cream-30)' }}>
-              For {linkModal.customer.name || linkModal.customer.email} — no email service is wired up yet,
-              so there's nothing sent automatically. Use this token to test the flow directly, or copy the
-              command below to run in a terminal.
+              For {linkModal.customer.name || linkModal.customer.email} — an email was just sent (if
+              Gmail is configured on this deployment). Use the token below only if you need to test
+              or send the link manually.
             </div>
             <div>
               <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: .5, textTransform: 'uppercase', color: 'var(--cream-30)', marginBottom: 4 }}>Token</div>
