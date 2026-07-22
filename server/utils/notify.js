@@ -59,6 +59,13 @@ function getTransport() {
     connectionTimeout: 15000,
     greetingTimeout: 15000,
     socketTimeout: 15000,
+    // Note: the IPv6/ENETUNREACH fix lives in server/index.js
+    // (dns.setDefaultResultOrder('ipv4first')), not here — nodemailer's
+    // SMTPConnection only copies a few specific option names (host, port,
+    // localAddress, etc.) into the socket it opens; a `family` option set
+    // here would be silently ignored rather than actually forwarded to
+    // Node's net.connect(). The global DNS order setting is what actually
+    // controls which address family gets resolved and used.
   });
   return cachedTransport;
 }

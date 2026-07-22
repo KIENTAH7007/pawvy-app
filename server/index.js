@@ -2,11 +2,20 @@ const express = require('express');
 const cors    = require('cors');
 const path    = require('path');
 const fs      = require('fs');
+const dns     = require('dns');
 const cron    = require('node-cron');
 const { init, backupNow, getDbPath } = require('./database');
 const { runDailyDigest } = require('./jobs/dailyDigest');
 const { runDailyBackup } = require('./jobs/backup');
 const { runAutoRestock } = require('./jobs/autoRestock');
+
+// Railway's container has no outbound IPv6 route — confirmed via a live
+// ENETUNREACH error connecting to smtp.gmail.com (Google's mail servers
+// publish both IPv4 and IPv6 addresses; Node was picking the unreachable
+// IPv6 one). This changes Node's default DNS resolution order application-
+// wide, so any outbound connection by hostname (not just email) resolves
+// IPv4 first. Must run before anything else does DNS lookups.
+dns.setDefaultResultOrder('ipv4first');
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
