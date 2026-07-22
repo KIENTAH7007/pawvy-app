@@ -414,6 +414,133 @@ function createSchema() {
       checked INTEGER NOT NULL DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`,
+
+    // ── Foundation phase: customer database + BUTTONS rewards ────────
+    // See pawvy-buttons-spec.md for the full agreed rules this schema
+    // implements. Backend is the single source of truth — the future
+    // pawvy.co website calls these via API, it never maintains its own
+    // separate customer store.
+
+    // One row per pawrent account. Created either by POS (unverified
+    // until the magic-link is clicked) or self-signup on the website
+    // (verified immediately). email is the login identity going forward.
+    `CREATE TABLE IF NOT EXISTS customers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT,
+      address TEXT,
+      phone TEXT,
+      email TEXT UNIQUE,
+      account_status TEXT NOT NULL DEFAULT 'unverified',
+      signup_source TEXT,
+      referred_by_customer_id INTEGER REFERENCES customers(id),
+      referral_code TEXT UNIQUE,
+      instagram_handle TEXT,
+      preferred_contact_channel TEXT,
+      profile_bonus_claimed INTEGER NOT NULL DEFAULT 0,
+      pdpa_consent INTEGER NOT NULL DEFAULT 0,
+      pdpa_consent_text TEXT,
+      pdpa_consent_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+
+    // Second-layer profile data. Separate table (not columns on customers)
+    // so a pawrent can register more than one pet later without a schema
+    // change — even though the current UI/bonus logic assumes one pet.
+    `CREATE TABLE IF NOT EXISTS customer_pets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+      name TEXT,
+      breed TEXT,
+      weight REAL,
+      birthday DATE,
+      allergies TEXT,
+      favorite_item TEXT,
+      chew_power TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+
+    // Magic-link auth. One row per link issued; used_at marks it consumed
+    // so a link can't be replayed after the customer has already clicked it.
+    `CREATE TABLE IF NOT EXISTS auth_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+      token TEXT NOT NULL UNIQUE,
+      purpose TEXT NOT NULL DEFAULT 'login',
+      expires_at DATETIME NOT NULL,
+      used_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+
+    // Admin-editable earn-rate multiplier windows (e.g. "Button's Birthday
+    // Week", 2x). No code changes needed to run a campaign — just a row here.
+    `CREATE TABLE IF NOT EXISTS campaigns (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      multiplier REAL NOT NULL DEFAULT 1,
+      scope TEXT NOT NULL DEFAULT 'site_wide',
+      scope_value TEXT,
+      start_date DATE NOT NULL,
+      end_date DATE NOT NULL,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+
+    // BUTTONS ledger — one row per batch earned. Tracked as discrete batches
+    // (not a single running balance) so expiry can be FIFO per-batch, and so
+    // the 7-day hold can be enforced per-batch via `status`. remaining is
+    // decremented as this batch gets drawn down by redemptions (see
+    // buttons_batch_redemptions). expires_at is only set once credited —
+    // it's 1 year from credited_at, not from earned_at.
+    `CREATE TABLE IF NOT EXISTS buttons_batches (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+      amount INTEGER NOT NULL,
+      remaining INTEGER NOT NULL,
+      source TEXT NOT NULL,
+      source_type TEXT,
+      source_id INTEGER,
+      status TEXT NOT NULL DEFAULT 'pending',
+      earned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      credited_at DATETIME,
+      expires_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+
+    // One row per redemption event (a website checkout that used B).
+    `CREATE TABLE IF NOT EXISTS buttons_redemptions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+      source_type TEXT NOT NULL,
+      source_id INTEGER NOT NULL,
+      amount INTEGER NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+
+    // FIFO audit trail: how much of each specific batch was drawn down for
+    // a given redemption. Lets us prove/replay exactly which B was spent
+    // where, rather than just trusting a single balance number.
+    `CREATE TABLE IF NOT EXISTS buttons_batch_redemptions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      redemption_id INTEGER NOT NULL REFERENCES buttons_redemptions(id) ON DELETE CASCADE,
+      batch_id INTEGER NOT NULL REFERENCES buttons_batches(id),
+      amount INTEGER NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+
+    // Digital stamp card — raw events, not a running counter. Weekly cap
+    // (7/week) and the every-5-stamps=100B bonus are both computed from
+    // these rows at read time, not stored as a derived number — avoids the
+    // exact class of counter-drift bug already hit once in this codebase
+    // (Patch 92's sign-flip bug came from a display-layer shortcut).
+    `CREATE TABLE IF NOT EXISTS stamp_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+      approved_by TEXT,
+      note TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
   ];
 
   tables.forEach(sql => db.run(sql));
@@ -524,6 +651,14 @@ function createSchema() {
   try { db.run("ALTER TABLE sales ADD COLUMN pdpa_consent INTEGER DEFAULT 0"); } catch(e) {}
   try { db.run("ALTER TABLE sales ADD COLUMN pdpa_consent_text TEXT"); } catch(e) {}
   try { db.run("ALTER TABLE sales ADD COLUMN pdpa_consent_at TEXT"); } catch(e) {}
+
+  // Product discount window — powers both campaign discounts and brand-
+  // launch discounts on the website. The website always reads the current
+  // effective price (base price minus this discount if active today) from
+  // the backend API rather than storing its own copy of pricing.
+  try { db.run("ALTER TABLE products ADD COLUMN discount_pct REAL DEFAULT 0"); } catch(e) {}
+  try { db.run("ALTER TABLE products ADD COLUMN discount_start DATE"); } catch(e) {}
+  try { db.run("ALTER TABLE products ADD COLUMN discount_end DATE"); } catch(e) {}
 
   console.log('✅ Schema ready');
 }
