@@ -31,19 +31,19 @@ async function notifyTelegram(text) {
   }));
 }
 
-// ── Email (Gmail SMTP via app password) ──────────────────────────
+// ── Internal email (Gmail SMTP via app password) ──────────────────
 // Needs GMAIL_USER, GMAIL_APP_PASSWORD, and NOTIFY_EMAIL_TO
 // (comma-separated recipients) set as Railway environment variables.
 //
-// Uses explicit host/port/STARTTLS config rather than the `service: 'gmail'`
-// shorthand. That shorthand connects via port 465 (implicit SSL) — which
-// timed out entirely in production (confirmed: even the existing daily
-// backup email, unrelated to anything added in Patch 99, has never
-// actually arrived either). Port 587 with STARTTLS is the more commonly
-// allowed outbound path on containerized hosts, so switching to it is the
-// fix being tried here. Timeouts are also shortened from nodemailer's
-// defaults (which run to several minutes) to ~15s, so a real network block
-// fails fast and visibly in the logs instead of hanging silently.
+// NOTE (Patch 102): confirmed Railway's Hobby plan blocks all outbound SMTP
+// (25/465/587/2525) — so notifyEmail and notifyBackupEmail below are known
+// to currently fail silently in production, same as they always have. Left
+// on Gmail SMTP deliberately (not migrated to Resend) at KT's call: Resend's
+// free tier has a monthly send cap, and it should be reserved for
+// customer-facing signup/login email rather than spent on internal alerts —
+// Telegram already covers order notifications adequately, and backups can
+// wait. If that changes later, migrating these two to the same resendSend()
+// pattern used by sendCustomerEmail below is a small, contained change.
 let cachedTransport = null;
 function getTransport() {
   if (cachedTransport) return cachedTransport;
@@ -53,19 +53,12 @@ function getTransport() {
   cachedTransport = nodemailer.createTransport({
     host: 'smtp.gmail.com',
     port: 587,
-    secure: false,       // STARTTLS, not implicit SSL — see note above
+    secure: false,       // STARTTLS, not implicit SSL
     requireTLS: true,
     auth: { user, pass },
     connectionTimeout: 15000,
     greetingTimeout: 15000,
     socketTimeout: 15000,
-    // Note: the IPv6/ENETUNREACH fix lives in server/index.js
-    // (dns.setDefaultResultOrder('ipv4first')), not here — nodemailer's
-    // SMTPConnection only copies a few specific option names (host, port,
-    // localAddress, etc.) into the socket it opens; a `family` option set
-    // here would be silently ignored rather than actually forwarded to
-    // Node's net.connect(). The global DNS order setting is what actually
-    // controls which address family gets resolved and used.
   });
   return cachedTransport;
 }
@@ -155,27 +148,39 @@ function notifyNewPortalOrder({ orderId, companyName, notes, lines }) {
   ]).catch(err => console.error('⚠️  notifyNewPortalOrder error:', err.message));
 }
 
-// ── Customer-facing email (magic links) ────────────────────────────
-// Reuses the same Gmail transport/credentials as the internal notify
-// functions above, but sends to a customer-supplied address rather than a
-// fixed NOTIFY_EMAIL_TO/BACKUP_EMAIL_TO recipient. Kept as its own function
-// (not a generalized version of notifyEmail) so the "from" name is
-// customer-facing ("Pawvy") rather than internal ("Pawvy Order Alerts"),
-// and so a future swap to a dedicated transactional provider (Resend/Brevo/
-// SES) — more appropriate at real customer-email volume than a personal
-// Gmail account — only has this one call site to change, not every
-// internal notification too.
-async function sendCustomerEmail(to, subject, text, html) {
-  const transport = getTransport();
-  if (!transport) {
-    console.log(`ℹ️  Customer email skipped (GMAIL_USER/GMAIL_APP_PASSWORD not set) — would have sent "${subject}" to ${to}`);
-    return false;
+// ── Customer-facing email (magic links) — Resend HTTP API ──────────
+// Unlike the internal functions above (left on blocked Gmail SMTP, see
+// note there), customer email uses Resend's HTTPS API, which isn't
+// affected by Railway's SMTP port block. This is the one path that
+// actually needs to work reliably — account verification and login.
+const RESEND_API_URL = 'https://api.resend.com/emails';
+
+async function resendSend({ from, to, subject, text, html }) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    return { ok: false, skipped: true, reason: 'RESEND_API_KEY not set' };
   }
+  const resp = await fetch(RESEND_API_URL, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from, to: Array.isArray(to) ? to : [to], subject, text, html }),
+  });
+  if (!resp.ok) {
+    const errBody = await resp.text();
+    const err = new Error(`Resend API error ${resp.status}: ${errBody}`);
+    err.code = resp.status;
+    throw err;
+  }
+  return resp.json();
+}
+
+async function sendCustomerEmail(to, subject, text, html) {
   try {
-    await transport.sendMail({
-      from: `"Pawvy" <${process.env.GMAIL_USER}>`,
-      to, subject, text, html,
-    });
+    const result = await resendSend({ from: 'Pawvy <buttons@hello.pawvy.co>', to, subject, text, html });
+    if (result.skipped) {
+      console.log(`ℹ️  Customer email skipped (${result.reason}) — would have sent "${subject}" to ${to}`);
+      return false;
+    }
     return true;
   } catch (err) {
     console.error(`⚠️  Customer email send error (to ${to}) [${err.code || 'unknown'}]:`, err.message);
@@ -185,22 +190,21 @@ async function sendCustomerEmail(to, subject, text, html) {
 
 // ── Debug helper: test-send that surfaces the real error ───────────
 // Unlike sendCustomerEmail above (which intentionally swallows errors so a
-// Gmail outage never breaks a real signup), this lets the error propagate
+// Resend outage never breaks a real signup), this lets the error propagate
 // to the caller — used only by the staff-only test-email admin endpoint,
 // for fast connectivity debugging without digging through Railway logs.
 async function sendTestEmail(to) {
-  const transport = getTransport();
-  if (!transport) {
-    const err = new Error('GMAIL_USER / GMAIL_APP_PASSWORD not set on this deployment.');
+  if (!process.env.RESEND_API_KEY) {
+    const err = new Error('RESEND_API_KEY not set on this deployment.');
     err.code = 'NOT_CONFIGURED';
     throw err;
   }
-  return transport.sendMail({
-    from: `"Pawvy" <${process.env.GMAIL_USER}>`,
+  return resendSend({
+    from: 'Pawvy <buttons@hello.pawvy.co>',
     to,
     subject: 'Pawvy test email',
-    text: 'If you got this, the Gmail connection is working.',
-    html: '<p>If you got this, the Gmail connection is working.</p>',
+    text: 'If you got this, the Resend connection is working.',
+    html: '<p>If you got this, the Resend connection is working.</p>',
   });
 }
 
