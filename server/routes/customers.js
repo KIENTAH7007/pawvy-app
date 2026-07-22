@@ -5,6 +5,7 @@ const {
 } = require('../lib/customers');
 const { sendCustomerEmail } = require('../utils/notify');
 const { baseUrl, htmlPage, buildVerifyEmail, buildLoginEmail } = require('../lib/customerEmails');
+const { checkAndAwardProfileBonus } = require('../lib/profileCompletion');
 
 // Customer-facing account endpoints for pawvy.co. Mounted publicly —
 // excluded from the internal staff PIN gate in server/index.js, same as
@@ -236,16 +237,69 @@ module.exports = function(db) {
     res.json({ ok: true });
   });
 
-  // GET /api/customers/me — profile + BUTTONS balance. Doubles as an
-  // end-to-end smoke test that signup → verify → session actually works.
+  // GET /api/customers/me — profile + BUTTONS balance + primary pet.
+  // Doubles as an end-to-end smoke test that signup → verify → session
+  // actually works.
   router.get('/me', requireCustomerAuth, (req, res) => {
     const customer = db.queryOne('SELECT * FROM customers WHERE id = ?', [req.customerId]);
     if (!customer) return res.status(404).json({ error: 'Account not found.' });
+    const pet = db.queryOne('SELECT * FROM customer_pets WHERE customer_id = ? AND is_primary = 1 LIMIT 1', [customer.id]);
     res.json({
       ok: true,
       customer: customerPublicView(customer),
+      pet: pet || null,
       buttons_balance: customerButtonsBalance(db, customer.id),
     });
+  });
+
+  // PATCH /api/customers/me — update basic profile fields. Free-text
+  // typo fixes are always allowed here, same as everything else — only
+  // the profile_bonus_claimed FLAG is immutable through this endpoint
+  // (checkAndAwardProfileBonus only ever sets it, editing other fields
+  // afterward can't unset or re-trigger it).
+  router.patch('/me', requireCustomerAuth, (req, res) => {
+    const { name, phone, address, instagram_handle, preferred_contact_channel } = req.body;
+    db.run(`
+      UPDATE customers SET
+        name = COALESCE(?, name), phone = COALESCE(?, phone), address = COALESCE(?, address),
+        instagram_handle = COALESCE(?, instagram_handle),
+        preferred_contact_channel = COALESCE(?, preferred_contact_channel),
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `, [name || null, phone || null, address || null, instagram_handle || null, preferred_contact_channel || null, req.customerId]);
+
+    const bonusResult = checkAndAwardProfileBonus(db, req.customerId);
+    const customer = db.queryOne('SELECT * FROM customers WHERE id = ?', [req.customerId]);
+    res.json({ ok: true, customer: customerPublicView(customer), profile_bonus: bonusResult });
+  });
+
+  // PUT /api/customers/me/pet — creates or updates the customer's primary
+  // pet in one call (there's only ever one right now — see the multi-pet
+  // note after Patch 96 — so this always targets is_primary=1, creating it
+  // if it doesn't exist yet rather than requiring a separate create step).
+  router.put('/me/pet', requireCustomerAuth, (req, res) => {
+    const { name, breed, weight, birthday, allergies, favorite_item, chew_power } = req.body;
+    const existing = db.queryOne('SELECT id FROM customer_pets WHERE customer_id = ? AND is_primary = 1', [req.customerId]);
+
+    if (existing) {
+      db.run(`
+        UPDATE customer_pets SET
+          name = COALESCE(?, name), breed = COALESCE(?, breed), weight = COALESCE(?, weight),
+          birthday = COALESCE(?, birthday), allergies = COALESCE(?, allergies),
+          favorite_item = COALESCE(?, favorite_item), chew_power = COALESCE(?, chew_power),
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `, [name || null, breed || null, weight ?? null, birthday || null, allergies || null, favorite_item || null, chew_power || null, existing.id]);
+    } else {
+      db.run(`
+        INSERT INTO customer_pets (customer_id, name, breed, weight, birthday, allergies, favorite_item, chew_power, is_primary)
+        VALUES (?,?,?,?,?,?,?,?,1)
+      `, [req.customerId, name || null, breed || null, weight ?? null, birthday || null, allergies || null, favorite_item || null, chew_power || null]);
+    }
+
+    const bonusResult = checkAndAwardProfileBonus(db, req.customerId);
+    const pet = db.queryOne('SELECT * FROM customer_pets WHERE customer_id = ? AND is_primary = 1', [req.customerId]);
+    res.json({ ok: true, pet, profile_bonus: bonusResult });
   });
 
   router._requireCustomerAuth = requireCustomerAuth;
