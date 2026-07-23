@@ -122,6 +122,7 @@ export const customerAdminApi = {
   get: (id) => api.get(`/customer-admin/customers/${id}`),
   resendVerify: (id) => api.post(`/customer-admin/customers/${id}/resend-verify`, {}),
   awardStamp: (id, body) => api.post(`/customer-admin/customers/${id}/stamp`, body),
+  delete: (id) => api.delete(`/customer-admin/customers/${id}`),
 };
 export const restockApi = {
   getAll:  (q) => api.get(`/restock${qs(q)}`),

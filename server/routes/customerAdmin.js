@@ -124,6 +124,23 @@ module.exports = function(db) {
     }
   });
 
+  // DELETE /api/customer-admin/customers/:id — permanently removes a
+  // customer account. Foreign keys cascade (confirmed PRAGMA foreign_keys
+  // = ON in database.js), so pets, auth tokens, and BUTTONS batches/
+  // redemptions tied to this customer are cleaned up automatically. Mainly
+  // exists right now for test-account cleanup (e.g. recycling a personal
+  // email during testing) — worth revisiting once this needs to satisfy a
+  // real customer-initiated deletion request (see the PDPA data-request
+  // procedure doc: real requests should go through that documented process,
+  // not just this button, since actual sales/tax records must be retained
+  // regardless of what gets deleted here).
+  router.delete('/customers/:id', (req, res) => {
+    const customer = db.queryOne('SELECT id FROM customers WHERE id = ?', [req.params.id]);
+    if (!customer) return res.status(404).json({ error: 'Customer not found.' });
+    db.run('DELETE FROM customers WHERE id = ?', [req.params.id]);
+    res.json({ ok: true });
+  });
+
   return router;
 };
 

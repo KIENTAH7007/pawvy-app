@@ -82,9 +82,23 @@ export default function Customers() {
     {
       key: 'id', label: '', align: 'right',
       render: (id, row) => (
-        <Btn size="sm" variant="secondary" disabled={busyId === id} onClick={(e) => { e.stopPropagation(); getVerifyLink(row); }}>
-          {busyId === id ? '...' : (row.account_status === 'verified' ? 'Resend login link' : 'Resend verify email')}
-        </Btn>
+        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+          <Btn size="sm" variant="secondary" disabled={busyId === id} onClick={(e) => { e.stopPropagation(); getVerifyLink(row); }}>
+            {busyId === id ? '...' : (row.account_status === 'verified' ? 'Resend login link' : 'Resend verify email')}
+          </Btn>
+          <Btn
+            size="sm" variant="secondary"
+            style={{ color: '#f87171', borderColor: 'rgba(248,113,113,.3)' }}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (window.confirm(`Permanently delete ${row.name || row.email}? This can't be undone — mainly meant for cleaning up test accounts.`)) {
+                customerAdminApi.delete(id).then(load);
+              }
+            }}
+          >
+            Delete
+          </Btn>
+        </div>
       ),
     },
   ];

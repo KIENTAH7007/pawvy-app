@@ -33,8 +33,19 @@ function htmlPage({ title, heading, body, ok }) {
 // Falls back to the backend's own GET /verify-link / /login-link pages if
 // WEBSITE_URL isn't set, so this never breaks on a deployment that hasn't
 // configured it yet — same safety-net principle used elsewhere in this app.
+//
+// Trailing slash stripped defensively — if WEBSITE_URL is set with one
+// (e.g. ".../railway.app/"), naively concatenating it with "/verify"
+// produces a double slash ("...app//verify"), which breaks React Router's
+// exact-path matching client-side and renders a blank page with no error
+// (confirmed live — this exact bug happened in production). Stripping it
+// here means the fix holds regardless of how the env var gets set.
+function stripTrailingSlash(url) {
+  return url.replace(/\/+$/, '');
+}
+
 function buildVerifyEmail(baseUrlStr, customer, token) {
-  const target = process.env.WEBSITE_URL || baseUrlStr;
+  const target = stripTrailingSlash(process.env.WEBSITE_URL || baseUrlStr);
   const path = process.env.WEBSITE_URL ? '/verify' : '/api/customers/verify-link';
   const link = `${target}${path}?token=${token}`;
   const text = `Hi ${customer.name || 'there'},\n\nWelcome to Pawvy! Confirm your account to activate your 150 BUTTONS signup bonus:\n${link}\n\nThis link expires in 14 days.`;
@@ -43,7 +54,7 @@ function buildVerifyEmail(baseUrlStr, customer, token) {
 }
 
 function buildLoginEmail(baseUrlStr, customer, token) {
-  const target = process.env.WEBSITE_URL || baseUrlStr;
+  const target = stripTrailingSlash(process.env.WEBSITE_URL || baseUrlStr);
   const path = process.env.WEBSITE_URL ? '/login-verify' : '/api/customers/login-link';
   const link = `${target}${path}?token=${token}`;
   const text = `Hi ${customer.name || 'there'},\n\nHere's your Pawvy login link:\n${link}\n\nThis link expires in 15 minutes and can only be used once.`;
