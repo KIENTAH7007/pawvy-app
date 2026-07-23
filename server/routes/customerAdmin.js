@@ -24,7 +24,7 @@ module.exports = function(db) {
   router.get('/customers', (req, res) => {
     const rows = db.query(`
       SELECT id, name, email, phone, address, account_status, referral_code,
-             referred_by_customer_id, signup_source, created_at
+             referred_by_customer_id, signup_source, created_at, profile_bonus_claimed
       FROM customers ORDER BY created_at DESC
     `);
     const withBalances = rows.map(c => ({
@@ -35,11 +35,17 @@ module.exports = function(db) {
     res.json({ customers: withBalances });
   });
 
-  // GET /api/customer-admin/customers/:id — single record, including any
-  // still-valid pending verify/login link (for manual testing/sending).
+  // GET /api/customer-admin/customers/:id — single record, including pet
+  // profile and any still-valid pending verify/login link (for manual
+  // testing/sending). Deliberately kept separate from the list endpoint
+  // above — pet/consent detail is too much to cram into table columns for
+  // every row, so it only loads here, when staff actually opens one
+  // customer's detail view.
   router.get('/customers/:id', (req, res) => {
     const customer = db.queryOne('SELECT * FROM customers WHERE id = ?', [req.params.id]);
     if (!customer) return res.status(404).json({ error: 'Customer not found.' });
+
+    const pet = db.queryOne('SELECT * FROM customer_pets WHERE customer_id = ? AND is_primary = 1 LIMIT 1', [customer.id]);
 
     const pendingToken = db.queryOne(`
       SELECT token, purpose, expires_at FROM auth_tokens
@@ -49,6 +55,7 @@ module.exports = function(db) {
 
     res.json({
       customer: { ...customer, buttons_balance: customerButtonsBalance(db, customer.id) },
+      pet: pet || null,
       pending_token: pendingToken || null,
     });
   });

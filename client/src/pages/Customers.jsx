@@ -13,12 +13,25 @@ export default function Customers() {
   const [loading, setLoading]     = useState(true);
   const [linkModal, setLinkModal] = useState(null); // { customer, token, expires_at }
   const [stampModal, setStampModal] = useState(null); // { customer, note, result }
+  const [detailModal, setDetailModal] = useState(null); // { customer, pet }
+  const [detailLoading, setDetailLoading] = useState(false);
   const [busyId, setBusyId]       = useState(null);
   const [stampBusy, setStampBusy] = useState(false);
   const [copied, setCopied]       = useState(false);
 
   const load = () => customerAdminApi.getAll().then(d => setCustomers(d.customers)).finally(() => setLoading(false));
   useEffect(() => { load(); }, []);
+
+  async function openDetail(row) {
+    setDetailLoading(true);
+    setDetailModal({ customer: row, pet: null });
+    try {
+      const { customer, pet } = await customerAdminApi.get(row.id);
+      setDetailModal({ customer, pet });
+    } finally {
+      setDetailLoading(false);
+    }
+  }
 
   async function getVerifyLink(customer) {
     setBusyId(customer.id);
@@ -61,6 +74,10 @@ export default function Customers() {
       key: 'account_status', label: 'Status',
       render: v => <Badge color={v === 'verified' ? '#7fc93e' : '#f59e0b'}>{v === 'verified' ? 'Verified' : 'Unverified'}</Badge>,
     },
+    {
+      key: 'profile_bonus_claimed', label: 'Profile',
+      render: v => <Badge color={v ? '#7fc93e' : '#888'}>{v ? 'Complete' : 'Incomplete'}</Badge>,
+    },
     { key: 'buttons_balance', label: 'BUTTONS', align: 'right', render: v => `${v}B` },
     {
       key: 'stamp_count', label: 'Stamps', align: 'right',
@@ -83,6 +100,9 @@ export default function Customers() {
       key: 'id', label: '', align: 'right',
       render: (id, row) => (
         <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+          <Btn size="sm" variant="secondary" onClick={(e) => { e.stopPropagation(); openDetail(row); }}>
+            View Details
+          </Btn>
           <Btn size="sm" variant="secondary" disabled={busyId === id} onClick={(e) => { e.stopPropagation(); getVerifyLink(row); }}>
             {busyId === id ? '...' : (row.account_status === 'verified' ? 'Resend login link' : 'Resend verify email')}
           </Btn>
@@ -109,7 +129,7 @@ export default function Customers() {
         {loading ? (
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--cream-30)', fontSize: 13 }}>Loading…</div>
         ) : (
-          <Table cols={cols} rows={customers} emptyMsg="No customer signups yet." />
+          <Table cols={cols} rows={customers} emptyMsg="No customer signups yet." onRowClick={openDetail} />
         )}
       </Card>
 
@@ -187,6 +207,71 @@ export default function Customers() {
           </div>
         )}
       </Modal>
+
+      {/* Customer detail view — deliberately a modal, not more table
+          columns. Pet profile (7 fields) + Instagram + contact preference
+          + PDPA consent record would make the list unreadable as columns;
+          this keeps the list scannable and puts full depth here instead,
+          only loaded when staff actually opens one customer. */}
+      <Modal open={!!detailModal} title="CUSTOMER DETAILS" onClose={() => setDetailModal(null)} width={480}>
+        {detailModal && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+            {detailLoading ? (
+              <div style={{ fontSize: 13, color: 'var(--cream-30)' }}>Loading…</div>
+            ) : (
+              <>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: .5, textTransform: 'uppercase', color: 'var(--cream-30)', marginBottom: 8 }}>Pawrent</div>
+                  <DetailRow label="Name" value={detailModal.customer.name} />
+                  <DetailRow label="Email" value={detailModal.customer.email} />
+                  <DetailRow label="Phone" value={detailModal.customer.phone} />
+                  <DetailRow label="Address" value={detailModal.customer.address} />
+                  <DetailRow label="Instagram" value={detailModal.customer.instagram_handle} />
+                  <DetailRow label="Preferred Contact" value={detailModal.customer.preferred_contact_channel} />
+                  <DetailRow label="Password Set" value={detailModal.customer.password_hash ? 'Yes' : 'No — magic link only'} />
+                </div>
+
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: .5, textTransform: 'uppercase', color: 'var(--cream-30)', marginBottom: 8 }}>Pet</div>
+                  {detailModal.pet ? (
+                    <>
+                      <DetailRow label="Name" value={detailModal.pet.name} />
+                      <DetailRow label="Breed" value={detailModal.pet.breed} />
+                      <DetailRow label="Weight" value={detailModal.pet.weight ? `${detailModal.pet.weight} kg` : null} />
+                      <DetailRow label="Birthday" value={detailModal.pet.birthday} />
+                      <DetailRow label="Allergies" value={detailModal.pet.allergies} />
+                      <DetailRow label="Favorite Item" value={detailModal.pet.favorite_item} />
+                      <DetailRow label="Chew Power" value={detailModal.pet.chew_power} />
+                    </>
+                  ) : (
+                    <div style={{ fontSize: 12.5, color: 'var(--cream-30)' }}>Not filled in yet.</div>
+                  )}
+                </div>
+
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: .5, textTransform: 'uppercase', color: 'var(--cream-30)', marginBottom: 8 }}>PDPA Consent</div>
+                  <DetailRow label="Given" value={detailModal.customer.pdpa_consent ? 'Yes' : 'No'} />
+                  <DetailRow label="When" value={detailModal.customer.pdpa_consent_at ? new Date(detailModal.customer.pdpa_consent_at).toLocaleString('en-SG') : null} />
+                  {detailModal.customer.pdpa_consent_text && (
+                    <div style={{ fontSize: 11, color: 'var(--cream-30)', marginTop: 6, fontStyle: 'italic', lineHeight: 1.5 }}>
+                      "{detailModal.customer.pdpa_consent_text}"
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </Modal>
     </Page>
+  );
+}
+
+function DetailRow({ label, value }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 12.5, padding: '4px 0', borderBottom: '1px solid rgba(245,242,235,.06)' }}>
+      <span style={{ color: 'var(--cream-30)' }}>{label}</span>
+      <span style={{ color: value ? 'var(--cream)' : 'var(--cream-30)', textAlign: 'right' }}>{value || '—'}</span>
+    </div>
   );
 }
