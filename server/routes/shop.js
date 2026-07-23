@@ -77,5 +77,43 @@ module.exports = function(db) {
     res.json({ brands: db.query('SELECT id, name, color FROM brands ORDER BY name') });
   });
 
+  // GET /api/shop/top-sellers — powers the cart upsell section. Ranked by
+  // total units sold over the last 90 days (matches the "popular over the
+  // last 3 months" framing KT referenced), pulled from the same `sales`
+  // table the internal Pawvy App itself reports from — real sales data,
+  // not a guess. Out-of-stock products are excluded outright rather than
+  // shown greyed out — no point upselling something that can't be bought.
+  router.get('/top-sellers', (req, res) => {
+    const limit = Math.min(parseInt(req.query.limit) || 8, 20);
+    const rows = db.query(`
+      SELECT
+        p.id, p.item_series, p.variation, p.image_data,
+        p.price_rrp_sg, p.discount_pct, p.discount_start, p.discount_end,
+        b.id AS brand_id, b.name AS brand_name, b.color AS brand_color,
+        COALESCE(home.qty, 0)    AS home_qty,
+        COALESCE(storhub.qty, 0) AS storhub_qty,
+        SUM(s.qty) AS units_sold
+      FROM sales s
+      JOIN products p ON p.id = s.product_id
+      JOIN brands b ON b.id = p.brand_id
+      LEFT JOIN inventory_levels home    ON home.product_id = p.id    AND home.location    = 'Home'
+      LEFT JOIN inventory_levels storhub ON storhub.product_id = p.id AND storhub.location = 'Storhub'
+      WHERE p.is_active = 1 AND s.date >= date('now', '-90 days')
+      GROUP BY p.id
+      ORDER BY units_sold DESC
+      LIMIT ?
+    `, [limit * 2]); // over-fetch since some will be filtered out as out-of-stock below
+
+    const products = rows
+      .map(r => {
+        const { home_qty, storhub_qty, units_sold, ...rest } = withEffectivePrice(r);
+        return { ...rest, stock_status: stockStatus(home_qty + storhub_qty), units_sold };
+      })
+      .filter(p => p.stock_status !== 'out_of_stock')
+      .slice(0, limit);
+
+    res.json({ products });
+  });
+
   return router;
 };

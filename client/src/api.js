@@ -33,7 +33,7 @@ export const api = {
 const qs = (q) => q ? '?' + new URLSearchParams(q) : '';
 
 export const brandsApi    = { getAll: () => api.get('/brands'), create: (b) => api.post('/brands',b), update: (id,b) => api.put(`/brands/${id}`,b) };
-export const productsApi  = { getAll: (q) => api.get(`/products${qs(q)}`), get: (id) => api.get(`/products/${id}`), create: (p) => api.post('/products',p), update: (id,p) => api.put(`/products/${id}`,p), delete: (id) => api.delete(`/products/${id}`), uploadImage: (id, image_data) => api.post(`/products/${id}/image`, { image_data }), deleteImage: (id) => api.delete(`/products/${id}/image`), setPortalOrder: (id, portal_sort_order) => api.post(`/products/${id}/portal-order`, { portal_sort_order }) };
+export const productsApi  = { getAll: (q) => api.get(`/products${qs(q)}`), get: (id) => api.get(`/products/${id}`), create: (p) => api.post('/products',p), update: (id,p) => api.put(`/products/${id}`,p), delete: (id) => api.delete(`/products/${id}`), uploadImage: (id, image_data) => api.post(`/products/${id}/image`, { image_data }), deleteImage: (id) => api.delete(`/products/${id}/image`), setPortalOrder: (id, portal_sort_order) => api.post(`/products/${id}/portal-order`, { portal_sort_order }), setDiscount: (id, body) => api.patch(`/products/${id}/discount`, body) };
 export const partnersApi  = { getAll: (q) => api.get(`/partners${qs(q)}`), get: (id) => api.get(`/partners/${id}`), create: (p) => api.post('/partners',p), update: (id,p) => api.put(`/partners/${id}`,p) };
 export const invoicesApi = {
   list:            (q)    => api.get(`/invoices${qs(q)}`),

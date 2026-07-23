@@ -42,6 +42,9 @@ export default function Products() {
   const [brandForm, setBrandForm] = useState({ name:'', color: BRAND_COLORS[0] });
   const [saving,   setSaving]   = useState(false);
   const [saveError, setSaveError] = useState('');
+  const [discountForm, setDiscountForm] = useState({});
+  const [discountError, setDiscountError] = useState('');
+  const [discountSaving, setDiscountSaving] = useState(false);
 
   // Pre-filled SKUs handed off from New Brand Pricing — nothing here writes to the
   // database until each one is individually reviewed and saved through the normal
@@ -289,7 +292,16 @@ export default function Products() {
                         />
                       </td>
                       <td style={td()}>
-                        <Btn size="sm" variant="ghost" onClick={e=>{e.stopPropagation();setForm({...p});setModal('edit');}}>Edit</Btn>
+                        <div style={{display:'flex',gap:6}}>
+                          <Btn size="sm" variant="ghost" onClick={e=>{e.stopPropagation();setForm({...p});setModal('edit');}}>Edit</Btn>
+                          <Btn size="sm" variant="ghost" onClick={e=>{
+                            e.stopPropagation();
+                            setDiscountForm({ id: p.id, name: `${p.item_series}${p.variation ? ' — '+p.variation : ''}`, discount_pct: p.discount_pct || 0, discount_start: p.discount_start || '', discount_end: p.discount_end || '' });
+                            setModal('discount');
+                          }}>
+                            {p.discount_pct > 0 ? <Badge color="#7fc93e">{p.discount_pct}% off</Badge> : 'Discount'}
+                          </Btn>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -410,6 +422,72 @@ export default function Products() {
               form.is_active !== 0
                 ? <Btn variant="danger" onClick={async()=>{await productsApi.delete(form.id);load();setModal(null);}}>Archive</Btn>
                 : <Btn variant="secondary" onClick={async()=>{await productsApi.update(form.id,{...form,is_active:1});load();setModal(null);}}>Restore</Btn>
+            )}
+          </div>
+        </div>
+      </Modal>
+
+      {/* Discount modal — powers the shop's discounted-price display and
+          brand-launch/campaign pricing. Backend endpoint (PATCH /:id/discount)
+          has existed since Patch 104; this is the first UI for it. */}
+      <Modal open={modal==='discount'} title="SET DISCOUNT" onClose={()=>setModal(null)} width={420}>
+        <div style={{display:'flex',flexDirection:'column',gap:14}}>
+          <div style={{fontSize:13,color:'var(--cream-60)'}}>{discountForm.name}</div>
+
+          <Input
+            label="Discount %"
+            type="number" min="0" max="100"
+            value={discountForm.discount_pct}
+            onChange={e=>setDiscountForm(f=>({...f,discount_pct:e.target.value}))}
+          />
+          <Input
+            label="Start date"
+            type="date"
+            value={discountForm.discount_start}
+            onChange={e=>setDiscountForm(f=>({...f,discount_start:e.target.value}))}
+          />
+          <Input
+            label="End date (leave blank for open-ended)"
+            type="date"
+            value={discountForm.discount_end}
+            onChange={e=>setDiscountForm(f=>({...f,discount_end:e.target.value}))}
+          />
+
+          {discountError && <div style={{color:'#f87171',fontSize:12.5}}>{discountError}</div>}
+
+          <div style={{display:'flex',gap:8,marginTop:4}}>
+            <Btn disabled={discountSaving} onClick={async()=>{
+              setDiscountSaving(true);
+              setDiscountError('');
+              try {
+                await productsApi.setDiscount(discountForm.id, {
+                  discount_pct: Number(discountForm.discount_pct) || 0,
+                  discount_start: discountForm.discount_start || null,
+                  discount_end: discountForm.discount_end || null,
+                });
+                await load();
+                setModal(null);
+              } catch (err) {
+                setDiscountError(err?.message || 'Could not save discount.');
+              } finally {
+                setDiscountSaving(false);
+              }
+            }}>
+              {discountSaving ? 'Saving…' : 'Save Discount'}
+            </Btn>
+            {discountForm.discount_pct > 0 && (
+              <Btn variant="secondary" disabled={discountSaving} onClick={async()=>{
+                setDiscountSaving(true);
+                try {
+                  await productsApi.setDiscount(discountForm.id, { discount_pct: 0, discount_start: null, discount_end: null });
+                  await load();
+                  setModal(null);
+                } finally {
+                  setDiscountSaving(false);
+                }
+              }}>
+                Clear Discount
+              </Btn>
             )}
           </div>
         </div>
