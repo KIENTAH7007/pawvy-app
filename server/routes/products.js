@@ -1,26 +1,6 @@
 const { Router } = require('express');
 const archiver = require('archiver');
-
-// Computes whether a product's discount is active *today* and what the
-// resulting effective price is. discount_pct/start/end are plain columns
-// (Patch 96) — this is the one place that turns them into something a
-// caller (internal reports, or the future website) can use directly
-// without re-deriving the date-window logic itself. An open-ended
-// discount (no end date) is allowed by leaving discount_end null.
-function withEffectivePrice(product) {
-  const today = new Date().toISOString().slice(0, 10);
-  const hasDiscount = product.discount_pct > 0
-    && (!product.discount_start || product.discount_start <= today)
-    && (!product.discount_end || product.discount_end >= today);
-
-  return {
-    ...product,
-    is_discount_active: hasDiscount,
-    effective_price_rrp_sg: hasDiscount
-      ? Math.round(product.price_rrp_sg * (1 - product.discount_pct / 100) * 100) / 100
-      : product.price_rrp_sg,
-  };
-}
+const { withEffectivePrice } = require('../lib/pricing');
 
 module.exports = function(db) {
   const router = Router();
