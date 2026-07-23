@@ -668,6 +668,14 @@ function createSchema() {
   // need another schema change.
   try { db.run("ALTER TABLE customer_pets ADD COLUMN is_primary INTEGER NOT NULL DEFAULT 1"); } catch(e) {}
 
+  // Optional password, set by the customer themselves after their first
+  // magic-link verification — NOT assigned by staff (that pattern was
+  // rejected early on for security reasons; a customer-chosen password
+  // after we've already verified their email is a different, standard
+  // pattern). NULL means no password set yet — that account still falls
+  // back to magic-link login only.
+  try { db.run("ALTER TABLE customers ADD COLUMN password_hash TEXT"); } catch(e) {}
+
   console.log('✅ Schema ready');
 }
 

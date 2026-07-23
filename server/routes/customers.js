@@ -1,4 +1,5 @@
 const { Router } = require('express');
+const bcrypt = require('bcryptjs');
 const {
   generateToken, upsertCustomerFromSignup, customerButtonsBalance, creditButtons,
   SIGNUP_BONUS_B, LOGIN_TOKEN_TTL_MS, SESSION_TOKEN_TTL_MS,
@@ -39,7 +40,7 @@ module.exports = function(db) {
       id: c.id, name: c.name, email: c.email, phone: c.phone, address: c.address,
       account_status: c.account_status, referral_code: c.referral_code,
       instagram_handle: c.instagram_handle, preferred_contact_channel: c.preferred_contact_channel,
-      profile_bonus_claimed: !!c.profile_bonus_claimed,
+      profile_bonus_claimed: !!c.profile_bonus_claimed, has_password: !!c.password_hash,
     };
   }
 
@@ -300,6 +301,56 @@ module.exports = function(db) {
     const bonusResult = checkAndAwardProfileBonus(db, req.customerId);
     const pet = db.queryOne('SELECT * FROM customer_pets WHERE customer_id = ? AND is_primary = 1', [req.customerId]);
     res.json({ ok: true, pet, profile_bonus: bonusResult });
+  });
+
+  // POST /api/customers/check-email — the first step of the unified
+  // login/signup entry point on the website. Reveals whether an email is
+  // registered and whether it has a password set — a deliberate change
+  // from the earlier "never reveal account existence" pattern used
+  // elsewhere (e.g. the generic /login message below), made explicitly at
+  // KT's call to remove login friction. Reasonable tradeoff for a rewards
+  // program at this scale; worth revisiting if this app's risk profile
+  // ever changes (e.g. handling more sensitive data).
+  router.post('/check-email', (req, res) => {
+    const { email } = req.body;
+    if (!email || !email.trim()) return res.status(400).json({ error: 'Email is required.' });
+    const customer = db.queryOne('SELECT id, password_hash FROM customers WHERE lower(email) = ?', [email.trim().toLowerCase()]);
+    res.json({ ok: true, exists: !!customer, has_password: !!customer?.password_hash });
+  });
+
+  // POST /api/customers/login-password — direct email+password login, no
+  // email round-trip. Deliberately generic on failure ("Invalid email or
+  // password") regardless of whether the email doesn't exist or the
+  // password is wrong — this is what actually preserves privacy here, not
+  // hiding account existence at the check-email step above.
+  router.post('/login-password', async (req, res) => {
+    const { email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ error: 'Email and password are required.' });
+
+    const customer = db.queryOne('SELECT * FROM customers WHERE lower(email) = ?', [email.trim().toLowerCase()]);
+    const genericError = { error: 'Invalid email or password.' };
+    if (!customer || !customer.password_hash) return res.status(401).json(genericError);
+
+    const valid = await bcrypt.compare(password, customer.password_hash);
+    if (!valid) return res.status(401).json(genericError);
+
+    res.json({ ok: true, session_token: issueSession(customer.id), customer: customerPublicView(customer) });
+  });
+
+  // POST /api/customers/me/set-password — sets or changes the customer's
+  // own password. Used both for the mandatory first-time setup step right
+  // after a magic-link verify/login, and later from account settings to
+  // change it. NEVER settable by staff — only the customer themselves,
+  // authenticated via a session that already came from verifying their
+  // email ownership.
+  router.post('/me/set-password', requireCustomerAuth, async (req, res) => {
+    const { password } = req.body;
+    if (!password || password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+    }
+    const hash = await bcrypt.hash(password, 10);
+    db.run('UPDATE customers SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [hash, req.customerId]);
+    res.json({ ok: true });
   });
 
   router._requireCustomerAuth = requireCustomerAuth;
