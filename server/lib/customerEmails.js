@@ -26,19 +26,26 @@ function htmlPage({ title, heading, body, ok }) {
 <body><div class="card"><h1>${heading}</h1><p>${body}</p></div></body></html>`;
 }
 
-// TODO once pawvy.co exists: point these links at the real website's own
-// verify/login pages (which would call the POST /api/customers/... JSON
-// endpoints themselves) instead of this backend's standalone GET landing
-// pages (verify-link / login-link in customers.js).
+// Now that pawvy.co exists (as of the website scaffold), these point there
+// instead of this backend's own standalone landing pages — set WEBSITE_URL
+// as an env var on this backend (e.g. https://pawvy-website-production.
+// up.railway.app, or the real pawvy.co domain once DNS is cut over).
+// Falls back to the backend's own GET /verify-link / /login-link pages if
+// WEBSITE_URL isn't set, so this never breaks on a deployment that hasn't
+// configured it yet — same safety-net principle used elsewhere in this app.
 function buildVerifyEmail(baseUrlStr, customer, token) {
-  const link = `${baseUrlStr}/api/customers/verify-link?token=${token}`;
+  const target = process.env.WEBSITE_URL || baseUrlStr;
+  const path = process.env.WEBSITE_URL ? '/verify' : '/api/customers/verify-link';
+  const link = `${target}${path}?token=${token}`;
   const text = `Hi ${customer.name || 'there'},\n\nWelcome to Pawvy! Confirm your account to activate your 150 BUTTONS signup bonus:\n${link}\n\nThis link expires in 14 days.`;
   const html = `<p>Hi ${customer.name || 'there'},</p><p>Welcome to Pawvy! Confirm your account to activate your <strong>150 BUTTONS</strong> signup bonus:</p><p><a href="${link}">${link}</a></p><p style="color:#888;font-size:12px;">This link expires in 14 days.</p>`;
   return { subject: 'Activate your Pawvy account', text, html };
 }
 
 function buildLoginEmail(baseUrlStr, customer, token) {
-  const link = `${baseUrlStr}/api/customers/login-link?token=${token}`;
+  const target = process.env.WEBSITE_URL || baseUrlStr;
+  const path = process.env.WEBSITE_URL ? '/login-verify' : '/api/customers/login-link';
+  const link = `${target}${path}?token=${token}`;
   const text = `Hi ${customer.name || 'there'},\n\nHere's your Pawvy login link:\n${link}\n\nThis link expires in 15 minutes and can only be used once.`;
   const html = `<p>Hi ${customer.name || 'there'},</p><p>Here's your Pawvy login link:</p><p><a href="${link}">${link}</a></p><p style="color:#888;font-size:12px;">This link expires in 15 minutes and can only be used once.</p>`;
   return { subject: 'Your Pawvy login link', text, html };
