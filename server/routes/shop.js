@@ -98,7 +98,7 @@ module.exports = function(db) {
       JOIN brands b ON b.id = p.brand_id
       LEFT JOIN inventory_levels home    ON home.product_id = p.id    AND home.location    = 'Home'
       LEFT JOIN inventory_levels storhub ON storhub.product_id = p.id AND storhub.location = 'Storhub'
-      WHERE p.is_active = 1 AND s.date >= date('now', '-90 days')
+      WHERE p.is_active = 1 AND s.date >= date('now', '-90 days') AND COALESCE(s.voided,0) = 0
       GROUP BY p.id
       ORDER BY units_sold DESC
       LIMIT ?
