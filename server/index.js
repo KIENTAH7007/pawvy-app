@@ -53,7 +53,7 @@ async function startServer() {
   // pawvy.co website's own visitors — a completely separate customer-facing
   // auth system, not the internal staff PIN).
   app.use('/api', (req, res, next) => {
-    if (req.path.startsWith('/portal') || req.path.startsWith('/pos') || req.path.startsWith('/customers') || req.path.startsWith('/shop') || req.path === '/health') return next();
+    if (req.path.startsWith('/portal') || req.path.startsWith('/pos') || req.path.startsWith('/customers') || req.path.startsWith('/shop') || req.path.startsWith('/enquiries') || req.path === '/health') return next();
     return auth.requireAuth(req, res, next);
   });
 
@@ -75,6 +75,8 @@ async function startServer() {
   app.use('/api/restock',     require('./routes/restock')(db, inventoryRouter));
   app.use('/api/customers',   require('./routes/customers')(db));
   app.use('/api/shop',        require('./routes/shop')(db));
+  app.use('/api/enquiries',   require('./routes/enquiries')(db));
+  app.use('/api/enquiry-admin', require('./routes/enquiryAdmin')(db));
   app.use('/api/customer-admin', require('./routes/customerAdmin')(db));
   app.use('/api/campaigns',   require('./routes/campaigns')(db));
 

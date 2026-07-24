@@ -117,6 +117,10 @@ export const shipmentsApi = {
 };
 
 export const brandSkuApi = { detail: (q) => api.get(`/reports/brand-sku${qs(q)}`), };
+export const enquiryAdminApi = {
+  getAll: () => api.get('/enquiry-admin'),
+  markReplied: (id) => api.post(`/enquiry-admin/${id}/mark-replied`, {}),
+};
 export const customerAdminApi = {
   getAll: () => api.get('/customer-admin/customers'),
   get: (id) => api.get(`/customer-admin/customers/${id}`),

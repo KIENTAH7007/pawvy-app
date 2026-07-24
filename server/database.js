@@ -541,6 +541,20 @@ function createSchema() {
       note TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`,
+
+    // Website "Contact Us" enquiries — anonymous, no customer_id required
+    // (someone doesn't need a Pawvy account to ask a question). replied is
+    // a simple manual flag staff toggle once handled, since replies happen
+    // over email/WhatsApp, not tracked in this app.
+    `CREATE TABLE IF NOT EXISTS enquiries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT,
+      email TEXT NOT NULL,
+      phone TEXT,
+      message TEXT NOT NULL,
+      replied INTEGER NOT NULL DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
   ];
 
   tables.forEach(sql => db.run(sql));
