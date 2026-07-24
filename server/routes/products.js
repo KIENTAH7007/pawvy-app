@@ -129,7 +129,7 @@ module.exports = function(db) {
       price_wholesale_sg, price_consignment_sg, price_rrp_sg,
       price_wholesale_my, price_rrp_my,
       price_wholesale_au, price_rrp_au,
-      is_active, notes
+      is_active, notes, description
     } = req.body;
 
     db.run(`
@@ -139,7 +139,7 @@ module.exports = function(db) {
         price_wholesale_sg = ?, price_consignment_sg = ?, price_rrp_sg = ?,
         price_wholesale_my = ?, price_rrp_my = ?,
         price_wholesale_au = ?, price_rrp_au = ?,
-        is_active = ?, notes = ?,
+        is_active = ?, notes = ?, description = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `, [
@@ -148,7 +148,7 @@ module.exports = function(db) {
       price_wholesale_sg, price_consignment_sg, price_rrp_sg,
       price_wholesale_my, price_rrp_my,
       price_wholesale_au, price_rrp_au,
-      is_active !== undefined ? is_active : 1, notes,
+      is_active !== undefined ? is_active : 1, notes, description || null,
       req.params.id
     ]);
 

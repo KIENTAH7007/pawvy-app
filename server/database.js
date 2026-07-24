@@ -660,6 +660,13 @@ function createSchema() {
   try { db.run("ALTER TABLE products ADD COLUMN discount_start DATE"); } catch(e) {}
   try { db.run("ALTER TABLE products ADD COLUMN discount_end DATE"); } catch(e) {}
 
+  // Product description — for the website's product detail pages. Kept as
+  // a plain text field on products (same table as everything else about a
+  // product), not a separate table — one more field, not a new workflow.
+  // Rarely edited compared to pricing/stock, so it lives in the existing
+  // Edit Product modal rather than a new UI element.
+  try { db.run("ALTER TABLE products ADD COLUMN description TEXT"); } catch(e) {}
+
   // Primary-pet flag — the birthday-month multiplier and the profile-
   // completion 50B bonus are both keyed off one designated pet, agreed as
   // simpler than requiring every registered pet to qualify. The current UI

@@ -361,6 +361,23 @@ export default function Products() {
 
           <Input label="Notes" value={form.notes||''} onChange={e=>sf('notes',e.target.value)} placeholder="Optional"/>
 
+          <label style={{display:'flex',flexDirection:'column',gap:5}}>
+            <span style={{fontSize:11,fontWeight:600,color:'var(--cream-60)',letterSpacing:.5,textTransform:'uppercase'}}>
+              Description <span style={{textTransform:'none',fontWeight:400}}>(for the website — optional)</span>
+            </span>
+            <textarea
+              value={form.description||''}
+              onChange={e=>sf('description',e.target.value)}
+              placeholder="Shown on the product's page on pawvy.co. Leave blank for now if not ready."
+              rows={4}
+              style={{
+                background:'var(--navy-light)', border:'1px solid var(--border)',
+                borderRadius:7, padding:'9px 12px', color:'var(--cream)', fontSize:13,
+                outline:'none', width:'100%', fontFamily:'inherit', resize:'vertical',
+              }}
+            />
+          </label>
+
           {/* ── Product Image ── */}
           {modal === 'edit' && (
             <div style={{borderTop:'1px solid var(--border)',paddingTop:14}}>
