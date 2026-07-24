@@ -36,7 +36,7 @@ export default function Partners() {
   const [filterModel, setFM]    = useState('');
   const [filterTier,  setFT]    = useState('');
   const [modal,    setModal]    = useState(false);
-  const [form,     setForm]     = useState({ market:'SG', discount_type:'standard_rebate', discount_value:0, discount_threshold:0, tier:'Active', brand_ids:[] });
+  const [form,     setForm]     = useState({ market:'SG', discount_type:'standard_rebate', discount_value:0, discount_threshold:0, tier:'Active', brand_ids:[], is_stockist:1 });
   const [saving,   setSaving]   = useState(false);
   const [outlets,  setOutlets]  = useState([]);
   const [newOutlet, setNewOutlet] = useState({ label:'', address:'', pic_name:'', is_primary:false, region:'' });
@@ -92,7 +92,7 @@ export default function Partners() {
 
   return (
     <Page title="PARTNERS" subtitle={`${visible.length} of ${partners.length} partners`}
-      action={<Btn onClick={() => { setForm({ market:'SG', discount_type:'standard_rebate', discount_value:0, discount_threshold:0, tier:'Active', brand_ids:[] }); setModal(true); }}>
+      action={<Btn onClick={() => { setForm({ market:'SG', discount_type:'standard_rebate', discount_value:0, discount_threshold:0, tier:'Active', brand_ids:[], is_stockist:1 }); setModal(true); }}>
         <span style={{fontSize:16}}>+</span> Add Partner
       </Btn>}>
 
@@ -142,7 +142,14 @@ export default function Partners() {
                     onClick={() => openEdit(p)}
                     onMouseEnter={e=>e.currentTarget.style.background='rgba(245,242,235,.03)'}
                     onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                    <td style={{padding:'9px 12px'}}><TierBadge tier={p.tier||'Active'}/></td>
+                    <td style={{padding:'9px 12px',display:'flex',gap:6,alignItems:'center'}}>
+                      <TierBadge tier={p.tier||'Active'}/>
+                      {(p.is_stockist ?? 1) === 0 && (
+                        <span title="Not shown on public Stockist page" style={{fontSize:9,fontWeight:700,padding:'2px 6px',borderRadius:10,color:'#888',background:'rgba(136,136,136,.12)',whiteSpace:'nowrap'}}>
+                          Hidden
+                        </span>
+                      )}
+                    </td>
                     <td style={{padding:'9px 12px',color:'var(--cream)',fontWeight:500}}>{p.company_name}</td>
                     <td style={{padding:'9px 12px',color:'var(--cream-60)',fontSize:11}}>{p.business_type||'—'}</td>
                     <td style={{padding:'9px 12px'}}><Badge color={MODEL_COLORS[p.model]||'#888'}>{p.model||'—'}</Badge></td>
@@ -232,6 +239,24 @@ export default function Partners() {
               })}
             </div>
           </div>
+
+          {/* Separate from Tier/Active — a partner can be a fully live
+              relationship and still not be a real public-facing storefront
+              (e.g. in-house/internal use, not taking retail inventory). */}
+          <label style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer',padding:'10px 12px',border:'1px solid var(--border)',borderRadius:8}}>
+            <input
+              type="checkbox"
+              checked={form.is_stockist ?? 1 ? true : false}
+              onChange={e=>sf('is_stockist', e.target.checked ? 1 : 0)}
+              style={{accentColor:'var(--orange)',width:16,height:16}}
+            />
+            <div>
+              <div style={{fontSize:12,fontWeight:600,color:'var(--cream)'}}>Show on public Stockist page</div>
+              <div style={{fontSize:11,color:'var(--cream-30)',marginTop:1}}>
+                Turn off for partners who are active/VIP but don't actually carry retail inventory (in-house use only).
+              </div>
+            </div>
+          </label>
 
           <Input label="Notes"   value={form.notes||''}   onChange={e=>sf('notes',e.target.value)}/>
 

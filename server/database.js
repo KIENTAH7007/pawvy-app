@@ -716,6 +716,14 @@ function createSchema() {
   // partner's own address+region when they don't.
   try { db.run("ALTER TABLE partner_addresses ADD COLUMN region TEXT"); } catch(e) {}
 
+  // Separate from is_active/tier: a partner can be a fully live, active
+  // B2B relationship (e.g. VIP) without being a real public-facing
+  // storefront — some are in-house/internal-use only and don't actually
+  // take retail inventory. Defaults to 1 (shown) so this doesn't silently
+  // hide any of the existing 107 partners the moment it deploys — staff
+  // opt individual partners OUT, rather than the reverse.
+  try { db.run("ALTER TABLE partners ADD COLUMN is_stockist INTEGER NOT NULL DEFAULT 1"); } catch(e) {}
+
   console.log('✅ Schema ready');
 }
 

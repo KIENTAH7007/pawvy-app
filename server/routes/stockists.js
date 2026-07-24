@@ -3,6 +3,13 @@ const { Router } = require('express');
 // Public stockist directory for the website. Mounted at /api/stockists,
 // added to the PIN-gate exclusion list alongside /shop and /customers.
 //
+// Three independent filters combine here, and they mean different things:
+// is_active/tier = "is this a live B2B relationship at all", is_stockist
+// = "should this specific partner appear as a public storefront" (a
+// partner can be fully active/VIP and still be in-house-only, not a real
+// retail location taking inventory — that's what is_stockist opts out
+// of), market='SG' = this is a Singapore-only stockist finder.
+//
 // Deliberately hand-picks which columns to expose — NEVER `SELECT *` on
 // the partners table. That table also holds real B2B commercial terms
 // (tier, discount_type, discount_value, billing_cycle, credit_term_days)
@@ -37,7 +44,7 @@ module.exports = function(db) {
       sql += ` JOIN partner_brands pb ON pb.partner_id = p.id AND pb.brand_id = ?`;
       params.push(brand_id);
     }
-    sql += ` WHERE p.is_active = 1 AND COALESCE(p.tier, 'Active') != 'Non-active' AND p.market = 'SG' ORDER BY p.company_name`;
+    sql += ` WHERE p.is_active = 1 AND COALESCE(p.tier, 'Active') != 'Non-active' AND p.market = 'SG' AND p.is_stockist = 1 ORDER BY p.company_name`;
 
     const partners = db.query(sql, params);
 
