@@ -706,6 +706,16 @@ function createSchema() {
   // wants the exact pin.
   try { db.run("ALTER TABLE partners ADD COLUMN region TEXT"); } catch(e) {}
 
+  // Correction to the above: not every multi-outlet partner is split into
+  // separate top-level partner rows — confirmed directly (e.g. Vanillapup
+  // has two addresses crammed into one partner's address field, joined
+  // with "/"). partner_addresses (the existing "outlets" sub-table) is
+  // the real place multi-location partners are tracked when they ARE
+  // split out. Region now lives here too — the public stockist endpoint
+  // shows one card per outlet when outlets exist, falling back to the
+  // partner's own address+region when they don't.
+  try { db.run("ALTER TABLE partner_addresses ADD COLUMN region TEXT"); } catch(e) {}
+
   console.log('✅ Schema ready');
 }
 

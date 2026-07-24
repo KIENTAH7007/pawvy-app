@@ -14,7 +14,22 @@ module.exports = function(db) {
     if (active_only === 'true') { sql += " AND COALESCE(tier,'Active') != 'Non-active'"; }
     // VIP first, then Active, then Non-active; alphabetical within each group
     sql += " ORDER BY CASE COALESCE(tier,'Active') WHEN 'VIP' THEN 1 WHEN 'Active' THEN 2 ELSE 3 END, company_name";
-    res.json(db.query(sql, params));
+
+    // Brand assignment previously existed only in the backend's storage
+    // layer (partner_brands table + create/update logic) with no actual
+    // UI ever exposing it to staff — this list endpoint never even
+    // returned it, so there was no way to see or set it. Attaching brands
+    // to every row here now, same pattern as the single-partner GET below.
+    const partners = db.query(sql, params).map(p => ({
+      ...p,
+      brands: db.query(`
+        SELECT b.id, b.name, b.color FROM brands b
+        JOIN partner_brands pb ON pb.brand_id = b.id
+        WHERE pb.partner_id = ?
+        ORDER BY b.name
+      `, [p.id]),
+    }));
+    res.json(partners);
   });
 
   router.get('/:id', (req, res) => {
@@ -95,23 +110,23 @@ module.exports = function(db) {
   });
 
   router.post('/:id/addresses', (req, res) => {
-    const { label, address, pic_name, phone, is_primary } = req.body;
+    const { label, address, pic_name, phone, is_primary, region } = req.body;
     if (!label || !address) return res.status(400).json({ error: 'label and address required' });
     // If setting as primary, unset any existing primary for this partner
     if (is_primary) db.run('UPDATE partner_addresses SET is_primary = 0 WHERE partner_id = ?', [req.params.id]);
     const r = db.run(
-      'INSERT INTO partner_addresses (partner_id, label, address, pic_name, phone, is_primary) VALUES (?,?,?,?,?,?)',
-      [req.params.id, label, address, pic_name||null, phone||null, is_primary ? 1 : 0]
+      'INSERT INTO partner_addresses (partner_id, label, address, pic_name, phone, is_primary, region) VALUES (?,?,?,?,?,?,?)',
+      [req.params.id, label, address, pic_name||null, phone||null, is_primary ? 1 : 0, region||null]
     );
     res.status(201).json({ id: r.lastID, ok: true });
   });
 
   router.put('/:id/addresses/:addr_id', (req, res) => {
-    const { label, address, pic_name, phone, is_primary } = req.body;
+    const { label, address, pic_name, phone, is_primary, region } = req.body;
     if (is_primary) db.run('UPDATE partner_addresses SET is_primary = 0 WHERE partner_id = ?', [req.params.id]);
     db.run(
-      'UPDATE partner_addresses SET label=?, address=?, pic_name=?, phone=?, is_primary=? WHERE id=? AND partner_id=?',
-      [label, address, pic_name||null, phone||null, is_primary ? 1 : 0, req.params.addr_id, req.params.id]
+      'UPDATE partner_addresses SET label=?, address=?, pic_name=?, phone=?, is_primary=?, region=? WHERE id=? AND partner_id=?',
+      [label, address, pic_name||null, phone||null, is_primary ? 1 : 0, region||null, req.params.addr_id, req.params.id]
     );
     res.json({ ok: true });
   });

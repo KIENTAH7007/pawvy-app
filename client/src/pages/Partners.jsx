@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { partnersApi, partnerAddressesApi } from '../api';
+import { partnersApi, partnerAddressesApi, brandsApi } from '../api';
 import { Page, Badge, Btn, Modal, FormRow, Input, Select } from '../components/ui';
 
 const MODEL_COLORS  = { Inventory:'#f36f4a', Consignment:'#378ADD', Commission:'#7F77DD', None:'#555', Pickup:'#1D9E75' };
@@ -31,18 +31,20 @@ function TierBadge({ tier }) {
 
 export default function Partners() {
   const [partners, setPartners] = useState([]);
+  const [allBrands, setAllBrands] = useState([]);
   const [search,   setSearch]   = useState('');
   const [filterModel, setFM]    = useState('');
   const [filterTier,  setFT]    = useState('');
   const [modal,    setModal]    = useState(false);
-  const [form,     setForm]     = useState({ market:'SG', discount_type:'standard_rebate', discount_value:0, discount_threshold:0, tier:'Active' });
+  const [form,     setForm]     = useState({ market:'SG', discount_type:'standard_rebate', discount_value:0, discount_threshold:0, tier:'Active', brand_ids:[] });
   const [saving,   setSaving]   = useState(false);
   const [outlets,  setOutlets]  = useState([]);
-  const [newOutlet, setNewOutlet] = useState({ label:'', address:'', pic_name:'', is_primary:false });
+  const [newOutlet, setNewOutlet] = useState({ label:'', address:'', pic_name:'', is_primary:false, region:'' });
   const [addingOutlet, setAddingOutlet] = useState(false);
 
   const load = () => partnersApi.getAll().then(setPartners);
   useEffect(() => { load(); }, []);
+  useEffect(() => { brandsApi.getAll().then(setAllBrands); }, []);
 
   const sf = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -53,6 +55,7 @@ export default function Partners() {
       discount_value:     p.discount_value      || 0,
       discount_threshold: p.discount_threshold  || 0,
       tier:               p.tier               || 'Active',
+      brand_ids:          (p.brands || []).map(b => b.id),
     });
     setAddingOutlet(false);
     setNewOutlet({ label:'', address:'', pic_name:'', is_primary:false });
@@ -89,7 +92,7 @@ export default function Partners() {
 
   return (
     <Page title="PARTNERS" subtitle={`${visible.length} of ${partners.length} partners`}
-      action={<Btn onClick={() => { setForm({ market:'SG', discount_type:'standard_rebate', discount_value:0, discount_threshold:0, tier:'Active' }); setModal(true); }}>
+      action={<Btn onClick={() => { setForm({ market:'SG', discount_type:'standard_rebate', discount_value:0, discount_threshold:0, tier:'Active', brand_ids:[] }); setModal(true); }}>
         <span style={{fontSize:16}}>+</span> Add Partner
       </Btn>}>
 
@@ -125,7 +128,7 @@ export default function Partners() {
           <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:860}}>
             <thead>
               <tr>
-                {['Tier','Partner','Type','Model','Discount','Market','Region','PIC'].map(h=>(
+                {['Tier','Partner','Type','Model','Discount','Market','Region','Brands','PIC'].map(h=>(
                   <th key={h} style={{padding:'9px 12px',textAlign:'left',fontSize:9.5,fontWeight:700,letterSpacing:.7,textTransform:'uppercase',color:'var(--cream-30)',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap'}}>{h}</th>
                 ))}
                 <th style={{padding:'9px 12px',borderBottom:'1px solid var(--border)'}}/>
@@ -133,7 +136,7 @@ export default function Partners() {
             </thead>
             <tbody>
               {visible.length === 0
-                ? <tr><td colSpan={9} style={{padding:40,textAlign:'center',color:'var(--cream-30)'}}>No partners found</td></tr>
+                ? <tr><td colSpan={10} style={{padding:40,textAlign:'center',color:'var(--cream-30)'}}>No partners found</td></tr>
                 : visible.map(p => (
                   <tr key={p.id} style={{borderBottom:'1px solid rgba(245,242,235,.04)',cursor:'pointer',opacity:(p.tier||'Active')==='Non-active'?0.6:1}}
                     onClick={() => openEdit(p)}
@@ -149,6 +152,9 @@ export default function Partners() {
                     </td>
                     <td style={{padding:'9px 12px',color:'var(--cream-60)'}}>{p.market}</td>
                     <td style={{padding:'9px 12px',color:p.region?'var(--cream-60)':'#f59e0b',fontSize:11}}>{p.region||'Not set'}</td>
+                    <td style={{padding:'9px 12px',color:(p.brands?.length)?'var(--cream-60)':'#f59e0b',fontSize:11}}>
+                      {p.brands?.length ? `${p.brands.length} brand${p.brands.length>1?'s':''}` : 'None set'}
+                    </td>
                     <td style={{padding:'9px 12px',color:'var(--cream-60)',fontSize:11}}>{p.pic_name||'—'}</td>
                     <td style={{padding:'9px 12px'}}>
                       <Btn size="sm" variant="ghost" onClick={e=>{e.stopPropagation();openEdit(p);}}>Edit</Btn>
@@ -186,10 +192,47 @@ export default function Partners() {
             <Input label="Email" value={form.email||''} onChange={e=>sf('email',e.target.value)}/>
           </FormRow>
           <Input label="Address" value={form.address||''} onChange={e=>sf('address',e.target.value)}/>
-          <Select label="Region (for the public Stockist page filter)" value={form.region||''} onChange={e=>sf('region',e.target.value)}>
-            <option value="">—</option>
-            {['Central','East','North','North-East','West'].map(r=><option key={r} value={r}>{r}</option>)}
-          </Select>
+          {outlets.length === 0 ? (
+            <Select label="Region (for the public Stockist page filter)" value={form.region||''} onChange={e=>sf('region',e.target.value)}>
+              <option value="">—</option>
+              {['Central','East','North','North-East','West'].map(r=><option key={r} value={r}>{r}</option>)}
+            </Select>
+          ) : (
+            <div style={{fontSize:11,color:'var(--cream-30)'}}>
+              This partner has outlets recorded below — set each outlet's region individually there instead.
+            </div>
+          )}
+
+          {/* Brand assignment — previously had backend storage with no UI
+              exposing it at all, so this was silently never actually set
+              for any real partner. Click a badge to toggle it. */}
+          <div>
+            <div style={{fontSize:11,fontWeight:600,color:'var(--cream-60)',letterSpacing:.5,textTransform:'uppercase',marginBottom:8}}>
+              Brands Carried (for the public Stockist page)
+            </div>
+            <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+              {allBrands.map(b=>{
+                const selected = (form.brand_ids||[]).includes(b.id);
+                return (
+                  <button
+                    key={b.id} type="button"
+                    onClick={()=>sf('brand_ids', selected
+                      ? (form.brand_ids||[]).filter(id=>id!==b.id)
+                      : [...(form.brand_ids||[]), b.id])}
+                    style={{
+                      padding:'6px 12px', borderRadius:20, fontSize:12, fontWeight:600, cursor:'pointer',
+                      border:`1px solid ${selected ? b.color : 'var(--border)'}`,
+                      background: selected ? `${b.color}22` : 'transparent',
+                      color: selected ? b.color : 'var(--cream-60)',
+                    }}
+                  >
+                    {b.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <Input label="Notes"   value={form.notes||''}   onChange={e=>sf('notes',e.target.value)}/>
 
           {/* ── Partner Tier ── */}
@@ -326,6 +369,18 @@ export default function Partners() {
                     </div>
                     <div style={{fontSize:11,color:'var(--cream-60)',marginTop:2,lineHeight:1.5}}>{o.address}</div>
                     {o.pic_name && <div style={{fontSize:10,color:'var(--cream-30)',marginTop:1}}>Attn: {o.pic_name}</div>}
+                    <select
+                      value={o.region||''}
+                      onChange={async e=>{
+                        const updated = {...o, region: e.target.value};
+                        setOutlets(prev=>prev.map(x=>x.id===o.id?updated:x));
+                        await partnerAddressesApi.update(form.id, o.id, updated);
+                      }}
+                      style={{marginTop:6,fontSize:10,background:'var(--navy-light)',border:`1px solid ${o.region?'var(--border)':'#f59e0b'}`,borderRadius:5,padding:'3px 6px',color:o.region?'var(--cream-60)':'#f59e0b'}}
+                    >
+                      <option value="">Region not set</option>
+                      {['Central','East','North','North-East','West'].map(r=><option key={r} value={r}>{r}</option>)}
+                    </select>
                   </div>
                   <div style={{display:'flex',gap:6,flexShrink:0,marginLeft:8}}>
                     {!o.is_primary && (
@@ -348,7 +403,13 @@ export default function Partners() {
                     <Input label="Label *" value={newOutlet.label} onChange={e=>setNewOutlet(p=>({...p,label:e.target.value}))} placeholder="e.g. Punggol"/>
                     <Input label="Address *" value={newOutlet.address} onChange={e=>setNewOutlet(p=>({...p,address:e.target.value}))} placeholder="314B Punggol Way, SG 822314"/>
                   </div>
-                  <Input label="Contact Person (optional)" value={newOutlet.pic_name||''} onChange={e=>setNewOutlet(p=>({...p,pic_name:e.target.value}))} placeholder="e.g. Sarah"/>
+                  <FormRow cols={2}>
+                    <Input label="Contact Person (optional)" value={newOutlet.pic_name||''} onChange={e=>setNewOutlet(p=>({...p,pic_name:e.target.value}))} placeholder="e.g. Sarah"/>
+                    <Select label="Region (for the public Stockist page)" value={newOutlet.region||''} onChange={e=>setNewOutlet(p=>({...p,region:e.target.value}))}>
+                      <option value="">—</option>
+                      {['Central','East','North','North-East','West'].map(r=><option key={r} value={r}>{r}</option>)}
+                    </Select>
+                  </FormRow>
                   <div style={{display:'flex',alignItems:'center',gap:8}}>
                     <input type="checkbox" id="isPrimaryNew" checked={!!newOutlet.is_primary} onChange={e=>setNewOutlet(p=>({...p,is_primary:e.target.checked}))} style={{accentColor:'var(--orange)'}}/>
                     <label htmlFor="isPrimaryNew" style={{fontSize:11,color:'var(--cream-60)',cursor:'pointer'}}>Mark as Primary / HQ (used for SOA billing address)</label>
@@ -357,7 +418,7 @@ export default function Partners() {
                     if (!newOutlet.label || !newOutlet.address) return;
                     await partnerAddressesApi.create(form.id, newOutlet);
                     partnerAddressesApi.list(form.id).then(setOutlets);
-                    setNewOutlet({ label:'', address:'', pic_name:'', is_primary:false });
+                    setNewOutlet({ label:'', address:'', pic_name:'', is_primary:false, region:'' });
                     setAddingOutlet(false);
                   }} style={{alignSelf:'flex-start'}}>
                     Save Outlet
