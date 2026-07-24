@@ -125,7 +125,7 @@ export default function Partners() {
           <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:860}}>
             <thead>
               <tr>
-                {['Tier','Partner','Type','Model','Discount','Market','PIC'].map(h=>(
+                {['Tier','Partner','Type','Model','Discount','Market','Region','PIC'].map(h=>(
                   <th key={h} style={{padding:'9px 12px',textAlign:'left',fontSize:9.5,fontWeight:700,letterSpacing:.7,textTransform:'uppercase',color:'var(--cream-30)',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap'}}>{h}</th>
                 ))}
                 <th style={{padding:'9px 12px',borderBottom:'1px solid var(--border)'}}/>
@@ -133,7 +133,7 @@ export default function Partners() {
             </thead>
             <tbody>
               {visible.length === 0
-                ? <tr><td colSpan={8} style={{padding:40,textAlign:'center',color:'var(--cream-30)'}}>No partners found</td></tr>
+                ? <tr><td colSpan={9} style={{padding:40,textAlign:'center',color:'var(--cream-30)'}}>No partners found</td></tr>
                 : visible.map(p => (
                   <tr key={p.id} style={{borderBottom:'1px solid rgba(245,242,235,.04)',cursor:'pointer',opacity:(p.tier||'Active')==='Non-active'?0.6:1}}
                     onClick={() => openEdit(p)}
@@ -148,6 +148,7 @@ export default function Partners() {
                       {p.discount_value > 0 ? ` (${p.discount_value}%)` : ''}
                     </td>
                     <td style={{padding:'9px 12px',color:'var(--cream-60)'}}>{p.market}</td>
+                    <td style={{padding:'9px 12px',color:p.region?'var(--cream-60)':'#f59e0b',fontSize:11}}>{p.region||'Not set'}</td>
                     <td style={{padding:'9px 12px',color:'var(--cream-60)',fontSize:11}}>{p.pic_name||'—'}</td>
                     <td style={{padding:'9px 12px'}}>
                       <Btn size="sm" variant="ghost" onClick={e=>{e.stopPropagation();openEdit(p);}}>Edit</Btn>
@@ -185,6 +186,10 @@ export default function Partners() {
             <Input label="Email" value={form.email||''} onChange={e=>sf('email',e.target.value)}/>
           </FormRow>
           <Input label="Address" value={form.address||''} onChange={e=>sf('address',e.target.value)}/>
+          <Select label="Region (for the public Stockist page filter)" value={form.region||''} onChange={e=>sf('region',e.target.value)}>
+            <option value="">—</option>
+            {['Central','East','North','North-East','West'].map(r=><option key={r} value={r}>{r}</option>)}
+          </Select>
           <Input label="Notes"   value={form.notes||''}   onChange={e=>sf('notes',e.target.value)}/>
 
           {/* ── Partner Tier ── */}

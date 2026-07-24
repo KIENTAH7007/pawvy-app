@@ -697,6 +697,15 @@ function createSchema() {
   // back to magic-link login only.
   try { db.run("ALTER TABLE customers ADD COLUMN password_hash TEXT"); } catch(e) {}
 
+  // Partner region — powers the public Stockist page's region filter
+  // (Central/East/North/North-East/West, Singapore's standard URA planning
+  // regions). Deliberately NOT using a real geocoding/maps API for this —
+  // per KT's cost concern, a simple region tag + brand filter gives the
+  // same "find a stockist near me" utility for free, with a plain
+  // (unpaid, keyless) link out to Google Maps per result for anyone who
+  // wants the exact pin.
+  try { db.run("ALTER TABLE partners ADD COLUMN region TEXT"); } catch(e) {}
+
   console.log('✅ Schema ready');
 }
 

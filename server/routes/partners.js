@@ -31,18 +31,18 @@ module.exports = function(db) {
   router.post('/', (req, res) => {
     const {
       company_name, pic_name, business_type, model, market,
-      address, phone, email, notes, brand_ids,
+      address, phone, email, notes, brand_ids, region,
       discount_type, discount_value, discount_threshold, billing_cycle, tier, credit_term_days
     } = req.body;
     if (!company_name) return res.status(400).json({ error: 'Company name is required' });
 
     const result = db.run(
       `INSERT INTO partners
-        (company_name, pic_name, business_type, model, market, address, phone, email, notes,
+        (company_name, pic_name, business_type, model, market, address, phone, email, notes, region,
          discount_type, discount_value, discount_threshold, billing_cycle, tier, credit_term_days)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [company_name, pic_name||null, business_type||null, model||null, market||'SG',
-       address||null, phone||null, email||null, notes||null,
+       address||null, phone||null, email||null, notes||null, region||null,
        discount_type||'standard_rebate', discount_value||0, discount_threshold||0,
        billing_cycle||'per_invoice', tier||'Active', parseInt(credit_term_days)||7]
     );
@@ -59,18 +59,18 @@ module.exports = function(db) {
   router.put('/:id', (req, res) => {
     const {
       company_name, pic_name, business_type, model, market,
-      address, phone, email, notes, is_active, brand_ids,
+      address, phone, email, notes, is_active, brand_ids, region,
       discount_type, discount_value, discount_threshold, billing_cycle, tier, credit_term_days
     } = req.body;
 
     db.run(
       `UPDATE partners SET
         company_name=?, pic_name=?, business_type=?, model=?, market=?,
-        address=?, phone=?, email=?, notes=?, is_active=?,
+        address=?, phone=?, email=?, notes=?, is_active=?, region=?,
         discount_type=?, discount_value=?, discount_threshold=?, billing_cycle=?, tier=?, credit_term_days=?
        WHERE id=?`,
-      [company_name, pic_name, business_type, model, market,
-       address, phone, email, notes, is_active ?? 1,
+      [company_name, pic_name||null, business_type||null, model||null, market||'SG',
+       address||null, phone||null, email||null, notes||null, is_active ?? 1, region||null,
        discount_type||'standard_rebate', discount_value||0, discount_threshold||0,
        billing_cycle||'per_invoice', tier||'Active', parseInt(credit_term_days)||7,
        req.params.id]
