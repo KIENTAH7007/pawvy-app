@@ -62,4 +62,23 @@ function buildLoginEmail(baseUrlStr, customer, token) {
   return { subject: 'Your Pawvy login link', text, html };
 }
 
-module.exports = { baseUrl, htmlPage, buildVerifyEmail, buildLoginEmail };
+// Order receipt — sent once a website order is actually paid (see the
+// webhook handler in routes/checkout.js). Deliberately plain-text-forward,
+// matching the other customer emails here rather than an elaborate HTML
+// invoice — this is a confirmation, not a tax document.
+function buildReceiptEmail(order, items) {
+  const lines = items.map(i => `  ${i.qty}x ${i.brand_name} — ${i.item_series}${i.variation ? ' · ' + i.variation : ''} — $${(i.unit_price * i.qty).toFixed(2)}`);
+  const itemsText = lines.join('\n');
+  const itemsHtml = items.map(i => `<li>${i.qty}x ${i.brand_name} — ${i.item_series}${i.variation ? ' · ' + i.variation : ''} — $${(i.unit_price * i.qty).toFixed(2)}</li>`).join('');
+
+  const redemptionLine = order.buttons_redemption_value > 0
+    ? `\nBUTTONS redeemed (${order.buttons_redeemed}B): -$${order.buttons_redemption_value.toFixed(2)}` : '';
+  const redemptionHtml = order.buttons_redemption_value > 0
+    ? `<p>BUTTONS redeemed (${order.buttons_redeemed}B): -$${order.buttons_redemption_value.toFixed(2)}</p>` : '';
+
+  const text = `Hi ${order.customer_name || 'there'},\n\nThanks for your order! Here's your receipt for Order #${order.id}:\n\n${itemsText}\n\nSubtotal: $${order.subtotal.toFixed(2)}\nShipping: $${order.shipping_amount.toFixed(2)}${redemptionLine}\nTotal paid: $${order.total_amount.toFixed(2)}\n\nWe'll get this packed and shipped soon. Thanks for shopping with Pawvy!`;
+  const html = `<p>Hi ${order.customer_name || 'there'},</p><p>Thanks for your order! Here's your receipt for <strong>Order #${order.id}</strong>:</p><ul>${itemsHtml}</ul><p>Subtotal: $${order.subtotal.toFixed(2)}<br>Shipping: $${order.shipping_amount.toFixed(2)}</p>${redemptionHtml}<p><strong>Total paid: $${order.total_amount.toFixed(2)}</strong></p><p>We'll get this packed and shipped soon. Thanks for shopping with Pawvy!</p>`;
+  return { subject: `Your Pawvy order #${order.id} is confirmed`, text, html };
+}
+
+module.exports = { baseUrl, htmlPage, buildVerifyEmail, buildLoginEmail, buildReceiptEmail };

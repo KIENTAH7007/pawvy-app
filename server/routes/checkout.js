@@ -1,7 +1,8 @@
 const { Router } = require('express');
 const { withEffectivePrice } = require('../lib/pricing');
 const { previewRedemption, redeemButtons, recordPurchaseButtons } = require('../lib/buttons');
-const { notifyNewWebsiteOrder } = require('../utils/notify');
+const { notifyNewWebsiteOrder, sendCustomerEmail } = require('../utils/notify');
+const { buildReceiptEmail } = require('../lib/customerEmails');
 
 // Real B2C checkout for pawvy.co, paid via Stripe Checkout (card + PayNow).
 // Mounted at /api/checkout, added to the PIN-gate exclusion list in
@@ -209,28 +210,35 @@ module.exports = function(db, inventoryRouter, stripeClient) {
 
   // Best-effort fetch of Stripe's real processing fee for this payment.
   // The fee only exists once the underlying Charge's balance_transaction is
-  // computed — for card this is usually already present by the time the
-  // webhook fires, but it's not guaranteed (and for PayNow, an inherently
-  // async method, the timing margin is a little tighter). Never blocks or
-  // fails fulfillment: on any problem this logs a warning and returns 0,
-  // so KT can cross-check that specific order against the Stripe Dashboard
-  // rather than checkout silently breaking over a reporting detail.
+  // computed — this is sometimes not instant, especially for PayNow (an
+  // inherently async payment method). Retries a couple of times with a
+  // short delay before giving up, since in practice this is usually just a
+  // race against Stripe's own internal ledger catching up, not a real
+  // failure. Never blocks or fails fulfillment: on any problem this logs a
+  // warning and returns 0, so KT can cross-check that specific order
+  // against the Stripe Dashboard rather than checkout silently breaking
+  // over a reporting detail.
+  async function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
   async function fetchStripeFee(paymentIntentId, orderId) {
     if (!paymentIntentId) return 0;
-    try {
-      const pi = await stripeClient.paymentIntents.retrieve(paymentIntentId, {
-        expand: ['latest_charge.balance_transaction'],
-      });
-      const feeCents = pi?.latest_charge?.balance_transaction?.fee;
-      if (typeof feeCents !== 'number') {
-        console.warn(`⚠️  Website order #${orderId}: Stripe fee not yet available (balance_transaction not settled) — recorded as $0, check Stripe Dashboard if this matters for reconciliation.`);
-        return 0;
+    const MAX_ATTEMPTS = 3;
+    const DELAY_MS = 1500;
+
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      try {
+        const pi = await stripeClient.paymentIntents.retrieve(paymentIntentId, {
+          expand: ['latest_charge.balance_transaction'],
+        });
+        const feeCents = pi?.latest_charge?.balance_transaction?.fee;
+        if (typeof feeCents === 'number') return Math.round(feeCents) / 100;
+      } catch (err) {
+        console.warn(`⚠️  Website order #${orderId}: Stripe fee fetch attempt ${attempt} failed — ${err.message}`);
       }
-      return Math.round(feeCents) / 100;
-    } catch (err) {
-      console.warn(`⚠️  Website order #${orderId}: could not fetch Stripe fee — recorded as $0.`, err.message);
-      return 0;
+      if (attempt < MAX_ATTEMPTS) await sleep(DELAY_MS);
     }
+    console.warn(`⚠️  Website order #${orderId}: Stripe fee still not available after ${MAX_ATTEMPTS} attempts — recorded as $0, check Stripe Dashboard if this matters for reconciliation.`);
+    return 0;
   }
 
   // Commits a paid order exactly once: real `sales` rows, inventory
@@ -326,15 +334,30 @@ module.exports = function(db, inventoryRouter, stripeClient) {
     }
 
     const products = db.query(`
-      SELECT woi.qty, p.item_series, p.variation
-      FROM website_order_items woi JOIN products p ON p.id = woi.product_id
+      SELECT woi.qty, woi.unit_price, p.item_series, p.variation, b.name AS brand_name
+      FROM website_order_items woi
+      JOIN products p ON p.id = woi.product_id
+      JOIN brands b ON b.id = p.brand_id
       WHERE woi.website_order_id = ?
     `, [order.id]);
+
     notifyNewWebsiteOrder({
       orderId: order.id, customerName: order.customer_name, customerEmail: order.customer_email,
       total: order.total_amount,
       lines: products.map(p => ({ qty: p.qty, name: `${p.item_series}${p.variation ? ' · ' + p.variation : ''}` })),
     });
+
+    // Real customer-facing receipt — separate from notifyNewWebsiteOrder
+    // above, which only alerts staff (Telegram + internal email). Uses the
+    // same Resend path as signup/login emails, so it isn't affected by
+    // Railway's SMTP port block. Never blocks fulfillment — if this fails,
+    // it's logged and swallowed the same way sendCustomerEmail always
+    // does; the order is already paid and recorded either way.
+    if (order.customer_email) {
+      const { subject, text, html } = buildReceiptEmail(order, products);
+      sendCustomerEmail(order.customer_email, subject, text, html)
+        .catch(err => console.error(`⚠️  Receipt email failed for order #${order.id}:`, err.message));
+    }
   }
 
   // POST /api/checkout/webhook — Stripe's server-to-server confirmation.
