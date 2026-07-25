@@ -24,10 +24,10 @@ export default function Customers() {
 
   async function openDetail(row) {
     setDetailLoading(true);
-    setDetailModal({ customer: row, pet: null });
+    setDetailModal({ customer: row, pet: null, buttons_ledger: [] });
     try {
-      const { customer, pet } = await customerAdminApi.get(row.id);
-      setDetailModal({ customer, pet });
+      const { customer, pet, buttons_ledger } = await customerAdminApi.get(row.id);
+      setDetailModal({ customer, pet, buttons_ledger });
     } finally {
       setDetailLoading(false);
     }
@@ -258,12 +258,63 @@ export default function Customers() {
                     </div>
                   )}
                 </div>
+
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: .5, textTransform: 'uppercase', color: 'var(--cream-30)', marginBottom: 8 }}>
+                    BUTTONS Ledger
+                  </div>
+                  {(!detailModal.buttons_ledger || detailModal.buttons_ledger.length === 0) ? (
+                    <div style={{ fontSize: 12.5, color: 'var(--cream-30)' }}>No BUTTONS activity yet.</div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 260, overflowY: 'auto' }}>
+                      {detailModal.buttons_ledger.map(b => <ButtonsLedgerRow key={b.id} batch={b} />)}
+                    </div>
+                  )}
+                </div>
               </>
             )}
           </div>
         )}
       </Modal>
     </Page>
+  );
+}
+
+// Turns raw source/source_type into what staff actually want to read —
+// e.g. "Purchase (Direct Online Sale #12)" instead of source_type/source_id
+// as separate opaque values.
+function buttonsLedgerLabel(b) {
+  const SOURCE_LABELS = {
+    purchase: 'Purchase', first_purchase_bonus: 'First-purchase bonus', referral: 'Referral bonus',
+    signup: 'Signup bonus', stamp_reward: 'Stamp card reward', profile_bonus: 'Profile completion bonus',
+  };
+  const label = SOURCE_LABELS[b.source] || b.source;
+  if (b.source_type === 'website_order' && b.source_id) return `${label} (Order #${b.source_id})`;
+  return label;
+}
+
+function ButtonsLedgerRow({ batch: b }) {
+  const statusColor = { pending: '#f59e0b', credited: '#7fc93e', voided: '#f87171' }[b.status] || '#888';
+  const statusLabel = { pending: 'Pending (7-day hold)', credited: 'Credited', voided: 'Voided' }[b.status] || b.status;
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, fontSize: 12, padding: '6px 0', borderBottom: '1px solid rgba(245,242,235,.06)' }}>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ color: 'var(--cream)' }}>{buttonsLedgerLabel(b)}</div>
+        <div style={{ color: 'var(--cream-30)', fontSize: 10.5, marginTop: 2 }}>
+          Earned {new Date(b.earned_at).toLocaleDateString('en-SG', { day: '2-digit', month: 'short', year: 'numeric' })}
+          {b.status === 'pending' && (
+            <> — credits {new Date(new Date(b.earned_at).getTime() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('en-SG', { day: '2-digit', month: 'short', year: 'numeric' })}</>
+          )}
+          {b.status === 'credited' && b.expires_at && (
+            <> — expires {new Date(b.expires_at).toLocaleDateString('en-SG', { day: '2-digit', month: 'short', year: 'numeric' })}</>
+          )}
+        </div>
+      </div>
+      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+        <div style={{ color: 'var(--cream)', fontWeight: 700 }}>{b.amount}B</div>
+        <Badge color={statusColor}>{statusLabel}</Badge>
+      </div>
+    </div>
   );
 }
 

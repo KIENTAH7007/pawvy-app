@@ -10,12 +10,15 @@ const REVENUE_EXPR = `CASE WHEN s.channel IN ('Shopee','Lazada','Amazon','TikTok
   ELSE ROUND(s.qty * s.unit_price - s.platform_fee_amt + COALESCE(s.shipping_charged,0), 2)
 END`;
 
-// Profit is consistent: gross margin minus fees/discounts plus shipping net
+// Profit is consistent: gross margin minus fees/discounts plus shipping net,
+// minus Stripe's real processing fee (Patch 122 — website orders only,
+// defaults to 0 for every other channel so nothing else changes)
 const PROFIT_EXPR = `ROUND(
   s.qty * (s.unit_price - s.unit_cost)
   - s.platform_fee_amt
   + COALESCE(s.shipping_charged,0)
-  - COALESCE(s.shipping_cost,0),
+  - COALESCE(s.shipping_cost,0)
+  - COALESCE(s.stripe_fee_amt,0),
 2)`;
 
 module.exports = function(db, inventoryRouter) {

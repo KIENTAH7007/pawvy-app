@@ -308,7 +308,16 @@ export default function Sales() {
                             })()}
                           </td>
                           <td style={{padding:'8px 10px',textAlign:'right',fontWeight:600,color:'var(--cream)'}}>{fmt.sgd(s.revenue)}</td>
-                          <td style={{padding:'8px 10px',textAlign:'right',fontWeight:700,color:s.profit>=0?'#7fc93e':'#f87171'}}>{fmt.sgd(s.profit)}</td>
+                          <td style={{padding:'8px 10px',textAlign:'right',fontWeight:700,color:s.profit>=0?'#7fc93e':'#f87171'}}>
+                            <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end'}}>
+                              <span>{fmt.sgd(s.profit)}</span>
+                              {parseFloat(s.stripe_fee_amt || 0) > 0 && (
+                                <span style={{fontSize:9,fontWeight:400,color:'var(--cream-30)'}}>
+                                  − {fmt.sgd(s.stripe_fee_amt)} Stripe fee
+                                </span>
+                              )}
+                            </div>
+                          </td>
                           <td style={{padding:'8px 6px',textAlign:'right',whiteSpace:'nowrap'}}>
                             {!isVoided && (
                               <>

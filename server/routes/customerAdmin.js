@@ -36,11 +36,11 @@ module.exports = function(db) {
   });
 
   // GET /api/customer-admin/customers/:id — single record, including pet
-  // profile and any still-valid pending verify/login link (for manual
-  // testing/sending). Deliberately kept separate from the list endpoint
-  // above — pet/consent detail is too much to cram into table columns for
-  // every row, so it only loads here, when staff actually opens one
-  // customer's detail view.
+  // profile, any still-valid pending verify/login link (for manual
+  // testing/sending), and the full BUTTONS ledger. Deliberately kept
+  // separate from the list endpoint above — pet/consent/ledger detail is
+  // too much to cram into table columns for every row, so it only loads
+  // here, when staff actually opens one customer's detail view.
   router.get('/customers/:id', (req, res) => {
     const customer = db.queryOne('SELECT * FROM customers WHERE id = ?', [req.params.id]);
     if (!customer) return res.status(404).json({ error: 'Customer not found.' });
@@ -53,10 +53,27 @@ module.exports = function(db) {
       ORDER BY created_at DESC LIMIT 1
     `, [customer.id]);
 
+    // Full BUTTONS history — including still-pending (7-day hold) batches,
+    // which the Customers list's headline balance deliberately excludes
+    // (that balance only ever counts status='credited'). Surfacing pending
+    // batches here answers "why hasn't my B credited yet" without adding a
+    // second, easily-misread number to the main list. Most recent first,
+    // capped at 100 rows — plenty for any real account, protects against
+    // an unbounded response for a very old/active one.
+    const buttonsLedger = db.query(`
+      SELECT id, amount, remaining, source, source_type, source_id, status,
+             earned_at, credited_at, expires_at
+      FROM buttons_batches
+      WHERE customer_id = ?
+      ORDER BY earned_at DESC
+      LIMIT 100
+    `, [customer.id]);
+
     res.json({
       customer: { ...customer, buttons_balance: customerButtonsBalance(db, customer.id) },
       pet: pet || null,
       pending_token: pendingToken || null,
+      buttons_ledger: buttonsLedger,
     });
   });
 
