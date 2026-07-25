@@ -768,6 +768,17 @@ function createSchema() {
   // opt individual partners OUT, rather than the reverse.
   try { db.run("ALTER TABLE partners ADD COLUMN is_stockist INTEGER NOT NULL DEFAULT 1"); } catch(e) {}
 
+  // Website checkout (Patch 121): the real Stripe processing fee (card
+  // ~3.4%+$0.50, PayNow a different rate) for a Direct Online Sale row.
+  // Deliberately separate from platform_fee_amt — that field already
+  // carries BUTTONS-redemption-as-discount for these rows (see
+  // checkout.js), and is revenue-reducing in reports.js's REVENUE_SQL.
+  // stripe_fee_amt is a real operating cost, same treatment as
+  // shipping_cost: it reduces PROFIT_SQL but never reduces top-line
+  // revenue (revenue = what the customer actually paid). Defaults to 0,
+  // so every pre-existing row/channel is completely unaffected.
+  try { db.run("ALTER TABLE sales ADD COLUMN stripe_fee_amt REAL DEFAULT 0"); } catch(e) {}
+
   console.log('✅ Schema ready');
 }
 

@@ -207,11 +207,37 @@ module.exports = function(db, inventoryRouter, stripeClient) {
     }
   });
 
+  // Best-effort fetch of Stripe's real processing fee for this payment.
+  // The fee only exists once the underlying Charge's balance_transaction is
+  // computed — for card this is usually already present by the time the
+  // webhook fires, but it's not guaranteed (and for PayNow, an inherently
+  // async method, the timing margin is a little tighter). Never blocks or
+  // fails fulfillment: on any problem this logs a warning and returns 0,
+  // so KT can cross-check that specific order against the Stripe Dashboard
+  // rather than checkout silently breaking over a reporting detail.
+  async function fetchStripeFee(paymentIntentId, orderId) {
+    if (!paymentIntentId) return 0;
+    try {
+      const pi = await stripeClient.paymentIntents.retrieve(paymentIntentId, {
+        expand: ['latest_charge.balance_transaction'],
+      });
+      const feeCents = pi?.latest_charge?.balance_transaction?.fee;
+      if (typeof feeCents !== 'number') {
+        console.warn(`⚠️  Website order #${orderId}: Stripe fee not yet available (balance_transaction not settled) — recorded as $0, check Stripe Dashboard if this matters for reconciliation.`);
+        return 0;
+      }
+      return Math.round(feeCents) / 100;
+    } catch (err) {
+      console.warn(`⚠️  Website order #${orderId}: could not fetch Stripe fee — recorded as $0.`, err.message);
+      return 0;
+    }
+  }
+
   // Commits a paid order exactly once: real `sales` rows, inventory
   // deduction, and BUTTONS earn/redeem. Safe to call more than once for the
   // same session (Stripe can and does send duplicate webhook events) — the
   // status check makes this idempotent.
-  function fulfillOrder(session) {
+  async function fulfillOrder(session) {
     const order = db.queryOne('SELECT * FROM website_orders WHERE stripe_checkout_session_id = ?', [session.id]);
     if (!order) {
       console.error(`⚠️  Webhook: no website_orders row for Stripe session ${session.id}`);
@@ -222,6 +248,7 @@ module.exports = function(db, inventoryRouter, stripeClient) {
     const items = db.query('SELECT * FROM website_order_items WHERE website_order_id = ?', [order.id]);
     const today = new Date().toISOString().slice(0, 10);
     const saleIds = [];
+    const stripeFee = await fetchStripeFee(session.payment_intent, order.id);
 
     items.forEach((line, i) => {
       const product = db.queryOne('SELECT unit_cost FROM products WHERE id = ?', [line.product_id]);
@@ -230,15 +257,26 @@ module.exports = function(db, inventoryRouter, stripeClient) {
       const result = db.run(`
         INSERT INTO sales
           (date, product_id, partner_id, channel, market, qty, unit_cost, unit_price,
-           platform_fee_pct, platform_fee_amt, shipping_charged, shipping_cost, notes,
+           platform_fee_pct, platform_fee_amt, shipping_charged, shipping_cost, stripe_fee_amt, notes,
            mailing_name, mailing_address, mailing_phone, customer_email,
            pdpa_consent, pdpa_consent_text, pdpa_consent_at)
-        VALUES (?,?,?,?,?,?,?,?,0,0,?,0,?,?,?,?,?,?,?,?)
+        VALUES (?,?,?,?,?,?,?,?,0,?,?,0,?,?,?,?,?,?,?,?,?)
       `, [
-        today, line.product_id, null, 'Website Order', 'SG', line.qty,
+        today, line.product_id, null, 'Direct Online Sale', 'SG', line.qty,
         product?.unit_cost || 0, line.unit_price,
+        // BUTTONS redemption is recorded as a discount via platform_fee_amt —
+        // that field is already revenue-reducing in reports.js's REVENUE_SQL,
+        // so "revenue" correctly nets to what the customer actually paid
+        // ($39, not the $41 pre-discount subtotal+shipping). Stripe's own
+        // processing fee is a separate real cost (stripe_fee_amt), which
+        // reduces profit but NOT revenue — same treatment as shipping_cost.
+        // Both — like shipping_charged — are only carried on the first
+        // line item of a multi-item order, to avoid double-counting when
+        // summing across rows.
+        isFirst ? order.buttons_redemption_value : 0,
         isFirst ? order.shipping_amount : 0,
-        `Website Order #${order.id}`,
+        isFirst ? stripeFee : 0,
+        `Direct Online Sale #${order.id}`,
         order.customer_name || null, order.shipping_address || null, order.customer_phone || null,
         order.customer_email, order.pdpa_consent, order.pdpa_consent_text, order.created_at,
       ]);
@@ -303,7 +341,7 @@ module.exports = function(db, inventoryRouter, stripeClient) {
   // Requires the RAW request body (not JSON-parsed) for signature
   // verification — see the path-based branch in server/index.js that skips
   // express.json() specifically for this route.
-  router.post('/webhook', (req, res) => {
+  router.post('/webhook', async (req, res) => {
     const sig = req.headers['stripe-signature'];
     let event;
     try {
@@ -321,11 +359,11 @@ module.exports = function(db, inventoryRouter, stripeClient) {
           // For card payments this is already 'paid'; for PayNow (an async,
           // redirect-based method) it's often still 'unpaid' here — the
           // async_payment_succeeded event below is what actually confirms it.
-          if (session.payment_status === 'paid') fulfillOrder(session);
+          if (session.payment_status === 'paid') await fulfillOrder(session);
           break;
         }
         case 'checkout.session.async_payment_succeeded':
-          fulfillOrder(event.data.object);
+          await fulfillOrder(event.data.object);
           break;
         case 'checkout.session.async_payment_failed': {
           const session = event.data.object;

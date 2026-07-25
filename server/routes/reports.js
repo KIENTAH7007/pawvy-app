@@ -7,7 +7,7 @@ const REVENUE_SQL = `CASE WHEN s.channel IN ('Shopee','Lazada','Amazon','TikTok 
 END`;
 
 const PROFIT_SQL = `s.qty * (s.unit_price - s.unit_cost) - s.platform_fee_amt
-  + COALESCE(s.shipping_charged,0) - COALESCE(s.shipping_cost,0)`;
+  + COALESCE(s.shipping_charged,0) - COALESCE(s.shipping_cost,0) - COALESCE(s.stripe_fee_amt,0)`;
 
 const VOIDED_FILTER = `COALESCE(s.voided,0) = 0`;
 
