@@ -555,6 +555,50 @@ function createSchema() {
       replied INTEGER NOT NULL DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`,
+
+    // Website checkout (Patch 120) — real B2C orders from pawvy.co, paid via
+    // Stripe (card + PayNow). Deliberately named website_orders/_items, NOT
+    // "orders" — /api/orders + the `portal_orders` table already exist for
+    // staff-reviewed B2B wholesale submissions, a completely different flow
+    // (approval queue, no payment gateway). Reusing "orders" here would be
+    // confusing at best. A row is created as soon as a Stripe Checkout
+    // Session is started (status='pending_payment') and only flips to 'paid'
+    // once the webhook confirms real payment — inventory deduction, the
+    // `sales` ledger row, and BUTTONS earn/redeem all happen at that point,
+    // never at session creation (see server/routes/checkout.js). This
+    // mirrors the existing pattern of never reserving stock ahead of a
+    // committed sale (same as portal_orders/pos.js).
+    `CREATE TABLE IF NOT EXISTS website_orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      customer_id INTEGER REFERENCES customers(id),
+      customer_email TEXT NOT NULL,
+      customer_name TEXT,
+      customer_phone TEXT,
+      shipping_address TEXT,
+      subtotal REAL NOT NULL DEFAULT 0,
+      shipping_amount REAL NOT NULL DEFAULT 0,
+      buttons_redeemed INTEGER NOT NULL DEFAULT 0,
+      buttons_redemption_value REAL NOT NULL DEFAULT 0,
+      total_amount REAL NOT NULL DEFAULT 0,
+      currency TEXT NOT NULL DEFAULT 'sgd',
+      status TEXT NOT NULL DEFAULT 'pending_payment',
+      stripe_checkout_session_id TEXT UNIQUE,
+      stripe_payment_intent_id TEXT,
+      created_sale_ids TEXT,
+      pdpa_consent INTEGER NOT NULL DEFAULT 0,
+      pdpa_consent_text TEXT,
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      paid_at DATETIME
+    )`,
+    `CREATE TABLE IF NOT EXISTS website_order_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      website_order_id INTEGER NOT NULL REFERENCES website_orders(id) ON DELETE CASCADE,
+      product_id INTEGER NOT NULL REFERENCES products(id),
+      qty INTEGER NOT NULL,
+      unit_price REAL NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
   ];
 
   tables.forEach(sql => db.run(sql));

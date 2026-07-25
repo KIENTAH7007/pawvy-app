@@ -7,7 +7,7 @@
 // the moment that exists, same pattern as the schema (Patch 96) and auth
 // (Patch 97) being built ahead of their eventual callers.
 
-const { creditButtons } = require('./customers');
+const { creditButtons, customerButtonsBalance } = require('./customers');
 
 const REDEMPTION_CAP_PCT = 0.30;   // max 30% of order value can be paid with B
 const B_VALUE_DOLLARS = 0.02;      // 100B = $2, i.e. 1B = $0.02
@@ -110,6 +110,24 @@ function redeemButtons(db, { customerId, requestedB, orderValueAfterDiscount, so
   return { redeemed: actuallyRedeemed, redemptionValue: buttonsToDollars(actuallyRedeemed), capped };
 }
 
+// Non-committing preview of what redeemButtons() would actually redeem —
+// used at Stripe Checkout Session creation time (server/routes/checkout.js)
+// to size the discount correctly, WITHOUT touching the ledger. The real
+// redemption (the DB writes redeemButtons performs) only happens in the
+// webhook once Stripe confirms payment — never at session creation, same
+// reasoning as why inventory/sales aren't committed until then either.
+// Mirrors redeemButtons' cap + balance logic exactly so the previewed
+// number always matches what actually gets redeemed on success.
+function previewRedemption(db, { customerId, requestedB, orderValueAfterDiscount }) {
+  if (!customerId || !requestedB || requestedB <= 0) return { redeemed: 0, redemptionValue: 0, capped: false };
+  const maxValue = orderValueAfterDiscount * REDEMPTION_CAP_PCT;
+  const maxB = dollarsToButtons(maxValue);
+  const balance = customerButtonsBalance(db, customerId);
+  const redeemed = Math.max(0, Math.min(requestedB, maxB, balance));
+  const capped = requestedB > maxB || requestedB > balance;
+  return { redeemed, redemptionValue: buttonsToDollars(redeemed), capped };
+}
+
 // Records B earned from a completed purchase. Everything created here goes
 // in as status='pending' — subject to the 7-day hold (see
 // processExpiredHolds) — because it's all purchase-contingent, per the
@@ -187,7 +205,7 @@ function voidPendingButtons(db, { sourceType, sourceId }) {
 }
 
 module.exports = {
-  calculateEarnedButtons, getActiveMultiplier, redeemButtons, recordPurchaseButtons,
+  calculateEarnedButtons, getActiveMultiplier, redeemButtons, previewRedemption, recordPurchaseButtons,
   processExpiredHolds, voidPendingButtons, buttonsToDollars, dollarsToButtons,
   REDEMPTION_CAP_PCT, B_VALUE_DOLLARS, HOLD_DAYS, FIRST_PURCHASE_BONUS_B, REFERRAL_BONUS_B,
 };

@@ -22,11 +22,22 @@ const app  = express();
 const PORT = process.env.PORT || 3001;
 
 app.use(cors());
+// Stripe webhook signature verification (server/routes/checkout.js) needs
+// the RAW, unparsed request body — express.json() below would otherwise
+// consume it and leave nothing for stripe.webhooks.constructEvent to check
+// against. This must be registered BEFORE express.json() and match by exact
+// path, not prefix, so every other route keeps normal JSON parsing.
+//
 // Default express.json() body limit is 100kb, which silently rejects (413) larger
 // base64 payloads such as scanned PDFs/images uploaded via Shipments > Documents.
 // Raised to 15mb to comfortably cover multi-page scans and photos while still
 // bounding request size.
-app.use(express.json({ limit: '15mb' }));
+app.use((req, res, next) => {
+  if (req.originalUrl === '/api/checkout/webhook') {
+    return express.raw({ type: 'application/json' })(req, res, next);
+  }
+  return express.json({ limit: '15mb' })(req, res, next);
+});
 
 async function startServer() {
   const db  = await init();
@@ -49,11 +60,13 @@ async function startServer() {
   // PIN gate — applies to every /api/* route EXCEPT /api/auth (handled
   // above), /api/health (Railway's healthcheck), /api/portal and /api/pos
   // (must stay reachable with no login — Order Portal and POS System
-  // customers never see or use a PIN), and /api/customers (the future
-  // pawvy.co website's own visitors — a completely separate customer-facing
-  // auth system, not the internal staff PIN).
+  // customers never see or use a PIN), /api/customers (the pawvy.co
+  // website's own visitors — a completely separate customer-facing auth
+  // system, not the internal staff PIN), and /api/checkout (Stripe
+  // Checkout Session creation + the Stripe webhook — real website
+  // customers and Stripe's own servers, neither of which have a staff PIN).
   app.use('/api', (req, res, next) => {
-    if (req.path.startsWith('/portal') || req.path.startsWith('/pos') || req.path.startsWith('/customers') || req.path.startsWith('/shop') || req.path.startsWith('/enquiries') || req.path.startsWith('/stockists') || req.path === '/health') return next();
+    if (req.path.startsWith('/portal') || req.path.startsWith('/pos') || req.path.startsWith('/customers') || req.path.startsWith('/shop') || req.path.startsWith('/enquiries') || req.path.startsWith('/stockists') || req.path.startsWith('/checkout') || req.path === '/health') return next();
     return auth.requireAuth(req, res, next);
   });
 
@@ -80,6 +93,14 @@ async function startServer() {
   app.use('/api/stockists',   require('./routes/stockists')(db));
   app.use('/api/customer-admin', require('./routes/customerAdmin')(db));
   app.use('/api/campaigns',   require('./routes/campaigns')(db));
+
+  // Stripe client for website checkout (card + PayNow). STRIPE_SECRET_KEY
+  // must be set on Railway — see DEPLOY.md. Constructing the client here
+  // never fails even if the key is missing; individual API calls inside
+  // routes/checkout.js will fail clearly at call time instead, which is
+  // easier to diagnose from logs than a silent startup issue.
+  const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+  app.use('/api/checkout',    require('./routes/checkout')(db, inventoryRouter, stripe));
 
   // Order Portal (public-facing, separate build) — served under /order.
   // Registered BEFORE the internal app's catch-all below, so /order/* requests

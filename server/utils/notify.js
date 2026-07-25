@@ -148,6 +148,42 @@ function notifyNewPortalOrder({ orderId, companyName, notes, lines }) {
   ]).catch(err => console.error('⚠️  notifyNewPortalOrder error:', err.message));
 }
 
+// ── Combined: new paid website order (Stripe checkout) ─────────────
+// Fired from the webhook handler once payment is actually confirmed — see
+// server/routes/checkout.js. Same fire-and-forget shape as
+// notifyNewPortalOrder above: independently try/caught, never blocks or
+// slows down webhook processing.
+function notifyNewWebsiteOrder({ orderId, customerName, customerEmail, total, lines }) {
+  const itemLines = lines.map(l => `• ${l.qty}x ${l.name}`).join('\n');
+  const itemCount = lines.reduce((s, l) => s + l.qty, 0);
+  const who = customerName || customerEmail;
+
+  const telegramText =
+    `🐾 *New paid website order!*\n` +
+    `From: ${who}\n` +
+    `Total: $${total.toFixed(2)}\n` +
+    `${lines.length} SKU${lines.length === 1 ? '' : 's'}, ${itemCount} unit${itemCount === 1 ? '' : 's'} total:\n` +
+    `${itemLines}\n\n` +
+    `Order #${orderId} — already recorded in the Sales Ledger.`;
+
+  const emailSubject = `New paid website order — ${who} ($${total.toFixed(2)})`;
+  const emailText =
+    `New paid order from ${who} (${customerEmail}).\n\n` +
+    `${itemLines}\n\n` +
+    `Total: $${total.toFixed(2)}\n` +
+    `Order #${orderId} — already recorded in the Sales Ledger, no action needed.`;
+  const emailHtml =
+    `<p>New paid order from <strong>${who}</strong> (${customerEmail}).</p>` +
+    `<ul>${lines.map(l => `<li>${l.qty}x ${l.name}</li>`).join('')}</ul>` +
+    `<p>Total: $${total.toFixed(2)}</p>` +
+    `<p>Order #${orderId} — already recorded in the Sales Ledger, no action needed.</p>`;
+
+  Promise.all([
+    notifyTelegram(telegramText),
+    notifyEmail(emailSubject, emailText, emailHtml),
+  ]).catch(err => console.error('⚠️  notifyNewWebsiteOrder error:', err.message));
+}
+
 // ── Customer-facing email (magic links) — Resend HTTP API ──────────
 // Unlike the internal functions above (left on blocked Gmail SMTP, see
 // note there), customer email uses Resend's HTTPS API, which isn't
@@ -208,4 +244,4 @@ async function sendTestEmail(to) {
   });
 }
 
-module.exports = { notifyTelegram, notifyEmail, notifyBackupEmail, notifyNewPortalOrder, sendCustomerEmail, sendTestEmail };
+module.exports = { notifyTelegram, notifyEmail, notifyBackupEmail, notifyNewPortalOrder, notifyNewWebsiteOrder, sendCustomerEmail, sendTestEmail };
