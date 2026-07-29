@@ -793,6 +793,24 @@ function createSchema() {
   // so every pre-existing row/channel is completely unaffected.
   try { db.run("ALTER TABLE sales ADD COLUMN stripe_fee_amt REAL DEFAULT 0"); } catch(e) {}
 
+  // Links a Direct Online Sale row back to the website_orders row it came
+  // from. A single website order can produce multiple sales rows (one per
+  // line item — see checkout.js's saleIds array), but BUTTONS are recorded
+  // once per ORDER (recordPurchaseButtons keyed on sourceType:'website_order',
+  // sourceId: order.id) — so voiding a sale needs this to find and void the
+  // right BUTTONS batch. Nullable/unused for every other channel.
+  try { db.run("ALTER TABLE sales ADD COLUMN website_order_id INTEGER REFERENCES website_orders(id)"); } catch(e) {}
+
+  // Tracks when a pet's birthday was last actually changed (not just
+  // saved — see server/routes/customers.js PUT /me/pet), so that field can
+  // be rate-limited to once every 365 days. Without this, a customer could
+  // repeatedly flip their pet's birthday to the current month to keep
+  // re-triggering the 1.5x BUTTONS birthday-month bonus every time they
+  // shop. NULL means never explicitly changed (still whatever was first
+  // entered), which is never itself rate-limited — only a CHANGE away from
+  // an already-set value starts the clock.
+  try { db.run("ALTER TABLE customer_pets ADD COLUMN birthday_updated_at DATETIME"); } catch(e) {}
+
   console.log('✅ Schema ready');
 }
 

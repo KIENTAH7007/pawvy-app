@@ -267,8 +267,8 @@ module.exports = function(db, inventoryRouter, stripeClient) {
           (date, product_id, partner_id, channel, market, qty, unit_cost, unit_price,
            platform_fee_pct, platform_fee_amt, shipping_charged, shipping_cost, stripe_fee_amt, notes,
            mailing_name, mailing_address, mailing_phone, customer_email,
-           pdpa_consent, pdpa_consent_text, pdpa_consent_at)
-        VALUES (?,?,?,?,?,?,?,?,0,?,?,0,?,?,?,?,?,?,?,?,?)
+           pdpa_consent, pdpa_consent_text, pdpa_consent_at, website_order_id)
+        VALUES (?,?,?,?,?,?,?,?,0,?,?,0,?,?,?,?,?,?,?,?,?,?)
       `, [
         today, line.product_id, null, 'Direct Online Sale', 'SG', line.qty,
         product?.unit_cost || 0, line.unit_price,
@@ -287,6 +287,7 @@ module.exports = function(db, inventoryRouter, stripeClient) {
         `Direct Online Sale #${order.id}`,
         order.customer_name || null, order.shipping_address || null, order.customer_phone || null,
         order.customer_email, order.pdpa_consent, order.pdpa_consent_text, order.created_at,
+        order.id,
       ]);
       saleIds.push(result.lastID);
 

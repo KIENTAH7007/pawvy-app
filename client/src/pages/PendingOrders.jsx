@@ -52,16 +52,48 @@ function calcDiscount(partner, subtotal) {
 // Same apportionment rule as RecordSale.jsx: percentage discounts apply
 // directly per line; fixed cash rebates are distributed proportionally by
 // each line's share of the subtotal.
-function getPerLineDiscountAmt(discount, subtotal, line) {
-  if (!discount || discount.amount === 0) return 0;
-  const revenue = line.qty * line.unit_price;
-  if (subtotal === 0 || revenue === 0) return 0;
-  const { type, pct } = discount;
-  if (type === 'fixed_pct' || type === 'hybrid' || type === 'threshold_pct') {
-    return parseFloat((line.qty * line.unit_price * (pct / 100)).toFixed(2));
+// Fixed cash rebates (standard_rebate's $30/$12, hybrid's flat $12 sub-tier)
+// need every line's share to reconcile EXACTLY to discount.amount — see the
+// detailed writeup in RecordSale.jsx's computePerLineDiscountAmts (Fix #7),
+// which this mirrors. That fix was applied there but this is a second,
+// separate implementation for approving a submitted wholesale/portal order,
+// which still had the old bug: independently rounding each line's
+// proportional share to 2dp lets the total drift a few cents from the true
+// flat amount once there are enough line items (e.g. $30.02 shown on an
+// invoice that should read exactly $30.00). Percentage-based discounts
+// don't have this problem — each line is independently correct off its own
+// revenue, with no shared total to reconcile.
+function computePerLineDiscountAmts(items, discount, subtotal) {
+  const amounts = items.map(() => 0);
+  if (!discount || discount.amount === 0 || subtotal === 0) return amounts;
+
+  const isPercentage = discount.pct !== undefined && discount.pct !== null
+    && (discount.type === 'fixed_pct' || discount.type === 'hybrid' || discount.type === 'threshold_pct');
+
+  if (isPercentage) {
+    items.forEach((it, i) => {
+      const revenue = it.qty * (parseFloat(it.unit_price) || 0);
+      if (revenue !== 0) amounts[i] = parseFloat((revenue * (discount.pct / 100)).toFixed(2));
+    });
+    return amounts;
   }
-  const share = revenue / subtotal;
-  return parseFloat((discount.amount * share).toFixed(2));
+
+  const idxs = items
+    .map((it, i) => ({ i, revenue: it.qty * (parseFloat(it.unit_price) || 0) }))
+    .filter(x => x.revenue > 0);
+  if (idxs.length === 0) return amounts;
+
+  let running = 0;
+  idxs.forEach(({ i, revenue }, pos) => {
+    if (pos === idxs.length - 1) {
+      amounts[i] = parseFloat((discount.amount - running).toFixed(2));
+    } else {
+      const amt = parseFloat((discount.amount * (revenue / subtotal)).toFixed(2));
+      amounts[i] = amt;
+      running += amt;
+    }
+  });
+  return amounts;
 }
 
 const TABS = [
@@ -173,16 +205,16 @@ export default function PendingOrders() {
         partner_id: partner.id,
         shipping_charged: parseFloat(es.shippingCharged) || 0,
         shipping_cost:    parseFloat(es.shippingCost) || 0,
-        items: items.map(it => {
-          const feeAmt = getPerLineDiscountAmt(discount, subtotal, it);
-          return {
+        items: (() => {
+          const discountAmts = computePerLineDiscountAmts(items, discount, subtotal);
+          return items.map((it, i) => ({
             product_id: it.product_id,
             qty: parseInt(it.qty),
             unit_price: parseFloat(it.unit_price),
             platform_fee_pct: 0,
-            platform_fee_amt: feeAmt,
-          };
-        }),
+            platform_fee_amt: discountAmts[i],
+          }));
+        })(),
       };
       await ordersApi.approve(order.id, payload);
       setExpandedId(null);

@@ -1,4 +1,5 @@
 const { Router } = require('express');
+const { voidPendingButtons } = require('../lib/buttons');
 
 const MARKETPLACE_CHANNELS = ['Shopee', 'Lazada', 'Amazon', 'TikTok Shop'];
 
@@ -259,6 +260,22 @@ module.exports = function(db, inventoryRouter) {
         type: 'Sale Reversal', qty_change: sale.qty, reference: `sale_${sale.id}_void`,
       });
     }
+
+    // BUTTONS: a website order's earn batch is recorded once per ORDER
+    // (sourceType:'website_order', sourceId: website_orders.id — see
+    // checkout.js), not per sale line, so this cascades from whichever
+    // line got voided up to the whole order's batch. voidPendingButtons
+    // only touches batches still in 'pending' status (the 7-day hold
+    // window) — if the hold already expired and the batch is already
+    // spendable/spent, this deliberately does nothing (same reasoning as
+    // the hold's own design: clawing back already-usable BUTTONS is the
+    // harder problem the hold exists to avoid needing). Safe to call more
+    // than once (e.g. voiding several lines of the same order) since it's
+    // just an UPDATE ... WHERE status = 'pending'.
+    if (sale.website_order_id) {
+      voidPendingButtons(db, { sourceType: 'website_order', sourceId: sale.website_order_id });
+    }
+
     res.json({ ok: true, id: req.params.id, voided: true });
   });
 

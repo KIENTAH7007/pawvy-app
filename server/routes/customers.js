@@ -285,7 +285,29 @@ module.exports = function(db) {
   // if it doesn't exist yet rather than requiring a separate create step).
   router.put('/me/pet', requireCustomerAuth, (req, res) => {
     const { name, breed, weight, birthday, allergies, favorite_item, chew_power } = req.body;
-    const existing = db.queryOne('SELECT id FROM customer_pets WHERE customer_id = ? AND is_primary = 1', [req.customerId]);
+    const existing = db.queryOne('SELECT * FROM customer_pets WHERE customer_id = ? AND is_primary = 1', [req.customerId]);
+
+    // Birthday changes are rate-limited to once every 365 days once a pet
+    // already has one set, to stop the BUTTONS birthday-month bonus (1.5x)
+    // being gamed by repeatedly changing the birthday's month right before
+    // checking out. Setting a birthday for the FIRST time (new pet, or an
+    // existing pet that's never had one) is never blocked — this only
+    // stops CHANGING an already-set value too soon after the last change.
+    const BIRTHDAY_COOLDOWN_DAYS = 365;
+    let birthdayToSave = birthday || null;
+    let birthdayBlocked = false;
+    let cooldownEndsOn = null;
+
+    if (existing && birthday && existing.birthday && birthday !== existing.birthday && existing.birthday_updated_at) {
+      const daysSinceChange = (Date.now() - new Date(existing.birthday_updated_at).getTime()) / 86400000;
+      if (daysSinceChange < BIRTHDAY_COOLDOWN_DAYS) {
+        birthdayBlocked = true;
+        birthdayToSave = existing.birthday; // keep the current value — requested change is rejected
+        cooldownEndsOn = new Date(new Date(existing.birthday_updated_at).getTime() + BIRTHDAY_COOLDOWN_DAYS * 86400000)
+          .toISOString().slice(0, 10);
+      }
+    }
+    const birthdayIsChanging = !birthdayBlocked && birthday && (!existing || birthday !== existing.birthday);
 
     if (existing) {
       db.run(`
@@ -293,19 +315,31 @@ module.exports = function(db) {
           name = COALESCE(?, name), breed = COALESCE(?, breed), weight = COALESCE(?, weight),
           birthday = COALESCE(?, birthday), allergies = COALESCE(?, allergies),
           favorite_item = COALESCE(?, favorite_item), chew_power = COALESCE(?, chew_power),
+          birthday_updated_at = ?,
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
-      `, [name || null, breed || null, weight ?? null, birthday || null, allergies || null, favorite_item || null, chew_power || null, existing.id]);
+      `, [
+        name || null, breed || null, weight ?? null, birthdayToSave, allergies || null, favorite_item || null, chew_power || null,
+        birthdayIsChanging ? new Date().toISOString() : existing.birthday_updated_at,
+        existing.id,
+      ]);
     } else {
       db.run(`
-        INSERT INTO customer_pets (customer_id, name, breed, weight, birthday, allergies, favorite_item, chew_power, is_primary)
-        VALUES (?,?,?,?,?,?,?,?,1)
-      `, [req.customerId, name || null, breed || null, weight ?? null, birthday || null, allergies || null, favorite_item || null, chew_power || null]);
+        INSERT INTO customer_pets (customer_id, name, breed, weight, birthday, allergies, favorite_item, chew_power, is_primary, birthday_updated_at)
+        VALUES (?,?,?,?,?,?,?,?,1,?)
+      `, [
+        req.customerId, name || null, breed || null, weight ?? null, birthday || null, allergies || null, favorite_item || null, chew_power || null,
+        birthday ? new Date().toISOString() : null,
+      ]);
     }
 
     const bonusResult = checkAndAwardProfileBonus(db, req.customerId);
     const pet = db.queryOne('SELECT * FROM customer_pets WHERE customer_id = ? AND is_primary = 1', [req.customerId]);
-    res.json({ ok: true, pet, profile_bonus: bonusResult });
+    res.json({
+      ok: true, pet, profile_bonus: bonusResult,
+      birthday_change_blocked: birthdayBlocked,
+      birthday_change_available_from: cooldownEndsOn,
+    });
   });
 
   // POST /api/customers/check-email — the first step of the unified
