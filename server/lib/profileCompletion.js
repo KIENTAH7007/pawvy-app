@@ -6,15 +6,24 @@
 // "How they heard about Pawvy" is deliberately excluded from this list —
 // it's captured automatically at signup, not something the pawrent fills
 // in themselves, so it shouldn't gate the bonus.
+//
+// instagram_handle joined the required customer-level fields on KT's
+// explicit call — it's optional at signup but mandatory to earn this bonus.
 
 const { creditButtons } = require('./customers');
 
 const PROFILE_BONUS_B = 50;
 
+const REQUIRED_CUSTOMER_FIELDS = ['preferred_contact_channel', 'instagram_handle'];
 const REQUIRED_PET_FIELDS = ['name', 'breed', 'weight', 'birthday', 'allergies', 'favorite_item', 'chew_power'];
 
 function isProfileComplete(customer, primaryPet) {
-  if (!customer || !customer.preferred_contact_channel) return false;
+  if (!customer) return false;
+  const customerFieldsOk = REQUIRED_CUSTOMER_FIELDS.every(field => {
+    const value = customer[field];
+    return value !== null && value !== undefined && String(value).trim() !== '';
+  });
+  if (!customerFieldsOk) return false;
   if (!primaryPet) return false;
   return REQUIRED_PET_FIELDS.every(field => {
     const value = primaryPet[field];
@@ -48,4 +57,4 @@ function checkAndAwardProfileBonus(db, customerId) {
   return { awarded: true, reason: 'newly_completed' };
 }
 
-module.exports = { isProfileComplete, checkAndAwardProfileBonus, PROFILE_BONUS_B, REQUIRED_PET_FIELDS };
+module.exports = { isProfileComplete, checkAndAwardProfileBonus, PROFILE_BONUS_B, REQUIRED_CUSTOMER_FIELDS, REQUIRED_PET_FIELDS };
