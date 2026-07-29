@@ -501,6 +501,19 @@ function createSchema() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`,
 
+    // Hand-picked Instagram post URLs for the website's homepage
+    // Instagram section — KT pastes the permalink of whichever posts he
+    // wants shown, and the website renders each one live via Instagram's
+    // own official embed (instagram.com/embed.js), not a cached
+    // third-party feed. `sort_order` controls left-to-right display order.
+    `CREATE TABLE IF NOT EXISTS instagram_posts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      url TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+
     // BUTTONS ledger — one row per batch earned. Tracked as discrete batches
     // (not a single running balance) so expiry can be FIFO per-batch, and so
     // the 7-day hold can be enforced per-batch via `status`. remaining is

@@ -140,6 +140,12 @@ export const tickerMessagesApi = {
   update: (id, m) => api.patch(`/ticker-messages/${id}`, m),
   delete: (id) => api.delete(`/ticker-messages/${id}`),
 };
+export const instagramPostsApi = {
+  getAll: () => api.get('/instagram-posts'),
+  create: (p) => api.post('/instagram-posts', p),
+  update: (id, p) => api.patch(`/instagram-posts/${id}`, p),
+  delete: (id) => api.delete(`/instagram-posts/${id}`),
+};
 
 export const restockApi = {
   getAll:  (q) => api.get(`/restock${qs(q)}`),

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Trash2, Edit2 } from 'lucide-react';
-import { campaignsApi, tickerMessagesApi } from '../api';
+import { campaignsApi, tickerMessagesApi, instagramPostsApi } from '../api';
 import { Page, Table, Badge, Btn, Modal, FormRow, Input, Select, fmt } from '../components/ui';
 
 const CAMPAIGN_EMPTY = { name: '', multiplier: '2', start_date: new Date().toISOString().slice(0, 10), end_date: '', is_active: true };
@@ -26,6 +26,7 @@ export default function Marketing() {
     <Page title="MARKETING" subtitle="Campaigns, ticker announcements, and other on-and-off promo content">
       <CampaignsSection />
       <TickerSection />
+      <InstagramSection />
     </Page>
   );
 }
@@ -284,6 +285,143 @@ function TickerSection() {
             placeholder="e.g. Now boothing at Pet Expo, Suntec Hall B, 12-14 Aug!" />
           <Btn onClick={save} disabled={saving} size="lg" style={{ justifyContent: 'center' }}>
             {saving ? 'Saving…' : (editing ? 'Save Changes' : 'Add Message')}
+          </Btn>
+        </div>
+      </Modal>
+    </>
+  );
+}
+
+function InstagramSection() {
+  const [posts, setPosts] = useState([]);
+  const [modal, setModal] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [form, setForm] = useState({ url: '', sort_order: 0, is_active: true });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const load = () => instagramPostsApi.getAll().then(d => setPosts(d.posts));
+  useEffect(() => { load(); }, []);
+
+  const sf = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  function openNew() {
+    setEditing(null);
+    setError('');
+    const maxOrder = posts.reduce((m, r) => Math.max(m, r.sort_order), 0);
+    setForm({ url: '', sort_order: maxOrder + 1, is_active: true });
+    setModal(true);
+  }
+  function openEdit(row) {
+    setEditing(row);
+    setError('');
+    setForm({ url: row.url, sort_order: row.sort_order, is_active: !!row.is_active });
+    setModal(true);
+  }
+
+  async function save() {
+    if (!form.url.trim()) return;
+    setSaving(true);
+    setError('');
+    try {
+      if (editing) await instagramPostsApi.update(editing.id, form);
+      else await instagramPostsApi.create(form);
+      load();
+      setModal(false);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function remove(id) {
+    if (!window.confirm('Remove this post from the homepage?')) return;
+    await instagramPostsApi.delete(id);
+    load();
+  }
+
+  async function toggleActive(row) {
+    await instagramPostsApi.update(row.id, { is_active: !row.is_active });
+    load();
+  }
+
+  async function move(row, direction) {
+    const sorted = [...posts].sort((a, b) => a.sort_order - b.sort_order);
+    const idx = sorted.findIndex(p => p.id === row.id);
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= sorted.length) return;
+    const other = sorted[swapIdx];
+    await Promise.all([
+      instagramPostsApi.update(row.id, { sort_order: other.sort_order }),
+      instagramPostsApi.update(other.id, { sort_order: row.sort_order }),
+    ]);
+    load();
+  }
+
+  const cols = [
+    {
+      key: 'order', label: '', render: (_, row) => (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }} onClick={e => e.stopPropagation()}>
+          <button onClick={() => move(row, 'up')} title="Move left"
+            style={{ background: 'none', border: 'none', color: 'rgba(245,242,235,.4)', cursor: 'pointer', padding: 0, fontSize: 10, lineHeight: 1 }}>▲</button>
+          <button onClick={() => move(row, 'down')} title="Move right"
+            style={{ background: 'none', border: 'none', color: 'rgba(245,242,235,.4)', cursor: 'pointer', padding: 0, fontSize: 10, lineHeight: 1 }}>▼</button>
+        </div>
+      ),
+    },
+    { key: 'url', label: 'Post URL', render: v => <span style={{ wordBreak: 'break-all' }}>{v}</span> },
+    {
+      key: 'status', label: 'Status',
+      render: (_, row) => row.is_active ? <Badge color="#1D9E75">Showing</Badge> : <Badge color="#888">Hidden</Badge>,
+    },
+    {
+      key: 'actions', label: '', align: 'right',
+      render: (_, row) => (
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
+          <Btn variant="ghost" size="sm" onClick={() => toggleActive(row)}>{row.is_active ? 'Hide' : 'Show'}</Btn>
+          <button onClick={() => openEdit(row)} title="Edit"
+            style={{ background: 'none', border: 'none', color: 'rgba(245,242,235,.5)', cursor: 'pointer', padding: 4, display: 'inline-flex' }}>
+            <Edit2 size={13} />
+          </button>
+          <button onClick={() => remove(row.id)} title="Remove"
+            style={{ background: 'none', border: 'none', color: 'rgba(248,113,113,.5)', cursor: 'pointer', padding: 4, display: 'inline-flex' }}
+            onMouseEnter={e => e.currentTarget.style.color = '#f87171'}
+            onMouseLeave={e => e.currentTarget.style.color = 'rgba(248,113,113,.5)'}>
+            <Trash2 size={13} />
+          </button>
+        </div>
+      ),
+    },
+  ];
+
+  const sortedPosts = [...posts].sort((a, b) => a.sort_order - b.sort_order);
+
+  return (
+    <>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 28 }}>
+        <div>
+          <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 15, letterSpacing: 1, color: 'var(--cream)' }}>INSTAGRAM HIGHLIGHTS</div>
+          <div style={{ fontSize: 12, color: 'var(--cream-30)', marginTop: 2, maxWidth: 640 }}>
+            Hand-pick which Instagram posts show on the homepage. Paste the link from the "..." → Copy Link (or Embed)
+            option on any post — the website loads it live and direct from Instagram, so it always shows the post's
+            real current likes/caption, no separate refresh needed. Aim for 4 posts for the current layout.
+          </div>
+        </div>
+        <Btn onClick={openNew}><span style={{ fontSize: 16 }}>+</span> Add Post</Btn>
+      </div>
+
+      <div style={{ background: 'var(--navy)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
+        <Table cols={cols} rows={sortedPosts} emptyMsg="No posts added yet — the homepage Instagram section will be empty until you add some" />
+      </div>
+
+      <Modal open={modal} title={editing ? 'EDIT POST' : 'ADD POST'} onClose={() => setModal(false)}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <Input label="Instagram post URL *" value={form.url} onChange={e => sf('url', e.target.value)}
+            placeholder="https://www.instagram.com/p/xxxxxxxxx/" />
+          {error && <div style={{ color: '#f87171', fontSize: 13 }}>{error}</div>}
+          <Btn onClick={save} disabled={saving} size="lg" style={{ justifyContent: 'center' }}>
+            {saving ? 'Saving…' : (editing ? 'Save Changes' : 'Add Post')}
           </Btn>
         </div>
       </Modal>

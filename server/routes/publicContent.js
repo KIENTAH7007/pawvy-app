@@ -33,5 +33,12 @@ module.exports = function(db) {
     }
   });
 
+  router.get('/instagram', (req, res) => {
+    const posts = db.query(
+      'SELECT url FROM instagram_posts WHERE is_active = 1 ORDER BY sort_order ASC, id ASC'
+    );
+    res.json({ urls: posts.map(p => p.url) });
+  });
+
   return router;
 };

@@ -98,6 +98,7 @@ async function startServer() {
   app.use('/api/customer-admin', require('./routes/customerAdmin')(db));
   app.use('/api/campaigns',   require('./routes/campaigns')(db));
   app.use('/api/ticker-messages', require('./routes/tickerMessages')(db));
+  app.use('/api/instagram-posts', require('./routes/instagramPosts')(db));
   app.use('/api/public-content', require('./routes/publicContent')(db));
 
   // Stripe client for website checkout (card + PayNow). STRIPE_SECRET_KEY
