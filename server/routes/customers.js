@@ -4,6 +4,7 @@ const {
   generateToken, upsertCustomerFromSignup, customerButtonsBalance, creditButtons,
   SIGNUP_BONUS_B, LOGIN_TOKEN_TTL_MS, SESSION_TOKEN_TTL_MS,
 } = require('../lib/customers');
+const { getActiveMultiplierDetail } = require('../lib/buttons');
 const { sendCustomerEmail } = require('../utils/notify');
 const { baseUrl, htmlPage, buildVerifyEmail, buildLoginEmail } = require('../lib/customerEmails');
 const { checkAndAwardProfileBonus } = require('../lib/profileCompletion');
@@ -245,11 +246,15 @@ module.exports = function(db) {
     const customer = db.queryOne('SELECT * FROM customers WHERE id = ?', [req.customerId]);
     if (!customer) return res.status(404).json({ error: 'Account not found.' });
     const pet = db.queryOne('SELECT * FROM customer_pets WHERE customer_id = ? AND is_primary = 1 LIMIT 1', [customer.id]);
+    const multiplierDetail = getActiveMultiplierDetail(db, { customerId: customer.id });
     res.json({
       ok: true,
       customer: customerPublicView(customer),
       pet: pet || null,
       buttons_balance: customerButtonsBalance(db, customer.id),
+      active_multiplier: multiplierDetail.multiplier,
+      active_multiplier_source: multiplierDetail.source,
+      active_campaign_name: multiplierDetail.campaignName,
     });
   });
 

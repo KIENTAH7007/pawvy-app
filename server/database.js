@@ -487,6 +487,20 @@ function createSchema() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`,
 
+    // Admin-editable free-text messages for the website's homepage marquee
+    // ticker — campaigns, event/booth announcements, or anything else KT
+    // wants scrolling across the site, updatable from the Pawvy App with
+    // no website code changes needed. `sort_order` controls display order
+    // (lower first); ties broken by id. Only is_active=1 rows are ever
+    // returned to the public website endpoint.
+    `CREATE TABLE IF NOT EXISTS ticker_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      text TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+
     // BUTTONS ledger — one row per batch earned. Tracked as discrete batches
     // (not a single running balance) so expiry can be FIFO per-batch, and so
     // the 7-day hold can be enforced per-batch via `status`. remaining is

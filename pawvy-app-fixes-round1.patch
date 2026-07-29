@@ -1,0 +1,601 @@
+diff --git a/client/src/App.jsx b/client/src/App.jsx
+index e03c563..0142a86 100644
+--- a/client/src/App.jsx
++++ b/client/src/App.jsx
+@@ -4,7 +4,7 @@ import {
+   LayoutDashboard, PlusCircle, Package, Store, Tag,
+   FileText, Users, Receipt, Settings, TrendingUp, ClipboardList,
+   ShoppingBag, Menu, X, Inbox, Truck, Coins, FolderOpen, Scale, ListChecks,
+-  Calculator, LogOut, UserCircle, MessageSquare
++  Calculator, LogOut, UserCircle, MessageSquare, Megaphone
+ } from 'lucide-react';
+ import { ordersApi, authApi } from './api';
+ 
+@@ -28,6 +28,7 @@ import DocumentLibrary from './pages/DocumentLibrary';
+ import VarianceLedger from './pages/VarianceLedger';
+ import Customers      from './pages/Customers';
+ import Enquiries      from './pages/Enquiries';
++import Marketing      from './pages/Marketing';
+ 
+ import { PAWVY_LOGO_WHITE } from './pawvyLogo.js';
+ 
+@@ -62,6 +63,9 @@ const NAV = [
+     { path: '/customers',    label: 'Customers',       icon: UserCircle },
+     { path: '/enquiries',    label: 'Enquiries',       icon: MessageSquare },
+   ]},
++  { section: 'Marketing',   items: [
++    { path: '/marketing',    label: 'Marketing',       icon: Megaphone },
++  ]},
+   { section: 'Business',    items: [
+     { path: '/partners',     label: 'Partners',        icon: Users },
+     { path: '/costs',        label: 'Operating Costs', icon: Receipt },
+@@ -275,6 +279,7 @@ export default function App() {
+             <Route path="/partners"      element={<Partners />} />
+             <Route path="/customers"     element={<Customers />} />
+             <Route path="/enquiries"     element={<Enquiries />} />
++            <Route path="/marketing"     element={<Marketing />} />
+             <Route path="/costs"         element={<Costs />} />
+             <Route path="/reports"       element={<Reports />} />
+           </Routes>
+diff --git a/client/src/api.js b/client/src/api.js
+index 668931a..18031b1 100644
+--- a/client/src/api.js
++++ b/client/src/api.js
+@@ -128,6 +128,19 @@ export const customerAdminApi = {
+   awardStamp: (id, body) => api.post(`/customer-admin/customers/${id}/stamp`, body),
+   delete: (id) => api.delete(`/customer-admin/customers/${id}`),
+ };
++export const campaignsApi = {
++  getAll: () => api.get('/campaigns'),
++  create: (c) => api.post('/campaigns', c),
++  update: (id, c) => api.patch(`/campaigns/${id}`, c),
++  delete: (id) => api.delete(`/campaigns/${id}`),
++};
++export const tickerMessagesApi = {
++  getAll: () => api.get('/ticker-messages'),
++  create: (m) => api.post('/ticker-messages', m),
++  update: (id, m) => api.patch(`/ticker-messages/${id}`, m),
++  delete: (id) => api.delete(`/ticker-messages/${id}`),
++};
++
+ export const restockApi = {
+   getAll:  (q) => api.get(`/restock${qs(q)}`),
+   get:     (id) => api.get(`/restock/${id}`),
+diff --git a/client/src/pages/Marketing.jsx b/client/src/pages/Marketing.jsx
+new file mode 100644
+index 0000000..c182f09
+--- /dev/null
++++ b/client/src/pages/Marketing.jsx
+@@ -0,0 +1,292 @@
++import React, { useState, useEffect } from 'react';
++import { Trash2, Edit2 } from 'lucide-react';
++import { campaignsApi, tickerMessagesApi } from '../api';
++import { Page, Table, Badge, Btn, Modal, FormRow, Input, Select, fmt } from '../components/ui';
++
++const CAMPAIGN_EMPTY = { name: '', multiplier: '2', start_date: new Date().toISOString().slice(0, 10), end_date: '', is_active: true };
++const MESSAGE_EMPTY = { text: '', sort_order: 0, is_active: true };
++
++function todayStr() { return new Date().toISOString().slice(0, 10); }
++
++// A campaign is "live" right now if it's marked active AND today falls
++// inside its date range — this is exactly the same condition
++// getActiveMultiplier() checks server-side, just re-derived here for the
++// status badge so what staff see matches what customers actually get.
++function isLive(c) {
++  const today = todayStr();
++  return c.is_active && c.start_date <= today && c.end_date >= today;
++}
++
++// Kept as one page rather than two separate ones — a campaign (e.g. an
++// event weekend at 2× BUTTONS) and its ticker announcement ("Now boothing
++// at Pet Expo!") are almost always set up together, so splitting them
++// across different nav items just adds clicking back and forth.
++export default function Marketing() {
++  return (
++    <Page title="MARKETING" subtitle="Campaigns, ticker announcements, and other on-and-off promo content">
++      <CampaignsSection />
++      <TickerSection />
++    </Page>
++  );
++}
++
++function CampaignsSection() {
++  const [campaigns, setCampaigns] = useState([]);
++  const [modal, setModal] = useState(false);
++  const [editing, setEditing] = useState(null);
++  const [form, setForm] = useState({ ...CAMPAIGN_EMPTY });
++  const [saving, setSaving] = useState(false);
++
++  const load = () => campaignsApi.getAll().then(d => setCampaigns(d.campaigns));
++  useEffect(() => { load(); }, []);
++
++  const sf = (k, v) => setForm(f => ({ ...f, [k]: v }));
++
++  function openNew() {
++    setEditing(null);
++    setForm({ ...CAMPAIGN_EMPTY });
++    setModal(true);
++  }
++  function openEdit(row) {
++    setEditing(row);
++    setForm({
++      name: row.name, multiplier: String(row.multiplier),
++      start_date: row.start_date, end_date: row.end_date, is_active: !!row.is_active,
++    });
++    setModal(true);
++  }
++
++  async function save() {
++    if (!form.name.trim() || !form.multiplier || !form.start_date || !form.end_date) return;
++    setSaving(true);
++    try {
++      const body = { ...form, multiplier: parseFloat(form.multiplier) };
++      if (editing) await campaignsApi.update(editing.id, body);
++      else await campaignsApi.create(body);
++      load();
++      setModal(false);
++    } catch (e) {
++      alert(e.message);
++    } finally {
++      setSaving(false);
++    }
++  }
++
++  async function remove(id) {
++    if (!window.confirm('Delete this campaign? This cannot be undone.')) return;
++    await campaignsApi.delete(id);
++    load();
++  }
++
++  async function toggleActive(row) {
++    await campaignsApi.update(row.id, { is_active: !row.is_active });
++    load();
++  }
++
++  const cols = [
++    { key: 'name', label: 'Campaign' },
++    { key: 'multiplier', label: 'Multiplier', render: v => <strong>{v}×</strong> },
++    { key: 'start_date', label: 'Starts', render: v => fmt.date(v) },
++    { key: 'end_date', label: 'Ends', render: v => fmt.date(v) },
++    {
++      key: 'status', label: 'Status',
++      render: (_, row) => isLive(row)
++        ? <Badge color="#1D9E75">LIVE NOW</Badge>
++        : row.is_active
++          ? <Badge color="#BA7517">Scheduled / Expired</Badge>
++          : <Badge color="#888">Off</Badge>,
++    },
++    {
++      key: 'actions', label: '', align: 'right',
++      render: (_, row) => (
++        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
++          <Btn variant="ghost" size="sm" onClick={() => toggleActive(row)}>{row.is_active ? 'Turn off' : 'Turn on'}</Btn>
++          <button onClick={() => openEdit(row)} title="Edit"
++            style={{ background: 'none', border: 'none', color: 'rgba(245,242,235,.5)', cursor: 'pointer', padding: 4, display: 'inline-flex' }}>
++            <Edit2 size={13} />
++          </button>
++          <button onClick={() => remove(row.id)} title="Delete"
++            style={{ background: 'none', border: 'none', color: 'rgba(248,113,113,.5)', cursor: 'pointer', padding: 4, display: 'inline-flex' }}
++            onMouseEnter={e => e.currentTarget.style.color = '#f87171'}
++            onMouseLeave={e => e.currentTarget.style.color = 'rgba(248,113,113,.5)'}>
++            <Trash2 size={13} />
++          </button>
++        </div>
++      ),
++    },
++  ];
++
++  return (
++    <>
++      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 8 }}>
++        <div>
++          <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 15, letterSpacing: 1, color: 'var(--cream)' }}>CAMPAIGNS</div>
++          <div style={{ fontSize: 12, color: 'var(--cream-30)', marginTop: 2, maxWidth: 640 }}>
++            A "live" campaign overrides the normal $1 = 1B earn rate for every purchase, site-wide, for its multiplier
++            instead — unless a customer's birthday-month bonus (1.5×) happens to be higher, in which case they get
++            whichever is higher (never both stacked). This also drives the birthday/campaign badge on the website's nav.
++          </div>
++        </div>
++        <Btn onClick={openNew}><span style={{ fontSize: 16 }}>+</span> New Campaign</Btn>
++      </div>
++
++      <div style={{ background: 'var(--navy)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
++        <Table cols={cols} rows={campaigns} emptyMsg="No campaigns yet" />
++      </div>
++
++      <Modal open={modal} title={editing ? 'EDIT CAMPAIGN' : 'NEW CAMPAIGN'} onClose={() => setModal(false)}>
++        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
++          <Input label="Campaign name *" value={form.name} onChange={e => sf('name', e.target.value)}
++            placeholder="e.g. Website Launch Week" />
++          <FormRow cols={2}>
++            <Input label="Multiplier *" type="number" step="0.1" min="1" value={form.multiplier}
++              onChange={e => sf('multiplier', e.target.value)} />
++            <Select label="Status" value={form.is_active ? 'on' : 'off'} onChange={e => sf('is_active', e.target.value === 'on')}>
++              <option value="on">Active</option>
++              <option value="off">Off</option>
++            </Select>
++          </FormRow>
++          <FormRow cols={2}>
++            <Input label="Start date *" type="date" value={form.start_date} onChange={e => sf('start_date', e.target.value)} />
++            <Input label="End date *" type="date" value={form.end_date} onChange={e => sf('end_date', e.target.value)} />
++          </FormRow>
++          <Btn onClick={save} disabled={saving} size="lg" style={{ justifyContent: 'center' }}>
++            {saving ? 'Saving…' : (editing ? 'Save Changes' : 'Create Campaign')}
++          </Btn>
++        </div>
++      </Modal>
++    </>
++  );
++}
++
++function TickerSection() {
++  const [messages, setMessages] = useState([]);
++  const [modal, setModal] = useState(false);
++  const [editing, setEditing] = useState(null);
++  const [form, setForm] = useState({ ...MESSAGE_EMPTY });
++  const [saving, setSaving] = useState(false);
++
++  const load = () => tickerMessagesApi.getAll().then(d => setMessages(d.messages));
++  useEffect(() => { load(); }, []);
++
++  const sf = (k, v) => setForm(f => ({ ...f, [k]: v }));
++
++  function openNew() {
++    setEditing(null);
++    const maxOrder = messages.reduce((m, r) => Math.max(m, r.sort_order), 0);
++    setForm({ ...MESSAGE_EMPTY, sort_order: maxOrder + 1 });
++    setModal(true);
++  }
++  function openEdit(row) {
++    setEditing(row);
++    setForm({ text: row.text, sort_order: row.sort_order, is_active: !!row.is_active });
++    setModal(true);
++  }
++
++  async function save() {
++    if (!form.text.trim()) return;
++    setSaving(true);
++    try {
++      if (editing) await tickerMessagesApi.update(editing.id, form);
++      else await tickerMessagesApi.create(form);
++      load();
++      setModal(false);
++    } catch (e) {
++      alert(e.message);
++    } finally {
++      setSaving(false);
++    }
++  }
++
++  async function remove(id) {
++    if (!window.confirm('Delete this ticker message?')) return;
++    await tickerMessagesApi.delete(id);
++    load();
++  }
++
++  async function toggleActive(row) {
++    await tickerMessagesApi.update(row.id, { is_active: !row.is_active });
++    load();
++  }
++
++  async function move(row, direction) {
++    const sorted = [...messages].sort((a, b) => a.sort_order - b.sort_order);
++    const idx = sorted.findIndex(m => m.id === row.id);
++    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
++    if (swapIdx < 0 || swapIdx >= sorted.length) return;
++    const other = sorted[swapIdx];
++    await Promise.all([
++      tickerMessagesApi.update(row.id, { sort_order: other.sort_order }),
++      tickerMessagesApi.update(other.id, { sort_order: row.sort_order }),
++    ]);
++    load();
++  }
++
++  const cols = [
++    {
++      key: 'order', label: '', render: (_, row) => (
++        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }} onClick={e => e.stopPropagation()}>
++          <button onClick={() => move(row, 'up')} title="Move up"
++            style={{ background: 'none', border: 'none', color: 'rgba(245,242,235,.4)', cursor: 'pointer', padding: 0, fontSize: 10, lineHeight: 1 }}>▲</button>
++          <button onClick={() => move(row, 'down')} title="Move down"
++            style={{ background: 'none', border: 'none', color: 'rgba(245,242,235,.4)', cursor: 'pointer', padding: 0, fontSize: 10, lineHeight: 1 }}>▼</button>
++        </div>
++      ),
++    },
++    { key: 'text', label: 'Message' },
++    {
++      key: 'status', label: 'Status',
++      render: (_, row) => row.is_active ? <Badge color="#1D9E75">Showing</Badge> : <Badge color="#888">Hidden</Badge>,
++    },
++    {
++      key: 'actions', label: '', align: 'right',
++      render: (_, row) => (
++        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
++          <Btn variant="ghost" size="sm" onClick={() => toggleActive(row)}>{row.is_active ? 'Hide' : 'Show'}</Btn>
++          <button onClick={() => openEdit(row)} title="Edit"
++            style={{ background: 'none', border: 'none', color: 'rgba(245,242,235,.5)', cursor: 'pointer', padding: 4, display: 'inline-flex' }}>
++            <Edit2 size={13} />
++          </button>
++          <button onClick={() => remove(row.id)} title="Delete"
++            style={{ background: 'none', border: 'none', color: 'rgba(248,113,113,.5)', cursor: 'pointer', padding: 4, display: 'inline-flex' }}
++            onMouseEnter={e => e.currentTarget.style.color = '#f87171'}
++            onMouseLeave={e => e.currentTarget.style.color = 'rgba(248,113,113,.5)'}>
++            <Trash2 size={13} />
++          </button>
++        </div>
++      ),
++    },
++  ];
++
++  const sortedMessages = [...messages].sort((a, b) => a.sort_order - b.sort_order);
++
++  return (
++    <>
++      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 28 }}>
++        <div>
++          <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 15, letterSpacing: 1, color: 'var(--cream)' }}>TICKER MESSAGES</div>
++          <div style={{ fontSize: 12, color: 'var(--cream-30)', marginTop: 2, maxWidth: 640 }}>
++            The scrolling marquee on the website homepage. Only "Showing" messages appear, in the order below — hide
++            or delete one once it's no longer relevant (e.g. an event has passed). Live on the website within a
++            minute or two, no code changes needed.
++          </div>
++        </div>
++        <Btn onClick={openNew}><span style={{ fontSize: 16 }}>+</span> New Message</Btn>
++      </div>
++
++      <div style={{ background: 'var(--navy)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
++        <Table cols={cols} rows={sortedMessages} emptyMsg="No ticker messages yet — the homepage ticker will be empty until you add one" />
++      </div>
++
++      <Modal open={modal} title={editing ? 'EDIT MESSAGE' : 'NEW MESSAGE'} onClose={() => setModal(false)}>
++        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
++          <Input label="Message text *" value={form.text} onChange={e => sf('text', e.target.value)}
++            placeholder="e.g. Now boothing at Pet Expo, Suntec Hall B, 12-14 Aug!" />
++          <Btn onClick={save} disabled={saving} size="lg" style={{ justifyContent: 'center' }}>
++            {saving ? 'Saving…' : (editing ? 'Save Changes' : 'Add Message')}
++          </Btn>
++        </div>
++      </Modal>
++    </>
++  );
++}
+diff --git a/server/database.js b/server/database.js
+index 7d42e33..cab2384 100644
+--- a/server/database.js
++++ b/server/database.js
+@@ -487,6 +487,20 @@ function createSchema() {
+       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+     )`,
+ 
++    // Admin-editable free-text messages for the website's homepage marquee
++    // ticker — campaigns, event/booth announcements, or anything else KT
++    // wants scrolling across the site, updatable from the Pawvy App with
++    // no website code changes needed. `sort_order` controls display order
++    // (lower first); ties broken by id. Only is_active=1 rows are ever
++    // returned to the public website endpoint.
++    `CREATE TABLE IF NOT EXISTS ticker_messages (
++      id INTEGER PRIMARY KEY AUTOINCREMENT,
++      text TEXT NOT NULL,
++      sort_order INTEGER NOT NULL DEFAULT 0,
++      is_active INTEGER NOT NULL DEFAULT 1,
++      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
++    )`,
++
+     // BUTTONS ledger — one row per batch earned. Tracked as discrete batches
+     // (not a single running balance) so expiry can be FIFO per-batch, and so
+     // the 7-day hold can be enforced per-batch via `status`. remaining is
+diff --git a/server/index.js b/server/index.js
+index 682600b..42bfe11 100644
+--- a/server/index.js
++++ b/server/index.js
+@@ -62,11 +62,15 @@ async function startServer() {
+   // (must stay reachable with no login — Order Portal and POS System
+   // customers never see or use a PIN), /api/customers (the pawvy.co
+   // website's own visitors — a completely separate customer-facing auth
+-  // system, not the internal staff PIN), and /api/checkout (Stripe
++  // system, not the internal staff PIN), /api/checkout (Stripe
+   // Checkout Session creation + the Stripe webhook — real website
+-  // customers and Stripe's own servers, neither of which have a staff PIN).
++  // customers and Stripe's own servers, neither of which have a staff PIN),
++  // and /api/public-content (read-only ticker/campaign display data for
++  // the website — see routes/publicContent.js for why this is kept
++  // separate from the staff-only /api/campaigns and /api/ticker-messages
++  // CRUD routes, which DO stay behind the PIN gate).
+   app.use('/api', (req, res, next) => {
+-    if (req.path.startsWith('/portal') || req.path.startsWith('/pos') || req.path.startsWith('/customers') || req.path.startsWith('/shop') || req.path.startsWith('/enquiries') || req.path.startsWith('/stockists') || req.path.startsWith('/checkout') || req.path === '/health') return next();
++    if (req.path.startsWith('/portal') || req.path.startsWith('/pos') || req.path.startsWith('/customers') || req.path.startsWith('/shop') || req.path.startsWith('/enquiries') || req.path.startsWith('/stockists') || req.path.startsWith('/checkout') || req.path.startsWith('/public-content') || req.path === '/health') return next();
+     return auth.requireAuth(req, res, next);
+   });
+ 
+@@ -93,6 +97,8 @@ async function startServer() {
+   app.use('/api/stockists',   require('./routes/stockists')(db));
+   app.use('/api/customer-admin', require('./routes/customerAdmin')(db));
+   app.use('/api/campaigns',   require('./routes/campaigns')(db));
++  app.use('/api/ticker-messages', require('./routes/tickerMessages')(db));
++  app.use('/api/public-content', require('./routes/publicContent')(db));
+ 
+   // Stripe client for website checkout (card + PayNow). STRIPE_SECRET_KEY
+   // must be set on Railway — see DEPLOY.md. Constructing the client here
+diff --git a/server/lib/buttons.js b/server/lib/buttons.js
+index 0b93ef5..1b1d9f6 100644
+--- a/server/lib/buttons.js
++++ b/server/lib/buttons.js
+@@ -35,10 +35,20 @@ function calculateEarnedButtons({ subtotal, discountAmount = 0, redeemedValue =
+ // customer's PRIMARY pet only (is_primary=1), not any pet they've
+ // registered — see the multi-pet decision after Patch 96.
+ function getActiveMultiplier(db, { customerId, onDate = new Date() } = {}) {
++  return getActiveMultiplierDetail(db, { customerId, onDate }).multiplier;
++}
++
++// Same lookup as getActiveMultiplier, but returns which source won (for
++// display purposes — e.g. the website telling a customer *why* they're
++// earning extra BUTTONS right now) rather than just the bare number.
++// Kept as a separate function so the actual earn-calculation code path
++// (recordPurchaseButtons -> getActiveMultiplier) is untouched by this —
++// this is purely additive, read-only display info.
++function getActiveMultiplierDetail(db, { customerId, onDate = new Date() } = {}) {
+   const dateStr = onDate.toISOString().slice(0, 10);
+ 
+   const campaign = db.queryOne(`
+-    SELECT multiplier FROM campaigns
++    SELECT name, multiplier FROM campaigns
+     WHERE is_active = 1 AND scope = 'site_wide' AND start_date <= ? AND end_date >= ?
+     ORDER BY multiplier DESC LIMIT 1
+   `, [dateStr, dateStr]);
+@@ -56,7 +66,13 @@ function getActiveMultiplier(db, { customerId, onDate = new Date() } = {}) {
+     }
+   }
+ 
+-  return Math.max(campaignMultiplier, birthdayMultiplier);
++  if (campaignMultiplier >= birthdayMultiplier && campaignMultiplier > 1) {
++    return { multiplier: campaignMultiplier, source: 'campaign', campaignName: campaign.name };
++  }
++  if (birthdayMultiplier > 1) {
++    return { multiplier: birthdayMultiplier, source: 'birthday', campaignName: null };
++  }
++  return { multiplier: 1, source: null, campaignName: null };
+ }
+ 
+ // Redeems B against an order. Enforces the 30% cap (silently reduces the
+@@ -205,7 +221,7 @@ function voidPendingButtons(db, { sourceType, sourceId }) {
+ }
+ 
+ module.exports = {
+-  calculateEarnedButtons, getActiveMultiplier, redeemButtons, previewRedemption, recordPurchaseButtons,
++  calculateEarnedButtons, getActiveMultiplier, getActiveMultiplierDetail, redeemButtons, previewRedemption, recordPurchaseButtons,
+   processExpiredHolds, voidPendingButtons, buttonsToDollars, dollarsToButtons,
+   REDEMPTION_CAP_PCT, B_VALUE_DOLLARS, HOLD_DAYS, FIRST_PURCHASE_BONUS_B, REFERRAL_BONUS_B,
+ };
+diff --git a/server/routes/customers.js b/server/routes/customers.js
+index 931bf36..981fe09 100644
+--- a/server/routes/customers.js
++++ b/server/routes/customers.js
+@@ -4,6 +4,7 @@ const {
+   generateToken, upsertCustomerFromSignup, customerButtonsBalance, creditButtons,
+   SIGNUP_BONUS_B, LOGIN_TOKEN_TTL_MS, SESSION_TOKEN_TTL_MS,
+ } = require('../lib/customers');
++const { getActiveMultiplierDetail } = require('../lib/buttons');
+ const { sendCustomerEmail } = require('../utils/notify');
+ const { baseUrl, htmlPage, buildVerifyEmail, buildLoginEmail } = require('../lib/customerEmails');
+ const { checkAndAwardProfileBonus } = require('../lib/profileCompletion');
+@@ -245,11 +246,15 @@ module.exports = function(db) {
+     const customer = db.queryOne('SELECT * FROM customers WHERE id = ?', [req.customerId]);
+     if (!customer) return res.status(404).json({ error: 'Account not found.' });
+     const pet = db.queryOne('SELECT * FROM customer_pets WHERE customer_id = ? AND is_primary = 1 LIMIT 1', [customer.id]);
++    const multiplierDetail = getActiveMultiplierDetail(db, { customerId: customer.id });
+     res.json({
+       ok: true,
+       customer: customerPublicView(customer),
+       pet: pet || null,
+       buttons_balance: customerButtonsBalance(db, customer.id),
++      active_multiplier: multiplierDetail.multiplier,
++      active_multiplier_source: multiplierDetail.source,
++      active_campaign_name: multiplierDetail.campaignName,
+     });
+   });
+ 
+diff --git a/server/routes/publicContent.js b/server/routes/publicContent.js
+new file mode 100644
+index 0000000..2721d73
+--- /dev/null
++++ b/server/routes/publicContent.js
+@@ -0,0 +1,37 @@
++const { Router } = require('express');
++const { getActiveMultiplierDetail } = require('../lib/buttons');
++
++// Read-only content the public website needs, mounted at /api/public-content
++// and excluded from the staff PIN gate in server/index.js (same pattern as
++// /api/shop, /api/stockists, etc.) — real website visitors reach this with
++// no login. Deliberately kept separate from the staff-only CRUD routes
++// (routes/campaigns.js, routes/tickerMessages.js) so this can never
++// accidentally leak inactive campaigns, past ticker messages, or anything
++// else not meant for public eyes — only the two specific "what's active
++// right now" shapes below are exposed.
++module.exports = function(db) {
++  const router = Router();
++
++  router.get('/ticker', (req, res) => {
++    const messages = db.query(
++      'SELECT text FROM ticker_messages WHERE is_active = 1 ORDER BY sort_order ASC, id ASC'
++    );
++    res.json({ messages: messages.map(m => m.text) });
++  });
++
++  // Whether a site-wide campaign is active right now, and its multiplier —
++  // used for the nav's promo badge. Deliberately NOT customer-specific
++  // (no auth here), so this only ever reflects a campaign, never a given
++  // customer's birthday-month bonus (that's customer-specific and already
++  // covered by GET /api/customers/me for logged-in customers).
++  router.get('/campaign', (req, res) => {
++    const detail = getActiveMultiplierDetail(db, {});
++    if (detail.source === 'campaign') {
++      res.json({ active: true, name: detail.campaignName, multiplier: detail.multiplier });
++    } else {
++      res.json({ active: false });
++    }
++  });
++
++  return router;
++};
+diff --git a/server/routes/tickerMessages.js b/server/routes/tickerMessages.js
+new file mode 100644
+index 0000000..d7ae2ae
+--- /dev/null
++++ b/server/routes/tickerMessages.js
+@@ -0,0 +1,56 @@
++const { Router } = require('express');
++
++// Admin-editable ticker messages for the website's homepage marquee —
++// campaigns, event/booth announcements, or any other free text KT wants
++// scrolling across the site. Mounted at /api/ticker-messages, staff-only
++// (covered by the normal PIN gate in server/index.js). The public,
++// read-only version of this data is served separately from
++// routes/publicContent.js (mounted outside the PIN gate) — this router is
++// only for managing the list, never read directly by the website.
++module.exports = function(db) {
++  const router = Router();
++
++  router.get('/', (req, res) => {
++    res.json({ messages: db.query('SELECT * FROM ticker_messages ORDER BY sort_order ASC, id ASC') });
++  });
++
++  router.post('/', (req, res) => {
++    const { text, sort_order, is_active } = req.body;
++    if (!text || !text.trim()) return res.status(400).json({ error: 'Message text is required.' });
++
++    const result = db.run(`
++      INSERT INTO ticker_messages (text, sort_order, is_active)
++      VALUES (?, ?, ?)
++    `, [text.trim(), sort_order || 0, is_active === false ? 0 : 1]);
++
++    res.status(201).json({ ok: true, id: result.lastID });
++  });
++
++  router.patch('/:id', (req, res) => {
++    const message = db.queryOne('SELECT id FROM ticker_messages WHERE id = ?', [req.params.id]);
++    if (!message) return res.status(404).json({ error: 'Message not found.' });
++
++    const { text, sort_order, is_active } = req.body;
++    db.run(`
++      UPDATE ticker_messages SET
++        text = COALESCE(?, text),
++        sort_order = COALESCE(?, sort_order),
++        is_active = COALESCE(?, is_active)
++      WHERE id = ?
++    `, [
++      text?.trim() || null, sort_order ?? null,
++      typeof is_active === 'boolean' ? (is_active ? 1 : 0) : null,
++      req.params.id,
++    ]);
++    res.json({ ok: true });
++  });
++
++  router.delete('/:id', (req, res) => {
++    const message = db.queryOne('SELECT id FROM ticker_messages WHERE id = ?', [req.params.id]);
++    if (!message) return res.status(404).json({ error: 'Message not found.' });
++    db.run('DELETE FROM ticker_messages WHERE id = ?', [req.params.id]);
++    res.json({ ok: true });
++  });
++
++  return router;
++};

@@ -4,7 +4,7 @@ import {
   LayoutDashboard, PlusCircle, Package, Store, Tag,
   FileText, Users, Receipt, Settings, TrendingUp, ClipboardList,
   ShoppingBag, Menu, X, Inbox, Truck, Coins, FolderOpen, Scale, ListChecks,
-  Calculator, LogOut, UserCircle, MessageSquare
+  Calculator, LogOut, UserCircle, MessageSquare, Megaphone
 } from 'lucide-react';
 import { ordersApi, authApi } from './api';
 
@@ -28,6 +28,7 @@ import DocumentLibrary from './pages/DocumentLibrary';
 import VarianceLedger from './pages/VarianceLedger';
 import Customers      from './pages/Customers';
 import Enquiries      from './pages/Enquiries';
+import Marketing      from './pages/Marketing';
 
 import { PAWVY_LOGO_WHITE } from './pawvyLogo.js';
 
@@ -61,6 +62,9 @@ const NAV = [
   { section: 'Customers',   items: [
     { path: '/customers',    label: 'Customers',       icon: UserCircle },
     { path: '/enquiries',    label: 'Enquiries',       icon: MessageSquare },
+  ]},
+  { section: 'Marketing',   items: [
+    { path: '/marketing',    label: 'Marketing',       icon: Megaphone },
   ]},
   { section: 'Business',    items: [
     { path: '/partners',     label: 'Partners',        icon: Users },
@@ -275,6 +279,7 @@ export default function App() {
             <Route path="/partners"      element={<Partners />} />
             <Route path="/customers"     element={<Customers />} />
             <Route path="/enquiries"     element={<Enquiries />} />
+            <Route path="/marketing"     element={<Marketing />} />
             <Route path="/costs"         element={<Costs />} />
             <Route path="/reports"       element={<Reports />} />
           </Routes>

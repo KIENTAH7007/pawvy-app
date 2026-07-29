@@ -62,11 +62,15 @@ async function startServer() {
   // (must stay reachable with no login — Order Portal and POS System
   // customers never see or use a PIN), /api/customers (the pawvy.co
   // website's own visitors — a completely separate customer-facing auth
-  // system, not the internal staff PIN), and /api/checkout (Stripe
+  // system, not the internal staff PIN), /api/checkout (Stripe
   // Checkout Session creation + the Stripe webhook — real website
-  // customers and Stripe's own servers, neither of which have a staff PIN).
+  // customers and Stripe's own servers, neither of which have a staff PIN),
+  // and /api/public-content (read-only ticker/campaign display data for
+  // the website — see routes/publicContent.js for why this is kept
+  // separate from the staff-only /api/campaigns and /api/ticker-messages
+  // CRUD routes, which DO stay behind the PIN gate).
   app.use('/api', (req, res, next) => {
-    if (req.path.startsWith('/portal') || req.path.startsWith('/pos') || req.path.startsWith('/customers') || req.path.startsWith('/shop') || req.path.startsWith('/enquiries') || req.path.startsWith('/stockists') || req.path.startsWith('/checkout') || req.path === '/health') return next();
+    if (req.path.startsWith('/portal') || req.path.startsWith('/pos') || req.path.startsWith('/customers') || req.path.startsWith('/shop') || req.path.startsWith('/enquiries') || req.path.startsWith('/stockists') || req.path.startsWith('/checkout') || req.path.startsWith('/public-content') || req.path === '/health') return next();
     return auth.requireAuth(req, res, next);
   });
 
@@ -93,6 +97,8 @@ async function startServer() {
   app.use('/api/stockists',   require('./routes/stockists')(db));
   app.use('/api/customer-admin', require('./routes/customerAdmin')(db));
   app.use('/api/campaigns',   require('./routes/campaigns')(db));
+  app.use('/api/ticker-messages', require('./routes/tickerMessages')(db));
+  app.use('/api/public-content', require('./routes/publicContent')(db));
 
   // Stripe client for website checkout (card + PayNow). STRIPE_SECRET_KEY
   // must be set on Railway — see DEPLOY.md. Constructing the client here

@@ -128,6 +128,19 @@ export const customerAdminApi = {
   awardStamp: (id, body) => api.post(`/customer-admin/customers/${id}/stamp`, body),
   delete: (id) => api.delete(`/customer-admin/customers/${id}`),
 };
+export const campaignsApi = {
+  getAll: () => api.get('/campaigns'),
+  create: (c) => api.post('/campaigns', c),
+  update: (id, c) => api.patch(`/campaigns/${id}`, c),
+  delete: (id) => api.delete(`/campaigns/${id}`),
+};
+export const tickerMessagesApi = {
+  getAll: () => api.get('/ticker-messages'),
+  create: (m) => api.post('/ticker-messages', m),
+  update: (id, m) => api.patch(`/ticker-messages/${id}`, m),
+  delete: (id) => api.delete(`/ticker-messages/${id}`),
+};
+
 export const restockApi = {
   getAll:  (q) => api.get(`/restock${qs(q)}`),
   get:     (id) => api.get(`/restock/${id}`),

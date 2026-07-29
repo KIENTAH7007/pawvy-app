@@ -35,10 +35,20 @@ function calculateEarnedButtons({ subtotal, discountAmount = 0, redeemedValue = 
 // customer's PRIMARY pet only (is_primary=1), not any pet they've
 // registered — see the multi-pet decision after Patch 96.
 function getActiveMultiplier(db, { customerId, onDate = new Date() } = {}) {
+  return getActiveMultiplierDetail(db, { customerId, onDate }).multiplier;
+}
+
+// Same lookup as getActiveMultiplier, but returns which source won (for
+// display purposes — e.g. the website telling a customer *why* they're
+// earning extra BUTTONS right now) rather than just the bare number.
+// Kept as a separate function so the actual earn-calculation code path
+// (recordPurchaseButtons -> getActiveMultiplier) is untouched by this —
+// this is purely additive, read-only display info.
+function getActiveMultiplierDetail(db, { customerId, onDate = new Date() } = {}) {
   const dateStr = onDate.toISOString().slice(0, 10);
 
   const campaign = db.queryOne(`
-    SELECT multiplier FROM campaigns
+    SELECT name, multiplier FROM campaigns
     WHERE is_active = 1 AND scope = 'site_wide' AND start_date <= ? AND end_date >= ?
     ORDER BY multiplier DESC LIMIT 1
   `, [dateStr, dateStr]);
@@ -56,7 +66,13 @@ function getActiveMultiplier(db, { customerId, onDate = new Date() } = {}) {
     }
   }
 
-  return Math.max(campaignMultiplier, birthdayMultiplier);
+  if (campaignMultiplier >= birthdayMultiplier && campaignMultiplier > 1) {
+    return { multiplier: campaignMultiplier, source: 'campaign', campaignName: campaign.name };
+  }
+  if (birthdayMultiplier > 1) {
+    return { multiplier: birthdayMultiplier, source: 'birthday', campaignName: null };
+  }
+  return { multiplier: 1, source: null, campaignName: null };
 }
 
 // Redeems B against an order. Enforces the 30% cap (silently reduces the
@@ -205,7 +221,7 @@ function voidPendingButtons(db, { sourceType, sourceId }) {
 }
 
 module.exports = {
-  calculateEarnedButtons, getActiveMultiplier, redeemButtons, previewRedemption, recordPurchaseButtons,
+  calculateEarnedButtons, getActiveMultiplier, getActiveMultiplierDetail, redeemButtons, previewRedemption, recordPurchaseButtons,
   processExpiredHolds, voidPendingButtons, buttonsToDollars, dollarsToButtons,
   REDEMPTION_CAP_PCT, B_VALUE_DOLLARS, HOLD_DAYS, FIRST_PURCHASE_BONUS_B, REFERRAL_BONUS_B,
 };
