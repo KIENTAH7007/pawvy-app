@@ -9,6 +9,19 @@
 
 const { creditButtons, customerButtonsBalance } = require('./customers');
 
+// Railway's server clock runs in UTC, but "today" and "this month" for
+// every date-based rule here (birthday-month bonus, campaign start/end
+// windows) need to mean Singapore's calendar day/month, not UTC's — they
+// can disagree by up to 8 hours around midnight either direction. Using
+// Intl with an explicit timeZone works regardless of what timezone the
+// server's OS is actually set to, rather than relying on server config.
+function singaporeMonth(date) {
+  return Number(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Singapore', month: 'numeric' }).format(date)) - 1;
+}
+function singaporeDateStr(date) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Singapore' }).format(date); // en-CA -> YYYY-MM-DD
+}
+
 const REDEMPTION_CAP_PCT = 0.30;   // max 30% of order value can be paid with B
 const B_VALUE_DOLLARS = 0.02;      // 100B = $2, i.e. 1B = $0.02
 const HOLD_DAYS = 7;
@@ -45,7 +58,7 @@ function getActiveMultiplier(db, { customerId, onDate = new Date() } = {}) {
 // (recordPurchaseButtons -> getActiveMultiplier) is untouched by this —
 // this is purely additive, read-only display info.
 function getActiveMultiplierDetail(db, { customerId, onDate = new Date() } = {}) {
-  const dateStr = onDate.toISOString().slice(0, 10);
+  const dateStr = singaporeDateStr(onDate);
 
   const campaign = db.queryOne(`
     SELECT name, multiplier FROM campaigns
@@ -61,8 +74,8 @@ function getActiveMultiplierDetail(db, { customerId, onDate = new Date() } = {})
       [customerId]
     );
     if (pet?.birthday) {
-      const petMonth = new Date(pet.birthday).getUTCMonth();
-      if (petMonth === onDate.getUTCMonth()) birthdayMultiplier = 1.5;
+      const petMonth = singaporeMonth(new Date(pet.birthday));
+      if (petMonth === singaporeMonth(onDate)) birthdayMultiplier = 1.5;
     }
   }
 
