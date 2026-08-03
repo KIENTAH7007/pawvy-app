@@ -18,6 +18,7 @@ module.exports = function(db) {
   router.post('/', async (req, res) => {
     const { name, email, phone, message } = req.body;
     if (!email || !email.trim()) return res.status(400).json({ error: 'Email is required.' });
+    if (!phone || !phone.trim()) return res.status(400).json({ error: 'Phone number is required.' });
     if (!message || !message.trim()) return res.status(400).json({ error: 'Message is required.' });
 
     const result = db.run(`
