@@ -1,8 +1,9 @@
 const { Router } = require('express');
 const { withEffectivePrice } = require('../lib/pricing');
 const { previewRedemption, redeemButtons, recordPurchaseButtons } = require('../lib/buttons');
+const { upsertCustomerFromSignup } = require('../lib/customers');
 const { notifyNewWebsiteOrder, sendCustomerEmail } = require('../utils/notify');
-const { buildReceiptEmail } = require('../lib/customerEmails');
+const { buildReceiptEmail, buildVerifyEmail, baseUrl } = require('../lib/customerEmails');
 
 // Real B2C checkout for pawvy.co, paid via Stripe Checkout (card + PayNow).
 // Mounted at /api/checkout, added to the PIN-gate exclusion list in
@@ -96,7 +97,15 @@ module.exports = function(db, inventoryRouter, stripeClient) {
       const customer = attachOptionalCustomer(req);
 
       const { items, shipping_address, buttons_redeem } = req.body;
-      let { guest_email, guest_name, guest_phone, pdpa_consent, pdpa_consent_text } = req.body;
+      let { guest_email, guest_name, guest_phone, pdpa_consent, pdpa_consent_text, create_account } = req.body;
+      // Website checkbox defaults to checked, and any older/other caller
+      // that doesn't send this field at all gets today's behavior — so
+      // only an explicit `false` opts a consenting guest out of getting an
+      // account. This mirrors POS checkout's own opt-in-by-default pattern
+      // in server/routes/pos.js, just with an explicit toggle instead of
+      // consent alone implying it (the website surfaces this as its own
+      // checkbox, separate from the required order-processing consent).
+      create_account = create_account !== false;
 
       if (!customer && (!guest_email || !guest_email.trim())) {
         return res.status(400).json({ error: 'Email is required to check out.' });
@@ -137,6 +146,33 @@ module.exports = function(db, inventoryRouter, stripeClient) {
       const customerName = customer ? customer.name : (guest_name || null);
       const customerPhone = customer ? customer.phone : (guest_phone || null);
 
+      // Turn a consenting, opted-in guest into a real Pawvy account —
+      // creates a new unverified one, or just links to/refreshes an
+      // existing one for a returning email (never re-issues the signup
+      // bonus twice; that's granted on verify, not here — see
+      // lib/customers.js). Wrapped defensively, same as POS: a bug here
+      // should never block the order itself from proceeding.
+      let linkedCustomerId = customer ? customer.id : null;
+      let accountCreated = false;
+      if (!customer && pdpa_consent && create_account) {
+        try {
+          const signupResult = upsertCustomerFromSignup(db, {
+            email: guest_email, name: guest_name, phone: guest_phone, address: shipping_address,
+            pdpa_consent_text, source: 'website',
+          });
+          linkedCustomerId = signupResult.customer_id;
+          if (signupResult.isNew) {
+            accountCreated = true;
+            const newCustomer = db.queryOne('SELECT * FROM customers WHERE id = ?', [signupResult.customer_id]);
+            const { subject, text, html } = buildVerifyEmail(baseUrl(req), newCustomer, signupResult.verify_token);
+            sendCustomerEmail(guest_email.trim(), subject, text, html)
+              .catch(err => console.error(`⚠️  Signup verify email failed for guest checkout (${guest_email}):`, err.message));
+          }
+        } catch (err) {
+          console.error('⚠️  Failed to create/link customer account from website guest checkout (order still proceeding):', err);
+        }
+      }
+
       const orderResult = db.run(`
         INSERT INTO website_orders
           (customer_id, customer_email, customer_name, customer_phone, shipping_address,
@@ -144,7 +180,7 @@ module.exports = function(db, inventoryRouter, stripeClient) {
            status, pdpa_consent, pdpa_consent_text)
         VALUES (?,?,?,?,?,?,?,?,?,?, 'pending_payment', ?, ?)
       `, [
-        customer ? customer.id : null, customerEmail, customerName, customerPhone,
+        linkedCustomerId, customerEmail, customerName, customerPhone,
         shipping_address || null, subtotal, shippingAmount, redemption.redeemed, redemption.redemptionValue,
         totalAmount, customer ? 1 : (pdpa_consent ? 1 : 0), customer ? null : (pdpa_consent_text || null),
       ]);
@@ -197,7 +233,7 @@ module.exports = function(db, inventoryRouter, stripeClient) {
 
       db.run('UPDATE website_orders SET stripe_checkout_session_id = ? WHERE id = ?', [session.id, orderId]);
 
-      res.json({ ok: true, checkout_url: session.url, order_id: orderId });
+      res.json({ ok: true, checkout_url: session.url, order_id: orderId, account_created: accountCreated });
     } catch (err) {
       if (err.code === 'MISSING_ENV') {
         console.error('⚠️  Checkout misconfigured:', err.message);
