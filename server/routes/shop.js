@@ -23,7 +23,7 @@ module.exports = function(db) {
     const { brand_id, search } = req.query;
     let sql = `
       SELECT
-        p.id, p.item_series, p.variation, p.image_data, p.description,
+        p.id, p.item_series, p.variation, p.image_data,
         p.price_rrp_sg, p.discount_pct, p.discount_start, p.discount_end,
         b.id AS brand_id, b.name AS brand_name, b.color AS brand_color,
         COALESCE(home.qty, 0)    AS home_qty,
