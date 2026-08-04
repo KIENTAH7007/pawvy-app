@@ -13,6 +13,21 @@ const { withEffectivePrice, stockStatus } = require('../lib/pricing');
 // Mounted at /api/shop, added to the PIN-gate exclusion list in
 // server/index.js alongside /customers — real website visitors need to
 // reach this with no staff login at all.
+// Products excluded from the public website ONLY (Shop listing, product
+// detail, and top-sellers). This does NOT touch is_active, so the same
+// product stays fully visible/orderable in the Pawvy App (staff tool),
+// POS (server/routes/pos.js), and Order Portal (server/routes/portal.js)
+// — those all read from entirely separate route files and are untouched
+// by this list. Match on barcode (stable across environments) rather
+// than internal id, which can differ between seed and production.
+//
+// Current entries:
+// - 5060518442339 — Lillidale Ear Cleaner 2.5L (Groomer): a trade/bulk
+//   size meant for professional groomers, not public retail. Requested
+//   by KT, Aug 2026 — keep purchasable via POS/Order Portal for groomer
+//   customers, just not browsable/orderable on the public website.
+const WEBSITE_HIDDEN_BARCODES = ['5060518442339'];
+
 module.exports = function(db) {
   const router = Router();
 
@@ -33,8 +48,9 @@ module.exports = function(db) {
       LEFT JOIN inventory_levels home    ON home.product_id = p.id    AND home.location    = 'Home'
       LEFT JOIN inventory_levels storhub ON storhub.product_id = p.id AND storhub.location = 'Storhub'
       WHERE p.is_active = 1
+        AND p.barcode NOT IN (${WEBSITE_HIDDEN_BARCODES.map(() => '?').join(',')})
     `;
-    const params = [];
+    const params = [...WEBSITE_HIDDEN_BARCODES];
     if (brand_id) { sql += ' AND p.brand_id = ?'; params.push(brand_id); }
     if (search) {
       sql += ' AND (p.item_series LIKE ? OR p.variation LIKE ?)';
@@ -51,7 +67,8 @@ module.exports = function(db) {
   });
 
   // GET /api/shop/products/:id — single product detail, same field scope
-  // as the list above.
+  // as the list above. Also respects WEBSITE_HIDDEN_BARCODES, so the
+  // product page can't be reached by guessing/sharing a direct URL either.
   router.get('/products/:id', (req, res) => {
     const row = db.queryOne(`
       SELECT
@@ -65,7 +82,8 @@ module.exports = function(db) {
       LEFT JOIN inventory_levels home    ON home.product_id = p.id    AND home.location    = 'Home'
       LEFT JOIN inventory_levels storhub ON storhub.product_id = p.id AND storhub.location = 'Storhub'
       WHERE p.id = ? AND p.is_active = 1
-    `, [req.params.id]);
+        AND p.barcode NOT IN (${WEBSITE_HIDDEN_BARCODES.map(() => '?').join(',')})
+    `, [req.params.id, ...WEBSITE_HIDDEN_BARCODES]);
 
     if (!row) return res.status(404).json({ error: 'Product not found.' });
     const { home_qty, storhub_qty, ...rest } = withEffectivePrice(row);
@@ -99,10 +117,11 @@ module.exports = function(db) {
       LEFT JOIN inventory_levels home    ON home.product_id = p.id    AND home.location    = 'Home'
       LEFT JOIN inventory_levels storhub ON storhub.product_id = p.id AND storhub.location = 'Storhub'
       WHERE p.is_active = 1 AND s.date >= date('now', '-90 days') AND COALESCE(s.voided,0) = 0
+        AND p.barcode NOT IN (${WEBSITE_HIDDEN_BARCODES.map(() => '?').join(',')})
       GROUP BY p.id
       ORDER BY units_sold DESC
       LIMIT ?
-    `, [limit * 2]); // over-fetch since some will be filtered out as out-of-stock below
+    `, [...WEBSITE_HIDDEN_BARCODES, limit * 2]); // over-fetch since some will be filtered out as out-of-stock below
 
     const products = rows
       .map(r => {
