@@ -296,7 +296,7 @@ function InstagramSection() {
   const [posts, setPosts] = useState([]);
   const [modal, setModal] = useState(false);
   const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState({ url: '', sort_order: 0, is_active: true });
+  const [form, setForm] = useState({ image_data: '', link_url: '', sort_order: 0, is_active: true });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -309,18 +309,28 @@ function InstagramSection() {
     setEditing(null);
     setError('');
     const maxOrder = posts.reduce((m, r) => Math.max(m, r.sort_order), 0);
-    setForm({ url: '', sort_order: maxOrder + 1, is_active: true });
+    setForm({ image_data: '', link_url: '', sort_order: maxOrder + 1, is_active: true });
     setModal(true);
   }
   function openEdit(row) {
     setEditing(row);
     setError('');
-    setForm({ url: row.url, sort_order: row.sort_order, is_active: !!row.is_active });
+    setForm({ image_data: row.image_data || '', link_url: row.link_url || '', sort_order: row.sort_order, is_active: !!row.is_active });
     setModal(true);
   }
 
+  function handleFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { setError('Image must be under 2MB. Please resize and try again.'); return; }
+    setError('');
+    const reader = new FileReader();
+    reader.onload = ev => sf('image_data', ev.target.result);
+    reader.readAsDataURL(file);
+  }
+
   async function save() {
-    if (!form.url.trim()) return;
+    if (!form.image_data) { setError('Please upload an image.'); return; }
     setSaving(true);
     setError('');
     try {
@@ -336,7 +346,7 @@ function InstagramSection() {
   }
 
   async function remove(id) {
-    if (!window.confirm('Remove this post from the homepage?')) return;
+    if (!window.confirm('Remove this photo from the homepage?')) return;
     await instagramPostsApi.delete(id);
     load();
   }
@@ -370,7 +380,16 @@ function InstagramSection() {
         </div>
       ),
     },
-    { key: 'url', label: 'Post URL', render: v => <span style={{ wordBreak: 'break-all' }}>{v}</span> },
+    {
+      key: 'image_data', label: 'Photo', render: v => v
+        ? <img src={v} alt="" style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 6, flexShrink: 0 }} />
+        : <span style={{ color: 'var(--cream-30)', fontSize: 12 }}>No image</span>,
+    },
+    {
+      key: 'link_url', label: 'Links to', render: v => v
+        ? <span style={{ wordBreak: 'break-all', fontSize: 12 }}>{v}</span>
+        : <span style={{ color: 'var(--cream-30)', fontSize: 12 }}>Pawvy Instagram profile (default)</span>,
+    },
     {
       key: 'status', label: 'Status',
       render: (_, row) => row.is_active ? <Badge color="#1D9E75">Showing</Badge> : <Badge color="#888">Hidden</Badge>,
@@ -403,25 +422,53 @@ function InstagramSection() {
         <div>
           <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 15, letterSpacing: 1, color: 'var(--cream)' }}>INSTAGRAM HIGHLIGHTS</div>
           <div style={{ fontSize: 12, color: 'var(--cream-30)', marginTop: 2, maxWidth: 640 }}>
-            Hand-pick which Instagram posts show on the homepage. Paste the link from the "..." → Copy Link (or Embed)
-            option on any post — the website loads it live and direct from Instagram, so it always shows the post's
-            real current likes/caption, no separate refresh needed. Aim for 4 posts for the current layout.
+            Upload the photos you want shown on the homepage, in a plain image grid — no live Instagram embed, so it
+            always looks exactly like what you upload. Each photo can optionally link to a specific Instagram post;
+            leave the link blank and it'll point to the Pawvy Instagram profile instead. Aim for 5 photos for the
+            current layout.
           </div>
         </div>
-        <Btn onClick={openNew}><span style={{ fontSize: 16 }}>+</span> Add Post</Btn>
+        <Btn onClick={openNew}><span style={{ fontSize: 16 }}>+</span> Add Photo</Btn>
       </div>
 
       <div style={{ background: 'var(--navy)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
-        <Table cols={cols} rows={sortedPosts} emptyMsg="No posts added yet — the homepage Instagram section will be empty until you add some" />
+        <Table cols={cols} rows={sortedPosts} emptyMsg="No photos added yet — the homepage Instagram section will be empty until you add some" />
       </div>
 
-      <Modal open={modal} title={editing ? 'EDIT POST' : 'ADD POST'} onClose={() => setModal(false)}>
+      <Modal open={modal} title={editing ? 'EDIT PHOTO' : 'ADD PHOTO'} onClose={() => setModal(false)}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <Input label="Instagram post URL *" value={form.url} onChange={e => sf('url', e.target.value)}
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--cream-30)', marginBottom: 10 }}>Photo *</div>
+            <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+              {form.image_data ? (
+                <img src={form.image_data} alt="" style={{ width: 120, height: 120, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)' }} />
+              ) : (
+                <div style={{ width: 120, height: 120, borderRadius: 8, border: '2px dashed var(--border)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--cream-30)', fontSize: 11, gap: 4 }}>
+                  <span style={{ fontSize: 28 }}>📷</span>
+                  <span>No image</span>
+                </div>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 7, border: '1px solid var(--border)', cursor: 'pointer', fontSize: 12, color: 'var(--cream-60)', background: 'transparent' }}>
+                  <span>📁</span>
+                  {form.image_data ? 'Replace Photo' : 'Upload Photo'}
+                  <input type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} onChange={handleFile} />
+                </label>
+                {form.image_data && (
+                  <button onClick={() => sf('image_data', '')}
+                    style={{ padding: '8px 14px', borderRadius: 7, border: '1px solid rgba(248,113,113,.3)', cursor: 'pointer', fontSize: 12, color: '#f87171', background: 'transparent', textAlign: 'left' }}>
+                    🗑 Remove Photo
+                  </button>
+                )}
+                <div style={{ fontSize: 10, color: 'var(--cream-30)', lineHeight: 1.5, maxWidth: 200 }}>JPG, PNG, or WebP. Under 2MB.</div>
+              </div>
+            </div>
+          </div>
+          <Input label="Link (optional)" value={form.link_url} onChange={e => sf('link_url', e.target.value)}
             placeholder="https://www.instagram.com/p/xxxxxxxxx/" />
           {error && <div style={{ color: '#f87171', fontSize: 13 }}>{error}</div>}
           <Btn onClick={save} disabled={saving} size="lg" style={{ justifyContent: 'center' }}>
-            {saving ? 'Saving…' : (editing ? 'Save Changes' : 'Add Post')}
+            {saving ? 'Saving…' : (editing ? 'Save Changes' : 'Add Photo')}
           </Btn>
         </div>
       </Modal>

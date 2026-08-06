@@ -33,11 +33,18 @@ module.exports = function(db) {
     }
   });
 
+  // Pawvy's own Instagram profile — used as the click-through fallback
+  // below whenever a specific post's link_url wasn't set, so an image is
+  // never a dead click.
+  const PAWVY_INSTAGRAM_URL = 'https://instagram.com/pawvy_sg';
+
   router.get('/instagram', (req, res) => {
     const posts = db.query(
-      'SELECT url FROM instagram_posts WHERE is_active = 1 ORDER BY sort_order ASC, id ASC'
+      "SELECT image_data, link_url FROM instagram_posts WHERE is_active = 1 AND image_data IS NOT NULL AND image_data != '' ORDER BY sort_order ASC, id ASC"
     );
-    res.json({ urls: posts.map(p => p.url) });
+    res.json({
+      items: posts.map(p => ({ image: p.image_data, link: p.link_url || PAWVY_INSTAGRAM_URL })),
+    });
   });
 
   return router;

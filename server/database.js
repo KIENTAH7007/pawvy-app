@@ -501,11 +501,14 @@ function createSchema() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`,
 
-    // Hand-picked Instagram post URLs for the website's homepage
-    // Instagram section — KT pastes the permalink of whichever posts he
-    // wants shown, and the website renders each one live via Instagram's
-    // own official embed (instagram.com/embed.js), not a cached
-    // third-party feed. `sort_order` controls left-to-right display order.
+    // Hand-picked images for the website's homepage Instagram section.
+    // Previously rendered via Instagram's own official embed script
+    // (instagram.com/embed.js) — replaced because it showed the full post
+    // card (caption, like count, Instagram's own UI) rather than a clean
+    // photo grid. Now KT uploads the actual image (image_data, base64 —
+    // added via ALTER TABLE below, same pattern as products.image_data)
+    // plus an optional destination link (link_url — a specific post or
+    // just the Pawvy profile). `sort_order` controls left-to-right order.
     `CREATE TABLE IF NOT EXISTS instagram_posts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       url TEXT NOT NULL,
@@ -632,6 +635,20 @@ function createSchema() {
 
   // Product images for Order Portal catalogue
   try { db.run("ALTER TABLE products ADD COLUMN image_data TEXT"); } catch(e) {}
+
+  // Instagram Highlights redesign — KT/Janice moved away from live-embedding
+  // Instagram's own post cards (via embed.js) since they didn't match the
+  // site's design at all (full post chrome, caption, like count — not a
+  // clean photo grid). New approach: KT uploads the actual image himself
+  // (same base64-in-DB pattern as product images above) plus an optional
+  // destination link (a specific post, or just the Pawvy profile — see
+  // routes/publicContent.js for the fallback logic). The old `url` column
+  // is left in place rather than dropped (SQLite ALTER TABLE DROP COLUMN
+  // is unreliable under sql.js) — it's just unused going forward. New
+  // inserts pass url:'' to satisfy the original NOT NULL constraint
+  // without exposing that historical detail to the admin UI.
+  try { db.run("ALTER TABLE instagram_posts ADD COLUMN image_data TEXT"); } catch(e) {}
+  try { db.run("ALTER TABLE instagram_posts ADD COLUMN link_url TEXT"); } catch(e) {}
 
   // Shipment document files (base64 stored in DB, same pattern as product images)
   try { db.run("ALTER TABLE shipment_documents ADD COLUMN file_data TEXT"); } catch(e) {}

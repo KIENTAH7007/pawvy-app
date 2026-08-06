@@ -1,63 +1,91 @@
-# Fix: Hide Lillidale Ear Cleaner 2.5L (Groomer) from public website only
+# Feature: Instagram Highlights redesign — image upload instead of live embed
 
-## What changed
-`server/routes/shop.js` — added a `WEBSITE_HIDDEN_BARCODES` exclusion
-list, currently containing one entry: `5060518442339` (Lillidale Ear
-Cleaner 2.5L Groomer size). Applied to all three routes in this file:
-`GET /products`, `GET /products/:id`, and `GET /top-sellers`.
+## What changed (4 files)
 
-## Why
-This is a trade/bulk size meant for professional groomers, not public
-retail — but it was reachable and orderable on the public website Shop.
+### 1. `server/database.js`
+Added two columns to `instagram_posts` via the same safe
+`ALTER TABLE ... ADD COLUMN` pattern already used throughout this file
+(e.g. `products.image_data`) — non-destructive, safe to run against
+your live production database on every deploy:
+- `image_data TEXT` — the uploaded photo, base64, same storage pattern
+  as product images
+- `link_url TEXT` — optional destination link for that photo
 
-## What did NOT change
-- **Database**: no schema change, no `is_active` flag touched. The
-  product row is untouched.
-- **POS** (`server/routes/pos.js`): completely separate route file,
-  reads its own `/api/pos/catalogue` — untouched, product still fully
-  scannable/sellable in-store.
-- **Order Portal** (`server/routes/portal.js`): also a separate route
-  file — untouched, product still orderable there for wholesale/
-  consignment customers.
-- **pawvy-website**: no changes needed. The website only ever talks to
-  `/api/shop/*`, and doesn't hardcode this product anywhere else
-  (checked — no matches for the barcode or product name in the repo).
+The old `url` column is left in place rather than dropped (SQLite
+`ALTER TABLE DROP COLUMN` isn't reliable under sql.js) — it's just
+unused going forward. Existing rows (if any) simply won't show up on
+the homepage until you re-add them with a real photo, since the
+public endpoint now requires `image_data` to be present.
 
-Only the public-facing `/api/shop` routes (used exclusively by
-pawvy-website) are affected.
+### 2. `server/routes/instagramPosts.js` (staff-only admin API)
+- `POST` now requires `image_data` (base64) instead of `url`;
+  `link_url` is optional
+- `PATCH` supports updating `image_data`/`link_url` alongside the
+  existing `sort_order`/`is_active`
+- Removed the old Instagram-URL-format validation (`^https://
+  (www\.)?instagram\.com/`) since there's no URL requirement anymore
 
-## How it's matched
-By barcode, not internal database `id` — the seed database and your
-live production database can have different auto-increment IDs for
-the same product, so barcode is the stable identifier across
-environments.
+### 3. `server/routes/publicContent.js` (public, read-only API)
+`GET /api/public-content/instagram` now returns:
+```json
+{ "items": [{ "image": "data:image/...", "link": "https://..." }] }
+```
+instead of `{ "urls": [...] }`. Each item's `link` always has a real
+value — if you didn't set a `link_url` for that specific photo, it
+falls back to `https://instagram.com/pawvy_sg` (your profile), so a
+click never dead-ends on a missing link. Only active rows with a real
+uploaded image are included.
+
+### 4. `client/src/pages/Marketing.jsx` (Pawvy App admin UI)
+The "Instagram Highlights" section (same page as Campaigns and Ticker
+Messages) now has a photo upload control instead of a URL text field
+— same upload pattern as the Product Image field on the Products
+page (file picker → preview → under-2MB check). The "Link" field is
+now optional and just a plain text input, since it's not being
+embedded or validated as an Instagram URL anymore — you could point
+it anywhere relevant if you wanted, though Instagram post/profile
+links are the obvious use. The table now shows a small photo
+thumbnail per row instead of a raw URL string.
+
+## Why this approach instead of the old embed
+The previous version rendered Instagram's own official embed script
+(`instagram.com/embed.js`) — that shows the *entire* post card
+(caption, like count, Instagram's own UI chrome), not a clean photo,
+which is why it never matched the site's design. This version sidesteps
+that completely: you upload the actual image, so it looks exactly like
+what you uploaded, with zero dependency on Instagram's embed script
+loading or staying available.
 
 ## Verified
-- Full cold-clone simulation: fresh `git clone`, `npm install` from
-  scratch, seeded from `data/seed.db`, real Express app spun up, real
-  HTTP requests made against the actual route handler (not just
-  `node --check`).
-- Confirmed: the 2.5L product is excluded from both the full catalogue
-  listing and brand-filtered listing.
-- Confirmed: a direct fetch of its product-detail URL by ID now
-  returns 404 (can't be reached by a shared/guessed link either).
-- Confirmed: every other Lillidale product (e.g. the regular 250ml Ear
-  Cleaner) is completely unaffected — still listed, still fetchable.
-- Confirmed: `pos.js` and `portal.js` have zero references to the new
-  exclusion list — grepped to be sure.
+- Real smoke test against the actual route handlers (not just
+  `node --check`) — real Express app, seeded database, live HTTP
+  requests: confirmed the new columns exist, confirmed creating a
+  photo with and without a link works, confirmed creating without an
+  image correctly fails with 400, confirmed the public endpoint
+  returns the right shape with the profile-link fallback working,
+  confirmed PATCH updates persist to the database, confirmed
+  deactivating a photo removes it from the public endpoint.
+- Re-ran the same smoke test against a genuine fresh `git clone` with
+  this delivery applied on top (full cold-start simulation).
+- **Built the actual React admin client** (`client/ && npm run
+  build`) — not just a syntax check — to catch any JSX errors in the
+  rewritten `Marketing.jsx`. Passes clean.
 
 ## To apply
 1. `git checkout main`
 2. `git pull origin main`
 3. Unzip this delivery on top of your local `pawvy-app` folder
-   ("Copy and Replace") — only touches `server/routes/shop.js`
 4. `git add -A`
-5. `git commit -m "Hide Lillidale 2.5L Groomer ear cleaner from public website Shop only"`
+5. `git commit -m "Instagram Highlights: image upload + optional link, replacing the live embed"`
 6. `git push origin main`
 
-Railway auto-deploys `pawvy-app` from `main` on push. The website
-itself needs no redeploy — it just calls the updated API.
+Railway auto-deploys both the server and the client build from `main`
+on push (the `build` script in `package.json` builds `client/`,
+`portal/`, and `pos/` together).
 
-## If you ever need to hide another product from the website only
-Add its barcode to the `WEBSITE_HIDDEN_BARCODES` array at the top of
-`server/routes/shop.js` — one line, no other changes needed.
+## Companion delivery
+This pairs with a `pawvy-website` delivery (`InstagramGrid.jsx`,
+`app/page.js`, `app/globals.css`) that renders the new `items` shape
+as a plain 5-across photo grid. Apply both — the website delivery
+alone won't have any photos to show until this backend change is
+live and you've uploaded at least one photo via the Pawvy App.
