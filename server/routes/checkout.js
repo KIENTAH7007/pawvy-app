@@ -351,15 +351,24 @@ module.exports = function(db, inventoryRouter, stripeClient) {
     `, [session.payment_intent || null, saleIds.join(','), order.id]);
 
     if (order.customer_id) {
-      const priorPaidOrder = db.queryOne(`
-        SELECT id FROM website_orders WHERE customer_id = ? AND status = 'paid' AND id != ?
-      `, [order.customer_id, order.id]);
-      const isFirstPurchase = !priorPaidOrder;
+      // Checks for an existing 'first_purchase_bonus' batch (any channel)
+      // rather than just "any prior paid website_order" — a customer's
+      // actual first purchase could have been a POS/event sale, credited
+      // retroactively at email verification (see recordPosCheckoutButtons
+      // in lib/buttons.js and the sweep in routes/customers.js). Checking
+      // only website_orders here would miss that entirely and risk
+      // double-granting the 100B bonus (and a referral bonus on top of
+      // that) to a customer whose real first purchase was at an event.
+      const hasFirstPurchaseBonus = !!db.queryOne(
+        `SELECT id FROM buttons_batches WHERE customer_id = ? AND source = 'first_purchase_bonus'`,
+        [order.customer_id]
+      );
+      const isFirstPurchase = !hasFirstPurchaseBonus;
 
       recordPurchaseButtons(db, {
         customerId: order.customer_id, subtotal: order.subtotal, discountAmount: 0,
         redeemedValue: order.buttons_redemption_value, sourceType: 'website_order', sourceId: order.id,
-        isFirstPurchase, isRefereeFirstPurchase: isFirstPurchase,
+        isFirstPurchase, isRefereeFirstPurchase: isFirstPurchase, channel: 'website',
       });
 
       if (order.buttons_redeemed > 0) {

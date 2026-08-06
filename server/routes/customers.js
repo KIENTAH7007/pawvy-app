@@ -4,7 +4,7 @@ const {
   generateToken, upsertCustomerFromSignup, customerButtonsBalance, creditButtons,
   SIGNUP_BONUS_B, LOGIN_TOKEN_TTL_MS, SESSION_TOKEN_TTL_MS,
 } = require('../lib/customers');
-const { getActiveMultiplierDetail } = require('../lib/buttons');
+const { getActiveMultiplierDetail, recordPosCheckoutButtons } = require('../lib/buttons');
 const { sendCustomerEmail } = require('../utils/notify');
 const { baseUrl, htmlPage, buildVerifyEmail, buildLoginEmail } = require('../lib/customerEmails');
 const { checkAndAwardProfileBonus } = require('../lib/profileCompletion');
@@ -99,6 +99,40 @@ module.exports = function(db) {
     // (e.g. a staff "New login link" click) never re-grants it.
     if (wasUnverified) {
       creditButtons(db, { customer_id: record.customer_id, amount: SIGNUP_BONUS_B, source: 'signup', status: 'credited' });
+
+      // Retroactive POS purchase BUTTONS — per KT's decision, an unverified
+      // customer's event/POS purchases don't earn anything at the time of
+      // sale (see routes/pos.js); instead, ALL of their past unprocessed
+      // POS checkouts get credited in one sweep right here, the moment
+      // they verify. Each checkout's 7-day refund-hold starts counting
+      // from NOW (this credit), not from the original sale date — that's
+      // the whole point of holding: BUTTONS should never become spendable
+      // on an account nobody's confirmed is real yet.
+      //
+      // Grouped by pos_checkout_ref (one checkout = one or more sales rows
+      // — see pos.js), matched by email since sales has no customer_id
+      // column. Voided checkouts are excluded by recordPosCheckoutButtons
+      // itself (it sums non-voided lines and does nothing if that's zero).
+      // Processed oldest-first so if this is genuinely this customer's
+      // first-ever purchase, the CHRONOLOGICALLY first checkout is the one
+      // that correctly receives the first-purchase bonus (recordPosCheckoutButtons
+      // checks for an existing bonus batch live on each call, so only the
+      // first one processed in this loop will still see none).
+      const pendingCheckouts = db.query(`
+        SELECT DISTINCT pos_checkout_ref, MIN(date) as first_date
+        FROM sales
+        WHERE lower(customer_email) = lower(?) AND channel = 'Event Sale'
+          AND pos_checkout_ref IS NOT NULL AND COALESCE(voided,0) = 0
+        GROUP BY pos_checkout_ref
+        ORDER BY first_date ASC, pos_checkout_ref ASC
+      `, [customerBefore.email]);
+      for (const { pos_checkout_ref } of pendingCheckouts) {
+        try {
+          recordPosCheckoutButtons(db, { customerId: record.customer_id, checkoutRef: pos_checkout_ref });
+        } catch (err) {
+          console.error(`⚠️ Failed to credit retroactive POS BUTTONS for checkout ${pos_checkout_ref} (verification still proceeding):`, err);
+        }
+      }
     }
 
     const customer = db.queryOne('SELECT * FROM customers WHERE id = ?', [record.customer_id]);

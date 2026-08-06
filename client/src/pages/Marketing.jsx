@@ -3,7 +3,7 @@ import { Trash2, Edit2 } from 'lucide-react';
 import { campaignsApi, tickerMessagesApi, instagramPostsApi } from '../api';
 import { Page, Table, Badge, Btn, Modal, FormRow, Input, Select, fmt } from '../components/ui';
 
-const CAMPAIGN_EMPTY = { name: '', multiplier: '2', start_date: new Date().toISOString().slice(0, 10), end_date: '', is_active: true };
+const CAMPAIGN_EMPTY = { name: '', multiplier: '2', applies_to: 'both', start_date: new Date().toISOString().slice(0, 10), end_date: '', is_active: true };
 const MESSAGE_EMPTY = { text: '', sort_order: 0, is_active: true };
 
 function todayStr() { return new Date().toISOString().slice(0, 10); }
@@ -52,6 +52,7 @@ function CampaignsSection() {
     setEditing(row);
     setForm({
       name: row.name, multiplier: String(row.multiplier),
+      applies_to: row.scope === 'channel' ? (row.scope_value || 'both') : 'both',
       start_date: row.start_date, end_date: row.end_date, is_active: !!row.is_active,
     });
     setModal(true);
@@ -61,7 +62,10 @@ function CampaignsSection() {
     if (!form.name.trim() || !form.multiplier || !form.start_date || !form.end_date) return;
     setSaving(true);
     try {
-      const body = { ...form, multiplier: parseFloat(form.multiplier) };
+      const { applies_to, ...rest } = form;
+      const scope = applies_to === 'both' ? 'site_wide' : 'channel';
+      const scope_value = applies_to === 'both' ? null : applies_to;
+      const body = { ...rest, multiplier: parseFloat(form.multiplier), scope, scope_value };
       if (editing) await campaignsApi.update(editing.id, body);
       else await campaignsApi.create(body);
       load();
@@ -87,6 +91,12 @@ function CampaignsSection() {
   const cols = [
     { key: 'name', label: 'Campaign' },
     { key: 'multiplier', label: 'Multiplier', render: v => <strong>{v}×</strong> },
+    {
+      key: 'applies_to', label: 'Applies to',
+      render: (_, row) => row.scope === 'channel'
+        ? <Badge color={row.scope_value === 'pos' ? '#BA7517' : '#3B82F6'}>{row.scope_value === 'pos' ? 'POS only' : 'Website only'}</Badge>
+        : <Badge color="#888">Both</Badge>,
+    },
     { key: 'start_date', label: 'Starts', render: v => fmt.date(v) },
     { key: 'end_date', label: 'Ends', render: v => fmt.date(v) },
     {
@@ -123,9 +133,11 @@ function CampaignsSection() {
         <div>
           <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 15, letterSpacing: 1, color: 'var(--cream)' }}>CAMPAIGNS</div>
           <div style={{ fontSize: 12, color: 'var(--cream-30)', marginTop: 2, maxWidth: 640 }}>
-            A "live" campaign overrides the normal $1 = 1B earn rate for every purchase, site-wide, for its multiplier
+            A "live" campaign overrides the normal $1 = 1B earn rate for every purchase, for its multiplier
             instead — unless a customer's birthday-month bonus (1.5×) happens to be higher, in which case they get
-            whichever is higher (never both stacked). This also drives the birthday/campaign badge on the website's nav.
+            whichever is higher (never both stacked). Choose whether it applies to the website, POS/event sales, or
+            both — so e.g. a Website campaign and a separate, higher POS campaign can run at the same time without
+            conflicting. A site-wide (Both) campaign also drives the birthday/campaign badge on the website's nav.
           </div>
         </div>
         <Btn onClick={openNew}><span style={{ fontSize: 16 }}>+</span> New Campaign</Btn>
@@ -147,6 +159,11 @@ function CampaignsSection() {
               <option value="off">Off</option>
             </Select>
           </FormRow>
+          <Select label="Applies to" value={form.applies_to} onChange={e => sf('applies_to', e.target.value)}>
+            <option value="both">Both (Website + POS)</option>
+            <option value="website">Website only</option>
+            <option value="pos">POS / event sales only</option>
+          </Select>
           <FormRow cols={2}>
             <Input label="Start date *" type="date" value={form.start_date} onChange={e => sf('start_date', e.target.value)} />
             <Input label="End date *" type="date" value={form.end_date} onChange={e => sf('end_date', e.target.value)} />

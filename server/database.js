@@ -831,6 +831,14 @@ function createSchema() {
   // right BUTTONS batch. Nullable/unused for every other channel.
   try { db.run("ALTER TABLE sales ADD COLUMN website_order_id INTEGER REFERENCES website_orders(id)"); } catch(e) {}
 
+  // Groups multiple `sales` rows (one per line item) into "this was all one
+  // POS checkout" — POS never had this until now (unlike website orders,
+  // which already had website_order_id), needed so a multi-item event
+  // purchase earns/voids BUTTONS as one unit rather than fragmenting per
+  // line. Set to the FIRST line's own `id` for every line in that checkout,
+  // including itself — see server/routes/pos.js.
+  try { db.run("ALTER TABLE sales ADD COLUMN pos_checkout_ref INTEGER"); } catch(e) {}
+
   // Tracks when a pet's birthday was last actually changed (not just
   // saved — see server/routes/customers.js PUT /me/pet), so that field can
   // be rate-limited to once every 365 days. Without this, a customer could

@@ -47,8 +47,8 @@ function calculateEarnedButtons({ subtotal, discountAmount = 0, redeemedValue = 
 // stacked, per the agreed rule. Birthday multiplier is keyed off the
 // customer's PRIMARY pet only (is_primary=1), not any pet they've
 // registered — see the multi-pet decision after Patch 96.
-function getActiveMultiplier(db, { customerId, onDate = new Date() } = {}) {
-  return getActiveMultiplierDetail(db, { customerId, onDate }).multiplier;
+function getActiveMultiplier(db, { customerId, onDate = new Date(), channel = null } = {}) {
+  return getActiveMultiplierDetail(db, { customerId, onDate, channel }).multiplier;
 }
 
 // Same lookup as getActiveMultiplier, but returns which source won (for
@@ -57,14 +57,23 @@ function getActiveMultiplier(db, { customerId, onDate = new Date() } = {}) {
 // Kept as a separate function so the actual earn-calculation code path
 // (recordPurchaseButtons -> getActiveMultiplier) is untouched by this —
 // this is purely additive, read-only display info.
-function getActiveMultiplierDetail(db, { customerId, onDate = new Date() } = {}) {
+//
+// `channel` ('website' | 'pos') scopes which campaigns are eligible:
+// a campaign with scope='site_wide' always applies regardless of channel
+// (the pre-existing default, unchanged for anyone who doesn't set a
+// channel-specific scope); scope='channel' only applies when scope_value
+// matches the calling channel. Lets KT run e.g. "$1=2B on the website"
+// and "$1=3B for event/POS sales" as two independent, non-conflicting
+// campaigns — see the Campaigns admin UI (client/src/pages/Marketing.jsx).
+function getActiveMultiplierDetail(db, { customerId, onDate = new Date(), channel = null } = {}) {
   const dateStr = singaporeDateStr(onDate);
 
   const campaign = db.queryOne(`
     SELECT name, multiplier FROM campaigns
-    WHERE is_active = 1 AND scope = 'site_wide' AND start_date <= ? AND end_date >= ?
+    WHERE is_active = 1 AND start_date <= ? AND end_date >= ?
+      AND (scope = 'site_wide' OR (scope = 'channel' AND scope_value = ?))
     ORDER BY multiplier DESC LIMIT 1
-  `, [dateStr, dateStr]);
+  `, [dateStr, dateStr, channel]);
   const campaignMultiplier = campaign ? campaign.multiplier : 1;
 
   let birthdayMultiplier = 1;
@@ -163,11 +172,23 @@ function previewRedemption(db, { customerId, requestedB, orderValueAfterDiscount
 // spec's Section 8 scope decision. The flat 150B signup bonus is NOT
 // handled here; that's credited directly on verification (see
 // lib/customers.js), since it isn't tied to any transaction.
+//
+// `onDate` and `channel` are new (added for POS support): `onDate` matters
+// because a POS purchase's BUTTONS may be recorded well after the fact —
+// at email verification, not at the moment of sale (see the unverified-
+// customer hold in routes/pos.js and the verification sweep in
+// routes/customers.js) — and the campaign multiplier that applied should
+// be whatever was live ON THE ORIGINAL SALE DATE, not whatever happens to
+// be running when they finally verify days or weeks later. Website
+// checkout is synchronous (order date ≈ now), so it never needed this and
+// keeps defaulting to `new Date()`, unchanged. `channel` scopes which
+// campaigns are eligible at all — see getActiveMultiplierDetail.
 function recordPurchaseButtons(db, {
   customerId, subtotal, discountAmount = 0, redeemedValue = 0,
   sourceType, sourceId, isFirstPurchase = false, isRefereeFirstPurchase = false,
+  onDate = new Date(), channel = null,
 }) {
-  const multiplier = getActiveMultiplier(db, { customerId });
+  const multiplier = getActiveMultiplier(db, { customerId, onDate, channel });
   const earned = calculateEarnedButtons({ subtotal, discountAmount, redeemedValue, multiplier });
 
   const batchIds = [];
@@ -197,6 +218,56 @@ function recordPurchaseButtons(db, {
     }
   }
   return { earned, multiplier, batchIds: batchIds.filter(Boolean) };
+}
+
+// POS checkout earning — one BUTTONS batch per POS checkout (grouped via
+// sales.pos_checkout_ref, same idea as website_order_id — see
+// routes/pos.js), used in two places: live, for an already-verified
+// customer buying at an event (credited right away), and retroactively,
+// for an unverified customer's PAST POS purchases, all credited at once
+// the moment they finally verify their email (see the sweep in
+// routes/customers.js's completeToken). Always computes the subtotal from
+// the persisted `sales` rows themselves — not whatever was in the original
+// request body — so the BUTTONS math can never drift from what's actually
+// in the ledger, and correctly nets out to 0 if every line in that
+// checkout was later voided.
+//
+// Idempotent: if this checkout already has a recorded batch (checked via
+// buttons_batches.source_type/source_id, the same pattern voidPendingButtons
+// uses), this is a no-op — safe to call more than once, which matters for
+// the verification sweep re-running if a customer somehow triggers
+// verification completion twice.
+//
+// isFirstPurchase is determined by whether this customer has ever received
+// a 'first_purchase_bonus' batch before (from ANY channel) — checked live
+// each call rather than by date comparison across channels, so if a
+// customer has multiple unprocessed POS checkouts being swept at once,
+// only the one actually processed first receives the bonus.
+function recordPosCheckoutButtons(db, { customerId, checkoutRef }) {
+  const alreadyRecorded = db.queryOne(
+    `SELECT id FROM buttons_batches WHERE source_type = 'pos_checkout' AND source_id = ?`,
+    [checkoutRef]
+  );
+  if (alreadyRecorded) return null;
+
+  const row = db.queryOne(`
+    SELECT SUM(unit_price * qty) AS subtotal, MIN(date) AS sale_date
+    FROM sales WHERE pos_checkout_ref = ? AND COALESCE(voided,0) = 0
+  `, [checkoutRef]);
+  if (!row?.subtotal || row.subtotal <= 0) return null; // fully voided, or nothing found
+
+  const hasFirstPurchaseBonus = !!db.queryOne(
+    `SELECT id FROM buttons_batches WHERE customer_id = ? AND source = 'first_purchase_bonus'`,
+    [customerId]
+  );
+  const isFirstPurchase = !hasFirstPurchaseBonus;
+
+  return recordPurchaseButtons(db, {
+    customerId, subtotal: row.subtotal, discountAmount: 0, redeemedValue: 0,
+    sourceType: 'pos_checkout', sourceId: checkoutRef,
+    isFirstPurchase, isRefereeFirstPurchase: isFirstPurchase,
+    onDate: new Date(row.sale_date), channel: 'pos',
+  });
 }
 
 // The 7-day hold job. Any pending batch whose earned_at is more than 7 days
@@ -235,6 +306,6 @@ function voidPendingButtons(db, { sourceType, sourceId }) {
 
 module.exports = {
   calculateEarnedButtons, getActiveMultiplier, getActiveMultiplierDetail, redeemButtons, previewRedemption, recordPurchaseButtons,
-  processExpiredHolds, voidPendingButtons, buttonsToDollars, dollarsToButtons,
+  recordPosCheckoutButtons, processExpiredHolds, voidPendingButtons, buttonsToDollars, dollarsToButtons,
   REDEMPTION_CAP_PCT, B_VALUE_DOLLARS, HOLD_DAYS, FIRST_PURCHASE_BONUS_B, REFERRAL_BONUS_B,
 };

@@ -1,5 +1,6 @@
 const { Router } = require('express');
 const { upsertCustomerFromSignup } = require('../lib/customers');
+const { recordPosCheckoutButtons } = require('../lib/buttons');
 
 // Pawvy POS System — a separate public portal (like the Order Portal) used
 // at physical events, so staff never need to open the internal app in front
@@ -108,9 +109,17 @@ module.exports = function(db, inventoryRouter) {
     // it's logged loudly so it doesn't fail silently, but checkout proceeds
     // either way. The sales row itself (below) is still the source of
     // truth for what was actually sold either way.
+    //
+    // resolvedCustomer is used below (after the sales rows exist) to decide
+    // whether this checkout earns BUTTONS right away: only if the account
+    // is already verified. An unverified account (new signup at this event,
+    // or a returning customer who never verified) earns nothing here — see
+    // the comment further down for why, and where it actually gets
+    // credited instead.
+    let resolvedCustomer = null;
     if (hasConsentedEmail) {
       try {
-        upsertCustomerFromSignup(db, {
+        resolvedCustomer = upsertCustomerFromSignup(db, {
           email: customer_email, name: mailing_name, phone: mailing_phone, address: mailing_address,
           pdpa_consent_text, source: 'event',
         });
@@ -163,6 +172,37 @@ module.exports = function(db, inventoryRouter) {
         });
       }
     });
+
+    // Group every line of this checkout under one shared reference (the
+    // first line's own id) — mirrors website_order_id, and is what lets a
+    // multi-item event purchase earn/void BUTTONS as one unit rather than
+    // fragmenting per line. See server/database.js for the column, and
+    // lib/buttons.js's recordPosCheckoutButtons for how it's used.
+    const checkoutRef = saleIds[0];
+    for (const id of saleIds) {
+      db.run('UPDATE sales SET pos_checkout_ref = ? WHERE id = ?', [checkoutRef, id]);
+    }
+
+    // BUTTONS: only for an ALREADY-VERIFIED customer — credited right away,
+    // same as a website order. An unverified account (brand new signup at
+    // this event, or a returning customer who still hasn't verified from a
+    // previous visit) earns nothing here; per KT's decision, purchase
+    // BUTTONS for an unverified account are held until they actually verify
+    // their email, at which point they're all credited retroactively in one
+    // sweep — see completeToken() in routes/customers.js. This is a
+    // deliberately different rule from the 7-day refund-hold (which still
+    // applies on top, starting from whenever the BUTTONS actually get
+    // recorded — immediately here, or at verification time there) — the
+    // point of holding for verification is to never let purchase BUTTONS
+    // become spendable on an account nobody's confirmed is real yet, same
+    // spirit as why the signup bonus itself waits for verification.
+    if (resolvedCustomer?.customer_id && resolvedCustomer.account_status === 'verified') {
+      try {
+        recordPosCheckoutButtons(db, { customerId: resolvedCustomer.customer_id, checkoutRef });
+      } catch (err) {
+        console.error('⚠️ Failed to record BUTTONS for POS checkout (sale still proceeding):', err);
+      }
+    }
 
     res.status(201).json({ ok: true, sale_ids: saleIds });
   });

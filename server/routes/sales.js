@@ -275,6 +275,19 @@ module.exports = function(db, inventoryRouter) {
     if (sale.website_order_id) {
       voidPendingButtons(db, { sourceType: 'website_order', sourceId: sale.website_order_id });
     }
+    // Same idea for a POS checkout (sourceType:'pos_checkout', sourceId:
+    // sales.pos_checkout_ref — see routes/pos.js). Two extra nuances here
+    // versus the website case: (1) if the customer was unverified at
+    // purchase time, no batch exists yet at all (nothing was recorded
+    // until/unless they verify — see routes/customers.js), so this is
+    // just a no-op, which is correct: there's nothing to void, and the
+    // verification-time sweep already excludes voided sales when it sums
+    // up what to credit. (2) If they'd already verified and the checkout
+    // was already fully credited (hold expired), same as the website case
+    // — deliberately does nothing, by design.
+    if (sale.pos_checkout_ref) {
+      voidPendingButtons(db, { sourceType: 'pos_checkout', sourceId: sale.pos_checkout_ref });
+    }
 
     res.json({ ok: true, id: req.params.id, voided: true });
   });
