@@ -8,6 +8,7 @@ async function handle(res) {
 
 export const posApi = {
   getCatalogue: () => fetch(`${BASE}/catalogue`).then(handle),
+  getActiveCampaign: () => fetch(`${BASE}/active-campaign`).then(handle),
   checkout: (payload) => fetch(`${BASE}/checkout`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

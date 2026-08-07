@@ -27,6 +27,7 @@ export default function App() {
   const [catalogue, setCatalogue] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+  const [activeCampaign, setActiveCampaign] = useState(null); // { active, multiplier, name } | null while loading
   const [search, setSearch] = useState('');
   const [scanFlash, setScanFlash] = useState(false); // brief visual confirmation on a successful scan
   const [activeBrand, setActiveBrand] = useState('All');
@@ -54,6 +55,20 @@ export default function App() {
       .then(setCatalogue)
       .catch(e => setLoadError(e.message))
       .finally(() => setLoading(false));
+  }, []);
+
+  // Fetched once on load, not re-polled — a campaign starting or ending
+  // mid-shift while the terminal is already open is rare enough that a
+  // page refresh (which staff already do between shifts) is an acceptable
+  // way to pick up the change, rather than adding a polling interval for
+  // a screen that's usually open all day. Failure here is silent (no
+  // badge shown) rather than surfaced as an error — this is a "nice to
+  // show" banner, not something that should block or alarm staff if the
+  // request happens to fail.
+  useEffect(() => {
+    posApi.getActiveCampaign()
+      .then(setActiveCampaign)
+      .catch(() => setActiveCampaign(null));
   }, []);
 
   const byId = useMemo(() => {
@@ -538,6 +553,19 @@ export default function App() {
           </div>
           <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 20, letterSpacing: 1 }}>PAWVY POS SYSTEM</div>
         </div>
+        {activeCampaign?.active && (
+          <div
+            title={activeCampaign.name || 'Active campaign'}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
+              background: 'rgba(243,111,74,.16)', border: '1px solid rgba(243,111,74,.4)',
+              borderRadius: 100, padding: '6px 12px', fontSize: 12.5, fontWeight: 700,
+              color: 'var(--orange)', whiteSpace: 'nowrap',
+            }}
+          >
+            🎉 {activeCampaign.multiplier}× BUTTONS today
+          </div>
+        )}
       </TopBar>
 
       <div style={{ maxWidth: 1040, margin: '0 auto', padding: '16px 16px 0' }}>
@@ -620,7 +648,7 @@ function Centered({ children }) {
 function TopBar({ children }) {
   return (
     <div style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--navy)', borderBottom: '1px solid rgba(245,242,235,.08)', padding: '14px 16px' }}>
-      <div style={{ maxWidth: 1040, margin: '0 auto', display: 'flex', alignItems: 'center' }}>{children}</div>
+      <div style={{ maxWidth: 1040, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>{children}</div>
     </div>
   );
 }

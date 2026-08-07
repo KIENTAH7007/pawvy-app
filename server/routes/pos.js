@@ -1,6 +1,6 @@
 const { Router } = require('express');
 const { upsertCustomerFromSignup } = require('../lib/customers');
-const { recordPosCheckoutButtons } = require('../lib/buttons');
+const { recordPosCheckoutButtons, getActiveMultiplierDetail } = require('../lib/buttons');
 
 // Pawvy POS System — a separate public portal (like the Order Portal) used
 // at physical events, so staff never need to open the internal app in front
@@ -18,6 +18,25 @@ module.exports = function(db, inventoryRouter) {
     if (totalQty <= 5) return 'low_stock';
     return 'available';
   }
+
+  // GET /api/pos/active-campaign — powers the "🎉 X× BUTTONS today" badge
+  // in the POS top bar (see pos/src/App.jsx). Reuses the exact same
+  // channel-scoped multiplier lookup already used for real earning (see
+  // lib/buttons.js's getActiveMultiplierDetail and its use in this same
+  // file's /checkout route) — this endpoint is purely a read-only display
+  // of that same logic, not a separate source of truth, so the banner can
+  // never show a different multiplier than what customers actually earn.
+  // No customerId is passed, so this deliberately never reflects a
+  // birthday bonus (that's per-customer, not something to show on a
+  // general storefront badge) — only a real active campaign.
+  router.get('/active-campaign', (req, res) => {
+    const detail = getActiveMultiplierDetail(db, { channel: 'pos' });
+    res.json({
+      active: detail.source === 'campaign',
+      multiplier: detail.multiplier,
+      name: detail.campaignName,
+    });
+  });
 
   // GET /api/pos/catalogue — RRP only, includes barcode for scan-to-add.
   router.get('/catalogue', (req, res) => {
