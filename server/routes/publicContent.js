@@ -19,13 +19,19 @@ module.exports = function(db) {
     res.json({ messages: messages.map(m => m.text) });
   });
 
-  // Whether a site-wide campaign is active right now, and its multiplier —
-  // used for the nav's promo badge. Deliberately NOT customer-specific
-  // (no auth here), so this only ever reflects a campaign, never a given
-  // customer's birthday-month bonus (that's customer-specific and already
-  // covered by GET /api/customers/me for logged-in customers).
+  // Whether a site-wide OR website-scoped campaign is active right now,
+  // and its multiplier — used for the nav's promo badge, for visitors who
+  // aren't logged in (logged-in customers get this same info, already
+  // combined with their own birthday-month bonus, from GET
+  // /api/customers/me instead). Deliberately not customer-specific (no
+  // auth here) — this only ever reflects a campaign, never a birthday
+  // bonus, which needs a known customer.
+  //
+  // channel: 'website' matters here too, same reasoning as customers.js's
+  // /me endpoint — without it, a campaign scoped specifically to
+  // "Website only" in the Campaigns admin would silently never show here.
   router.get('/campaign', (req, res) => {
-    const detail = getActiveMultiplierDetail(db, {});
+    const detail = getActiveMultiplierDetail(db, { channel: 'website' });
     if (detail.source === 'campaign') {
       res.json({ active: true, name: detail.campaignName, multiplier: detail.multiplier });
     } else {

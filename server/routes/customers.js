@@ -276,11 +276,20 @@ module.exports = function(db) {
   // GET /api/customers/me — profile + BUTTONS balance + primary pet.
   // Doubles as an end-to-end smoke test that signup → verify → session
   // actually works.
+  //
+  // channel: 'website' matters here — without it, getActiveMultiplierDetail
+  // only ever detects site_wide campaigns, silently missing any campaign
+  // KT scopes specifically to "Website only" in the Campaigns admin (see
+  // lib/buttons.js's channel-scoping and Marketing.jsx's "Applies to"
+  // selector). This was the actual root cause of campaigns not showing on
+  // the website at all — the nav badge/account banner previously also
+  // discarded campaign info even when it WAS detected, but that display-side
+  // fix alone wouldn't have mattered without this too.
   router.get('/me', requireCustomerAuth, (req, res) => {
     const customer = db.queryOne('SELECT * FROM customers WHERE id = ?', [req.customerId]);
     if (!customer) return res.status(404).json({ error: 'Account not found.' });
     const pet = db.queryOne('SELECT * FROM customer_pets WHERE customer_id = ? AND is_primary = 1 LIMIT 1', [customer.id]);
-    const multiplierDetail = getActiveMultiplierDetail(db, { customerId: customer.id });
+    const multiplierDetail = getActiveMultiplierDetail(db, { customerId: customer.id, channel: 'website' });
     res.json({
       ok: true,
       customer: customerPublicView(customer),

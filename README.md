@@ -1,83 +1,72 @@
-# Feature: POS top bar shows active campaign multiplier
+# Fix: website channel gap for campaign detection
 
-## What changed (3 files)
+## What changed (2 files, both one-line fixes to the same root cause)
 
-### `server/routes/pos.js`
-New endpoint: `GET /api/pos/active-campaign`. Reuses the exact same
-`getActiveMultiplierDetail(db, { channel: 'pos' })` logic already used
-for the real BUTTONS earning calculation (see the earlier POS
-BUTTONS delivery) — this is purely a read-only display of that same
-lookup, not a separate check, so the badge can never show a different
-multiplier than what customers actually earn. Returns:
-```json
-{ "active": true, "multiplier": 3, "name": "Expo Weekend" }
-```
-No `customerId` is passed, so this deliberately never reflects a
-birthday-month bonus — that's per-customer and doesn't make sense on a
-general storefront badge — only a real, currently-active campaign.
+### `server/routes/customers.js` — `GET /api/customers/me`
+Now passes `channel: 'website'` to `getActiveMultiplierDetail`. Before
+this, it passed no channel at all, which meant only `site_wide`
+campaigns were ever detected — a campaign scoped specifically to
+"Website only" in the Campaigns admin was invisible to logged-in
+customers, even though the multiplier logic itself already fully
+supported channel scoping (built for POS earlier).
 
-### `pos/src/api.js`
-Added `posApi.getActiveCampaign()`, same one-line pattern as the
-existing `getCatalogue()`/`checkout()` calls.
+### `server/routes/publicContent.js` — `GET /api/public-content/campaign`
+Same exact fix, same reason. This is the **public**, no-login-required
+endpoint — worth noting it already existed, with a comment saying it
+was "used for the nav's promo badge," but the website frontend never
+actually called it (see the companion `pawvy-website` delivery, which
+wires this up for the first time). Fixing the channel gap here means
+even visitors who aren't logged in can now correctly see a
+Website-scoped campaign.
 
-### `pos/src/App.jsx`
-- Fetches the active campaign once when the terminal loads, alongside
-  the existing catalogue fetch. Not polled continuously — a campaign
-  starting or ending mid-shift while the terminal's already open is
-  rare enough that a page refresh (which staff already do between
-  shifts) is a reasonable way to pick it up, rather than adding a
-  polling interval to a screen that's typically open all day.
-- If that request fails for any reason, the badge just doesn't show —
-  no error message, since this is a "nice to display" banner, not
-  something that should alarm staff or block checkout if it happens
-  to fail to load.
-- The `TopBar` component now has `justify-content: space-between`
-  instead of everything left-aligned — confirmed this doesn't affect
-  the other screen that reuses `TopBar` (the order-review screen),
-  since it only ever passes one child there, and space-between with a
-  single child behaves identically to how it looked before.
-- When a campaign is active, a badge appears on the right side of the
-  top bar: "🎉 3× BUTTONS today" (using whatever the real multiplier
-  is). Hovering it shows the campaign's name as a tooltip. When no
-  campaign is active, nothing renders — the header looks exactly as
-  it does today.
+## Why two separate endpoints
+`/api/customers/me` (authenticated) already combines campaign-vs-
+birthday and returns whichever is higher — that's for logged-in
+customers, where a birthday bonus is possible.
+`/api/public-content/campaign` (no auth) only ever reflects a
+campaign, since there's no known customer to check a birthday against
+— that's for anyone just browsing. Both needed the same channel fix
+independently, since they call the shared multiplier logic separately.
 
-## Verified
-- Full build (server + client + portal + POS) passes clean, both
-  locally and from a genuine fresh cold-clone simulation.
-- **Real smoke tests against the actual endpoint** (not just a
-  syntax check) covering every scenario that matters:
-  - No campaign active → badge correctly reports inactive
-  - A **Website-only** scoped campaign does **not** leak into the POS
-    badge — this was the one I was most careful to verify, since
-    getting this wrong would show customers an incorrect promise
-  - A POS-scoped campaign shows with the correct multiplier and name
-  - A site-wide campaign (applies to both channels) also correctly
-    shows on POS
-  - An expired campaign (date range already passed) correctly doesn't
-    show
-- **Regression-tested the existing POS checkout flow** after touching
-  `pos.js` again — confirmed the catalogue endpoint and the real
-  BUTTONS-earning checkout flow (from the earlier delivery) both still
-  work exactly as before; this new endpoint is purely additive.
-- Re-ran the core scenario tests against a genuine fresh `git clone`
-  with this delivery applied, not just my working copy — all pass
-  there too.
+## Verified — thorough, since this touches real earning-adjacent logic
+8 real scenario tests against actual running route handlers with a
+seeded database (not just syntax checks), covering:
+- Anonymous visitor, no campaign → correctly inactive
+- Anonymous visitor, Website-scoped campaign active → **now correctly
+  detected** (this was the actual bug)
+- Anonymous visitor, POS-only campaign active → correctly does **not**
+  leak into the website's public endpoint
+- Logged-in customer, nothing active → correctly null
+- Logged-in customer, Website-scoped campaign active → **now
+  correctly detected** (same underlying bug, different endpoint)
+- Logged-in customer with an active birthday month **and** a higher
+  campaign multiplier → campaign correctly wins
+- Logged-in customer with an active birthday month **and** a lower
+  campaign multiplier → birthday correctly wins
+- Logged-in customer, POS-only campaign active → correctly does
+  **not** leak into the website's `/me` endpoint (birthday still
+  correctly wins instead)
 
-## Not yet verified
-No live browser access from this sandbox — worth a visual check once
-deployed to confirm the badge looks right at actual terminal screen
-widths (especially on the "compact mobile" scenario you normally test
-with, since the badge text needs a bit of room next to the logo/title
-on the left).
+Also regression-tested the **existing POS endpoint** (`/api/pos/
+active-campaign`, from the earlier delivery) after touching these
+neighboring files, confirming it's completely unaffected — still
+correctly shows POS-scoped campaigns and still correctly excludes
+Website-only ones.
+
+Re-ran the core test against a genuine fresh `git clone` with this
+delivery applied — not just my working copy — passes there too.
 
 ## To apply
 1. `git checkout main`
 2. `git pull origin main`
 3. Unzip this delivery on top of your local `pawvy-app` folder
 4. `git add -A`
-5. `git commit -m "POS: show active campaign multiplier badge in top bar"`
+5. `git commit -m "Fix: website-facing campaign endpoints weren't channel-scoped, missing Website-only campaigns"`
 6. `git push origin main`
 
-Railway auto-deploys the server and rebuilds the POS client from
-`main` on push.
+## Companion delivery
+This pairs with a `pawvy-website` delivery (`components/Nav.jsx`,
+`app/account/page.js`) that actually displays this data — the nav
+badge and account page. Apply both together; this backend fix alone
+doesn't change anything visible, and the website delivery alone would
+still only show site-wide campaigns without this.
