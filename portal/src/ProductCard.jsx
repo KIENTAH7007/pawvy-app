@@ -40,10 +40,10 @@ export default function ProductCard({ product, cartQty, onAdd, onUpdateQty, onRe
       {product.is_new_active && (
         <div style={{
           position: 'absolute', top: 8, right: 8, zIndex: 2,
-          background: '#3B82F6', color: 'var(--navy)',
-          fontSize: 10.5, fontWeight: 800, letterSpacing: .3,
-          borderRadius: 20, padding: '3px 8px',
-          boxShadow: '0 2px 6px rgba(0,0,0,.25)',
+          background: 'var(--orange)', color: 'var(--navy)',
+          fontSize: 12.5, fontWeight: 800, letterSpacing: .4,
+          borderRadius: 100, padding: '6px 14px',
+          boxShadow: '0 3px 10px rgba(243,111,74,.35)',
         }}>
           New
         </div>

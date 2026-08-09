@@ -38,8 +38,9 @@ export default function ProductCard({ product, cartQty, onAdd, onUpdateQty, onRe
         {product.is_new_active && (
           <span style={{
             position: 'absolute', top: 6, left: 6, zIndex: 1,
-            fontSize: 9, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase',
-            color: 'var(--navy)', background: '#3B82F6', padding: '3px 7px', borderRadius: 5,
+            fontSize: 12.5, fontWeight: 800, letterSpacing: .4, textTransform: 'uppercase',
+            color: 'var(--cream)', background: 'var(--orange)', padding: '6px 14px', borderRadius: 100,
+            boxShadow: '0 3px 10px rgba(243,111,74,.35)',
           }}>
             New
           </span>
