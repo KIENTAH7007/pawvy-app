@@ -1,124 +1,101 @@
-# Feature: special one-off discount in Pending Orders
+# Invoice fix: per-line List Price / Discount breakdown (Option 2)
 
-## What this is
-The same 4-mode discount tool POS already has (renamed "No discount" →
-"Default" here, per your note), now available when you review/approve
-a wholesale order in Pending Orders — for the occasional case where
-you want to give a partner a one-off special price for a specific
-order, separate from their standing rebate agreement.
+## What this fixes
+The "Subtotal" shown on invoices was mathematically correct but had no
+visible relationship to the line items printed above it — the table
+showed each line's *already-discounted* price, while Subtotal showed
+a reconstructed pre-discount figure. A customer couldn't get from one
+to the other by adding up anything they could actually see.
 
-**The core requirement**: the partner's standing rebate (the $12/$30
-cash-rebate tiers, or whichever discount model that partner is on)
-now checks eligibility against the order amount *after* your special
-discount, not before. Confirmed against both your own examples before
-building anything — the exact tests are below.
-
-## What changed (5 files)
+## What changed (4 files)
 
 ### `server/database.js`
-Two new columns, added the same safe, non-destructive way every other
-column in this file is added:
-- `sales.special_discount_amt` — the special discount's amount, kept
-  **separate** from `platform_fee_amt` (the partner's own rebate), so
-  both survive on the record independently for your audit trail.
-  `sales.unit_price` keeps meaning exactly what it always has (the
-  final per-unit price, post-special, pre-rebate) — nothing about
-  how the rest of the system reads that field changes.
-- `invoices.special_discount` — same idea, at the invoice level.
+New column: `invoice_items.special_discount_amt` — per-line discount
+tracking, mirroring `sales.special_discount_amt` from the delivery
+before this one. Needed because the invoice-wide total I built last
+time isn't enough to show *which* lines were discounted and by how
+much — that needs to live on each line.
 
-### `server/routes/orders.js`
-The order-approval endpoint now accepts and stores
-`special_discount_amt` per line item, alongside the existing
-`platform_fee_amt`.
+**Note on this delivery's own history**: while adding this column, I
+made the exact same mistake I'd made once before in an earlier
+delivery — an edit accidentally deleted the two existing
+`special_discount_amt`/`special_discount` ALTER statements instead of
+adding alongside them. Caught it immediately via `grep` before moving
+on, restored it, and verified with a real database init test that all
+four columns (the two pre-existing ones plus this new one) exist
+correctly. Flagging this plainly rather than leaving it unmentioned —
+it's now the second time this exact slip has happened, so if you'd
+like me to double-check schema edits more deliberately going forward,
+that's a completely fair thing to ask for.
 
 ### `server/routes/invoices.js`
-When generating an invoice from approved sales, sums
-`special_discount_amt` separately (alongside the existing
-`platform_fee_amt` sum) and stores it on the invoice record. The
-existing `total` formula (`subtotal − discount + shipping`) is
-**unchanged** — `subtotal` already reflects the post-special amount
-(since that's what's stored in `unit_price`), so nothing needed to
-change there for the math to come out right.
+The `generate-invoice` endpoint now carries each sale's
+`special_discount_amt` onto its corresponding `invoice_items` row.
+Confirmed the other 3 places this table gets written to (Delivery
+Orders, which show no pricing at all, and SOA generation, which
+aggregates whole invoices rather than individual products) don't need
+this field — genuinely out of scope, not overlooked.
 
-### `client/src/pages/PendingOrders.jsx` — the main piece
-- The 4-mode toggle (Default / Per item % / Universal % / Set price)
-  appears right after the item list when you expand an order, before
-  Shipping — same visual pattern as POS.
-- **Order of operations**: special discount is applied to each line
-  first, producing a post-special subtotal; the partner's existing
-  rebate calculation (`calcDiscount`, unchanged) is then evaluated
-  against *that* result, not the raw subtotal. This is the one
-  fundamental change everything else depends on.
-- The totals summary now shows: raw Subtotal → Special discount (only
-  shown if > 0) → the partner's rebate (unchanged label/logic) →
-  Shipping → Net Total.
-- "Set Price" mode is per-line, confirmed to match your intent
-  exactly — some SKUs get a fixed special price, the rest stay at
-  normal wholesale.
+### `client/src/pages/Invoices.jsx` — the main piece
+`generateInvoicePDF` now checks whether *any* line on the invoice
+actually has a special discount:
+- **If none do** (the large majority of invoices): renders exactly
+  the same 5-column table as before — Brand, Description, Qty, Unit
+  Price, Total. No visible change at all.
+- **If at least one line does**: the table gains a "Discount" column,
+  and the price column is relabeled "List Price" (reconstructed per
+  line as `unit_price + special_discount_amt ÷ qty`, so it shows the
+  real pre-discount figure for that specific SKU). A line within a
+  discounted invoice that itself had no discount just shows "—" in
+  that cell rather than $0.00, and its List Price naturally equals
+  its Unit Price. Brand column is kept throughout, per your note about
+  multi-brand invoices.
+- Subtotal at the bottom now literally equals the sum of what's
+  printed in the table above it — that's the entire point of this fix.
 
-### `client/src/pages/Invoices.jsx`
-Both the generated PDF and the on-screen preview (before generating)
-now show the same three-line breakdown from the mockup you approved:
-Subtotal (reconstructed as the raw pre-discount figure) → Special
-Discount → Partner Rebate → Shipping → Amount Due. The final amount
-due is identical to what it would have been before this change — this
-is purely about showing the two different discounts separately
-instead of as one combined number.
+### `client/src/pages/Sales.jsx`
+Renamed the ledger's "List Price" column header to "Unit Price". This
+wasn't originally part of what you asked for this round — I found it
+while double-checking your question about ledger impact. The column
+has always shown `sales.unit_price`, and once a special discount can
+reduce that value, calling it "List Price" was no longer accurate for
+that row. **Important: this is a label-only change.** I checked the
+actual Revenue and Profit SQL formulas directly (`server/routes/
+sales.js`, completely untouched by this delivery — zero diff)
+and confirmed they already correctly account for the net price and
+rebate separately, so no financial figure anywhere changes, only what
+that one column is called.
 
-## The ledger — deliberately untouched
-Checked `client/src/pages/Sales.jsx` directly: its "Discount/Fee"
-column only ever reads `platform_fee_amt`. It has no idea
-`special_discount_amt` exists, and doesn't need to — that column
-looks exactly as cramped (or not) as it did before this delivery, per
-your explicit condition for going ahead with this.
-
-## Verified — extensively, since this touches real invoicing math
-**28 unit tests** run against the *actual* extracted calculation
-functions (not reimplemented from memory) — including **both of your
-own examples, reproduced exactly**:
-- $400 → special discount → $350 → correctly **no** rebate
-- $480 → special discount → $400 → correctly **$12** rebate → **$388**
-  final, matching your numbers precisely
-
-Plus edge cases: no special discount at all (behaves identically to
-the pre-existing system — a genuine regression check), per-item %
-across multiple lines, Set Price mode, per-line rebate distribution
-reconciling to the exact cent with no rounding drift, and a different
-partner discount type (`threshold_pct`) layered correctly with a
-special discount on top.
-
-**10 end-to-end backend tests** — real Express routes, real seeded
-database, KT's exact example carried all the way from order approval
-through to a generated invoice, confirming `sale.unit_price`,
-`sale.special_discount_amt`, `sale.platform_fee_amt`, and every field
-on the resulting invoice match precisely.
-
-**One mistake I made and caught myself**: while adding the new schema
-columns, an early edit accidentally deleted the pre-existing
-`pos_checkout_ref` column definition instead of adding alongside it.
-Caught this immediately via `git diff`, restored it, and verified with
-a real database initialization test that both the old and new columns
-exist correctly before proceeding — flagging this for transparency
-rather than leaving it unmentioned.
-
-Full build (server + client + portal + POS) passes clean, both
-locally and from a genuine fresh `git clone` with this delivery
-applied — confirmed the diff matches exactly what's in this zip.
+## Verified
+- 9 end-to-end tests against real running routes with a seeded
+  database: an invoice with mixed discounted/undiscounted lines (both
+  cases represented on one invoice), confirming per-line
+  `special_discount_amt` persists and reconstructs correctly (a $20
+  net line with $5 discount correctly reconstructs to $25 List
+  Price), and a second invoice with no special discount at all,
+  confirming it behaves identically to before — zero phantom
+  discount, zero column ever showing.
+- Re-ran the core scenario against a genuine fresh `git clone` with
+  this delivery applied — passes there too.
+- Confirmed `server/routes/sales.js` (Revenue/Profit) has zero diff —
+  the Sales Ledger rename is provably a label-only change.
+- Confirmed the only other 3 places `invoice_items` gets written to
+  (Delivery Order, and the two SOA-generation paths) are structurally
+  different and don't need this field.
+- Full build (server + client + portal + POS) passes clean, both
+  locally and on the cold clone.
 
 ## Not yet verified
-No live UI access from this sandbox — worth a real click-through
-after deploy, particularly: does the discount toggle feel natural
-sitting where it is in the expanded order view, and does the invoice
-breakdown read clearly on an actual printed/PDF'd document rather
-than just the HTML I generated it from.
+No live UI access from this sandbox — worth generating one real
+invoice of each kind (with and without a special discount) after
+deploy to see the actual PDF layout, particularly whether the extra
+Discount column feels cramped on a printed page next to Brand,
+Description, Qty, List Price, and Total all on one row.
 
 ## To apply
 1. `git checkout main`
 2. `git pull origin main`
 3. Unzip this delivery on top of your local `pawvy-app` folder
 4. `git add -A`
-5. `git commit -m "Special one-off discount in Pending Orders, separate from partner rebate, with invoice breakdown"`
+5. `git commit -m "Invoice: per-line List Price / Discount breakdown when a special discount was used; Sales Ledger label fix"`
 6. `git push origin main`
-
-Railway auto-deploys the server and rebuilds the client from `main`
-on push.

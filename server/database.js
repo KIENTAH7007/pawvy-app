@@ -851,6 +851,13 @@ function createSchema() {
   try { db.run("ALTER TABLE sales ADD COLUMN special_discount_amt REAL DEFAULT 0"); } catch(e) {}
   try { db.run("ALTER TABLE invoices ADD COLUMN special_discount REAL DEFAULT 0"); } catch(e) {}
 
+  // Per-line special discount, mirroring sales.special_discount_amt — needed
+  // so a generated invoice can show which SPECIFIC lines got KT's one-off
+  // discount (not just the invoice-wide total added in the delivery before
+  // this one). See generateInvoicePDF in client/src/pages/Invoices.jsx for
+  // where this drives the optional "List Price" / "Discount" columns.
+  try { db.run("ALTER TABLE invoice_items ADD COLUMN special_discount_amt REAL DEFAULT 0"); } catch(e) {}
+
   // Tracks when a pet's birthday was last actually changed (not just
   // saved — see server/routes/customers.js PUT /me/pet), so that field can
   // be rate-limited to once every 365 days. Without this, a customer could

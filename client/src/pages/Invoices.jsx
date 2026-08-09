@@ -22,19 +22,54 @@ function localDocNum(prefix) {
 // ── PDF: Invoice ──────────────────────────────────────────────────
 function generateInvoicePDF(invoice) {
   const date = new Date(invoice.date).toLocaleDateString('en-SG', { day:'numeric', month:'long', year:'numeric' });
+
+  // Whether ANY line on this invoice used KT's special discount — drives
+  // whether the table shows the extra List Price / Discount columns at all.
+  // If nothing on this invoice was specially discounted (the vast majority
+  // of invoices), the table renders exactly as it always has: Brand,
+  // Description, Qty, Unit Price, Total — no changes, no empty column.
+  const hasSpecialDiscount = (invoice.items || []).some(it => (it.special_discount_amt || 0) > 0);
+
   const rows = (invoice.items||[]).map((it, idx) => {
     // Brand-aware rows (product-linked lines) vs plain description (legacy/non-product lines)
     const brand = it.brand_name || '—';
     const desc  = it.item_series ? `${it.item_series}${it.variation ? ' · '+it.variation : ''}` : it.description;
+    const bg = idx%2===0?'#fff':'#f8f9fc';
+    const td = 'padding:8px 12px;border-bottom:1px solid #e8ecf0';
+    if (!hasSpecialDiscount) {
+      return `
+      <tr style="background:${bg}">
+        <td style="${td}">${brand}</td>
+        <td style="${td}">${desc}</td>
+        <td style="${td};text-align:right">${it.qty}</td>
+        <td style="${td};text-align:right">${parseFloat(it.unit_price).toFixed(2)}</td>
+        <td style="${td};text-align:right;font-weight:600">${parseFloat(it.line_total).toFixed(2)}</td>
+      </tr>`;
+    }
+    // List Price is reconstructed per line (net price + this line's own
+    // special discount ÷ qty) — same reconstruction idea as the Subtotal
+    // line below, just applied per row instead of once for the whole
+    // invoice. A line with no special discount of its own (e.g. a
+    // different brand on the same order that wasn't discounted) just
+    // shows "—" rather than $0.00, and its List Price and Unit Price
+    // naturally end up equal.
+    const specialAmt = it.special_discount_amt || 0;
+    const listPrice = parseFloat(it.unit_price) + (it.qty > 0 ? specialAmt / it.qty : 0);
     return `
-    <tr style="background:${idx%2===0?'#fff':'#f8f9fc'}">
-      <td style="padding:8px 12px;border-bottom:1px solid #e8ecf0">${brand}</td>
-      <td style="padding:8px 12px;border-bottom:1px solid #e8ecf0">${desc}</td>
-      <td style="padding:8px 12px;border-bottom:1px solid #e8ecf0;text-align:right">${it.qty}</td>
-      <td style="padding:8px 12px;border-bottom:1px solid #e8ecf0;text-align:right">${parseFloat(it.unit_price).toFixed(2)}</td>
-      <td style="padding:8px 12px;border-bottom:1px solid #e8ecf0;text-align:right;font-weight:600">${parseFloat(it.line_total).toFixed(2)}</td>
+    <tr style="background:${bg}">
+      <td style="${td}">${brand}</td>
+      <td style="${td}">${desc}</td>
+      <td style="${td};text-align:right">${it.qty}</td>
+      <td style="${td};text-align:right">${listPrice.toFixed(2)}</td>
+      <td style="${td};text-align:right;color:${specialAmt > 0 ? '#c07a1f' : '#bbb'}">${specialAmt > 0 ? '− ' + specialAmt.toFixed(2) : '—'}</td>
+      <td style="${td};text-align:right;font-weight:600">${parseFloat(it.line_total).toFixed(2)}</td>
     </tr>`;
   }).join('');
+
+  const priceHeader = hasSpecialDiscount ? 'List Price' : 'Unit Price';
+  const discountHeaderCell = hasSpecialDiscount
+    ? `<th style="padding:10px 12px;text-align:right;color:#fff;font-weight:700;font-size:11px">Discount</th>`
+    : '';
 
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${invoice.invoice_number}</title>
   <style>
@@ -57,7 +92,8 @@ function generateInvoicePDF(invoice) {
         <th style="padding:10px 12px;text-align:left;color:#fff;font-weight:700;font-size:11px">Brand</th>
         <th style="padding:10px 12px;text-align:left;color:#fff;font-weight:700;font-size:11px">Description</th>
         <th style="padding:10px 12px;text-align:right;color:#fff;font-weight:700;font-size:11px">Qty</th>
-        <th style="padding:10px 12px;text-align:right;color:#fff;font-weight:700;font-size:11px">Unit Price</th>
+        <th style="padding:10px 12px;text-align:right;color:#fff;font-weight:700;font-size:11px">${priceHeader}</th>
+        ${discountHeaderCell}
         <th style="padding:10px 12px;text-align:right;color:#fff;font-weight:700;font-size:11px">Total</th>
       </tr></thead>
       <tbody>${rows}</tbody>

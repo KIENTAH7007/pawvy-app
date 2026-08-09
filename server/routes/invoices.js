@@ -172,8 +172,8 @@ module.exports = function(db) {
 
     sales.forEach(row => {
       db.run(
-        'INSERT INTO invoice_items (invoice_id, product_id, description, qty, unit_price, line_total) VALUES (?,?,?,?,?,?)',
-        [invoiceId, row.product_id, `${row.brand_name} ${row.item_series}${row.variation?' · '+row.variation:''}`, row.qty, row.unit_price, parseFloat((row.qty*row.unit_price).toFixed(2))]
+        'INSERT INTO invoice_items (invoice_id, product_id, description, qty, unit_price, line_total, special_discount_amt) VALUES (?,?,?,?,?,?,?)',
+        [invoiceId, row.product_id, `${row.brand_name} ${row.item_series}${row.variation?' · '+row.variation:''}`, row.qty, row.unit_price, parseFloat((row.qty*row.unit_price).toFixed(2)), row.special_discount_amt || 0]
       );
       db.run('UPDATE sales SET invoice_id = ? WHERE id = ?', [invoiceId, row.id]);
     });

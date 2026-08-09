@@ -248,8 +248,8 @@ export default function Sales() {
                 <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:1080}}>
                   <thead>
                     <tr>
-                      {['Date','Brand','Product','Channel','Partner','Mkt','Qty','List Price','Discount/Fee','Shipping','Revenue','Profit',''].map(h=>(
-                        <th key={h} style={{padding:'9px 10px',textAlign:['Qty','List Price','Discount/Fee','Shipping','Revenue','Profit'].includes(h)?'right':'left',fontSize:9.5,fontWeight:700,letterSpacing:.7,textTransform:'uppercase',color:'var(--cream-30)',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap'}}>{h}</th>
+                      {['Date','Brand','Product','Channel','Partner','Mkt','Qty','Unit Price','Discount/Fee','Shipping','Revenue','Profit',''].map(h=>(
+                        <th key={h} style={{padding:'9px 10px',textAlign:['Qty','Unit Price','Discount/Fee','Shipping','Revenue','Profit'].includes(h)?'right':'left',fontSize:9.5,fontWeight:700,letterSpacing:.7,textTransform:'uppercase',color:'var(--cream-30)',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap'}}>{h}</th>
                       ))}
                     </tr>
                   </thead>
