@@ -53,5 +53,32 @@ module.exports = function(db) {
     });
   });
 
+  // The homepage's full-width takeover banner (the "Wild Balance"-style new
+  // brand announcement) — active means both is_active=1 AND today falls
+  // within [start_date, end_date] (either bound can be left blank for
+  // open-ended, same convention already used for campaigns and the New
+  // badge). If no link_url was set for this specific banner, falls back to
+  // the brand gallery so a click never dead-ends — same reasoning as the
+  // Instagram fallback just above.
+  router.get('/banner', (req, res) => {
+    const today = new Date().toISOString().slice(0, 10);
+    const banner = db.queryOne(`
+      SELECT image_data, headline, link_url FROM homepage_banners
+      WHERE is_active = 1
+        AND (start_date IS NULL OR start_date <= ?)
+        AND (end_date IS NULL OR end_date >= ?)
+        AND image_data IS NOT NULL AND image_data != ''
+      ORDER BY id DESC LIMIT 1
+    `, [today, today]);
+
+    if (!banner) return res.json({ active: false });
+    res.json({
+      active: true,
+      image: banner.image_data,
+      headline: banner.headline || '',
+      link: banner.link_url || '/#gallery',
+    });
+  });
+
   return router;
 };

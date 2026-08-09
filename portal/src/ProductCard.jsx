@@ -37,6 +37,17 @@ export default function ProductCard({ product, cartQty, onAdd, onUpdateQty, onRe
           #{rank} Top Seller
         </div>
       )}
+      {product.is_new_active && (
+        <div style={{
+          position: 'absolute', top: 8, right: 8, zIndex: 2,
+          background: '#3B82F6', color: 'var(--navy)',
+          fontSize: 10.5, fontWeight: 800, letterSpacing: .3,
+          borderRadius: 20, padding: '3px 8px',
+          boxShadow: '0 2px 6px rgba(0,0,0,.25)',
+        }}>
+          New
+        </div>
+      )}
       <div style={{
         aspectRatio: '1 / 1', background: 'rgba(245,242,235,.05)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',

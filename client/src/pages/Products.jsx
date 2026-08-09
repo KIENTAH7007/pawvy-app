@@ -296,10 +296,23 @@ export default function Products() {
                           <Btn size="sm" variant="ghost" onClick={e=>{e.stopPropagation();setForm({...p});setModal('edit');}}>Edit</Btn>
                           <Btn size="sm" variant="ghost" onClick={e=>{
                             e.stopPropagation();
-                            setDiscountForm({ id: p.id, name: `${p.item_series}${p.variation ? ' — '+p.variation : ''}`, discount_pct: p.discount_pct || 0, discount_start: p.discount_start || '', discount_end: p.discount_end || '' });
+                            setDiscountForm({
+                              id: p.id, name: `${p.item_series}${p.variation ? ' — '+p.variation : ''}`,
+                              discount_pct: p.discount_pct || 0, discount_start: p.discount_start || '', discount_end: p.discount_end || '',
+                              is_new: !!p.is_new, new_until: p.new_until || '',
+                            });
                             setModal('discount');
                           }}>
-                            {p.discount_pct > 0 ? <Badge color="#7fc93e">{p.discount_pct}% off</Badge> : 'Discount'}
+                            {/* Live state: shows whichever of discount/new-badge is currently
+                                active, or both together, falling back to the plain "Badge"
+                                label when neither is set — same one-button-becomes-a-badge
+                                pattern the old Discount-only button already used. */}
+                            {(p.is_discount_active || p.is_new_active) ? (
+                              <span style={{display:'flex',alignItems:'center',gap:5}}>
+                                {p.is_new_active && <Badge color="#3B82F6">NEW</Badge>}
+                                {p.is_discount_active && <Badge color="#7fc93e">{p.discount_pct}% off</Badge>}
+                              </span>
+                            ) : 'Badge'}
                           </Btn>
                         </div>
                       </td>
@@ -444,35 +457,69 @@ export default function Products() {
         </div>
       </Modal>
 
-      {/* Discount modal — powers the shop's discounted-price display and
-          brand-launch/campaign pricing. Backend endpoint (PATCH /:id/discount)
-          has existed since Patch 104; this is the first UI for it. */}
-      <Modal open={modal==='discount'} title="SET DISCOUNT" onClose={()=>setModal(null)} width={420}>
-        <div style={{display:'flex',flexDirection:'column',gap:14}}>
+      {/* Badge modal — one modal for two independent things (discount pricing
+          and the "New" badge), since KT didn't want a second button added to
+          an already-long per-row action list. A product can have either,
+          both, or neither; "Save" always sends the complete current state of
+          both sections together (simplest correct design — no partial-update
+          ambiguity on the backend to get wrong), and each "Clear X" button
+          resets just its own section in the form before saving, leaving the
+          other section's current values untouched. Backend endpoint
+          (PATCH /:id/discount) has existed since Patch 104 for discount;
+          extended to also carry is_new/new_until in this delivery. */}
+      <Modal open={modal==='discount'} title="SET BADGE" onClose={()=>setModal(null)} width={420}>
+        <div style={{display:'flex',flexDirection:'column',gap:18}}>
           <div style={{fontSize:13,color:'var(--cream-60)'}}>{discountForm.name}</div>
 
-          <Input
-            label="Discount %"
-            type="number" min="0" max="100"
-            value={discountForm.discount_pct}
-            onChange={e=>setDiscountForm(f=>({...f,discount_pct:e.target.value}))}
-          />
-          <Input
-            label="Start date"
-            type="date"
-            value={discountForm.discount_start}
-            onChange={e=>setDiscountForm(f=>({...f,discount_start:e.target.value}))}
-          />
-          <Input
-            label="End date (leave blank for open-ended)"
-            type="date"
-            value={discountForm.discount_end}
-            onChange={e=>setDiscountForm(f=>({...f,discount_end:e.target.value}))}
-          />
+          <div>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:13,letterSpacing:1,color:'var(--cream)',paddingBottom:8,marginBottom:10,borderBottom:'1px solid var(--border)'}}>DISCOUNT</div>
+            <div style={{display:'flex',flexDirection:'column',gap:14}}>
+              <Input
+                label="Discount %"
+                type="number" min="0" max="100"
+                value={discountForm.discount_pct}
+                onChange={e=>setDiscountForm(f=>({...f,discount_pct:e.target.value}))}
+              />
+              <Input
+                label="Start date"
+                type="date"
+                value={discountForm.discount_start}
+                onChange={e=>setDiscountForm(f=>({...f,discount_start:e.target.value}))}
+              />
+              <Input
+                label="End date (leave blank for open-ended)"
+                type="date"
+                value={discountForm.discount_end}
+                onChange={e=>setDiscountForm(f=>({...f,discount_end:e.target.value}))}
+              />
+            </div>
+          </div>
+
+          <div>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:13,letterSpacing:1,color:'var(--cream)',paddingBottom:8,marginBottom:10,borderBottom:'1px solid var(--border)'}}>NEW BADGE</div>
+            <div style={{display:'flex',flexDirection:'column',gap:14}}>
+              <label style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer'}}>
+                <input
+                  type="checkbox"
+                  checked={!!discountForm.is_new}
+                  onChange={e=>setDiscountForm(f=>({...f,is_new:e.target.checked}))}
+                  style={{width:16,height:16,accentColor:'var(--orange)',cursor:'pointer'}}
+                />
+                <span style={{fontSize:13,color:'var(--cream)'}}>Mark as New</span>
+              </label>
+              <Input
+                label="New until (leave blank for open-ended)"
+                type="date"
+                value={discountForm.new_until}
+                onChange={e=>setDiscountForm(f=>({...f,new_until:e.target.value}))}
+                disabled={!discountForm.is_new}
+              />
+            </div>
+          </div>
 
           {discountError && <div style={{color:'#f87171',fontSize:12.5}}>{discountError}</div>}
 
-          <div style={{display:'flex',gap:8,marginTop:4}}>
+          <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
             <Btn disabled={discountSaving} onClick={async()=>{
               setDiscountSaving(true);
               setDiscountError('');
@@ -481,22 +528,27 @@ export default function Products() {
                   discount_pct: Number(discountForm.discount_pct) || 0,
                   discount_start: discountForm.discount_start || null,
                   discount_end: discountForm.discount_end || null,
+                  is_new: !!discountForm.is_new,
+                  new_until: discountForm.new_until || null,
                 });
                 await load();
                 setModal(null);
               } catch (err) {
-                setDiscountError(err?.message || 'Could not save discount.');
+                setDiscountError(err?.message || 'Could not save.');
               } finally {
                 setDiscountSaving(false);
               }
             }}>
-              {discountSaving ? 'Saving…' : 'Save Discount'}
+              {discountSaving ? 'Saving…' : 'Save'}
             </Btn>
             {discountForm.discount_pct > 0 && (
               <Btn variant="secondary" disabled={discountSaving} onClick={async()=>{
                 setDiscountSaving(true);
                 try {
-                  await productsApi.setDiscount(discountForm.id, { discount_pct: 0, discount_start: null, discount_end: null });
+                  await productsApi.setDiscount(discountForm.id, {
+                    discount_pct: 0, discount_start: null, discount_end: null,
+                    is_new: !!discountForm.is_new, new_until: discountForm.new_until || null,
+                  });
                   await load();
                   setModal(null);
                 } finally {
@@ -504,6 +556,25 @@ export default function Products() {
                 }
               }}>
                 Clear Discount
+              </Btn>
+            )}
+            {discountForm.is_new && (
+              <Btn variant="secondary" disabled={discountSaving} onClick={async()=>{
+                setDiscountSaving(true);
+                try {
+                  await productsApi.setDiscount(discountForm.id, {
+                    discount_pct: Number(discountForm.discount_pct) || 0,
+                    discount_start: discountForm.discount_start || null,
+                    discount_end: discountForm.discount_end || null,
+                    is_new: false, new_until: null,
+                  });
+                  await load();
+                  setModal(null);
+                } finally {
+                  setDiscountSaving(false);
+                }
+              }}>
+                Clear New Badge
               </Btn>
             )}
           </div>

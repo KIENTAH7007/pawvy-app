@@ -1,5 +1,6 @@
 const { Router } = require('express');
 const { notifyNewPortalOrder } = require('../utils/notify');
+const { withEffectivePrice } = require('../lib/pricing');
 
 // Live stock bucket, per the agreed Order Portal design:
 // Available (>5) / Low Stock (1–5) / Out of Stock (0, blocked from ordering)
@@ -19,7 +20,7 @@ module.exports = function(db) {
     const rows = db.query(`
       SELECT
         p.id, p.item_series, p.variation, p.image_data,
-        p.price_wholesale_sg, p.price_rrp_sg,
+        p.price_wholesale_sg, p.price_rrp_sg, p.is_new, p.new_until,
         b.id AS brand_id, b.name AS brand_name, b.color AS brand_color,
         COALESCE(home.qty, 0)    AS home_qty,
         COALESCE(storhub.qty, 0) AS storhub_qty
@@ -41,6 +42,7 @@ module.exports = function(db) {
       image_data: r.image_data || null,
       price_wholesale_sg: r.price_wholesale_sg,
       price_rrp_sg: r.price_rrp_sg,
+      is_new_active: withEffectivePrice(r).is_new_active,
       stock_status: stockStatus(r.home_qty + r.storhub_qty),
     }));
 

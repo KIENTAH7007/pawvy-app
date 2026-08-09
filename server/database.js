@@ -517,6 +517,29 @@ function createSchema() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`,
 
+    // The reusable "full-width takeover" homepage banner, for announcing a
+    // new brand (Wild Balance being the first case this was built for) —
+    // see the Nov 2026 homepage-hero discussion. KT uploads an image and a
+    // short headline, sets a link (where clicking the banner goes — falls
+    // back to the brand gallery if left blank, so it's never a dead click),
+    // and a start/end date window, same is_active + date-window pattern
+    // already used for campaigns and the New badge. Kept as a small history
+    // table (like instagram_posts/ticker_messages) rather than a single
+    // settings row, purely so past launches stay on record for reference —
+    // only ever one is expected to be genuinely active (is_active=1 AND
+    // within its date window) at a time, though the public endpoint picks
+    // the most recent if more than one somehow qualifies at once.
+    `CREATE TABLE IF NOT EXISTS homepage_banners (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      image_data TEXT,
+      headline TEXT,
+      link_url TEXT,
+      start_date DATE,
+      end_date DATE,
+      is_active INTEGER NOT NULL DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+
     // BUTTONS ledger — one row per batch earned. Tracked as discrete batches
     // (not a single running balance) so expiry can be FIFO per-batch, and so
     // the 7-day hold can be enforced per-batch via `status`. remaining is
@@ -867,6 +890,17 @@ function createSchema() {
   // entered), which is never itself rate-limited — only a CHANGE away from
   // an already-set value starts the clock.
   try { db.run("ALTER TABLE customer_pets ADD COLUMN birthday_updated_at DATETIME"); } catch(e) {}
+
+  // "New" badge (Products & Pricing → the renamed "Badge" button, same modal
+  // as Discount) — mirrors the exact discount_pct/discount_start/discount_end
+  // shape in server/lib/pricing.js, just simpler per KT's own design: a plain
+  // on/off toggle (is_new) plus a single expiry date (new_until), no separate
+  // start date needed since a product is "new" from whenever the toggle is
+  // switched on. Read together with pricing.js's withEffectivePrice, which
+  // now also computes is_new_active the same way it already computes
+  // is_discount_active — see that file for the shared date-window logic.
+  try { db.run("ALTER TABLE products ADD COLUMN is_new INTEGER DEFAULT 0"); } catch(e) {}
+  try { db.run("ALTER TABLE products ADD COLUMN new_until DATE"); } catch(e) {}
 
   console.log('✅ Schema ready');
 }

@@ -1,101 +1,122 @@
-# Invoice fix: per-line List Price / Discount breakdown (Option 2)
+# Feature: "New" badge (per-SKU) + reusable homepage banner system
 
-## What this fixes
-The "Subtotal" shown on invoices was mathematically correct but had no
-visible relationship to the line items printed above it — the table
-showed each line's *already-discounted* price, while Subtotal showed
-a reconstructed pre-discount figure. A customer couldn't get from one
-to the other by adding up anything they could actually see.
+Two features, delivered together since they were discussed and approved
+together. 14 files, 18 real backend tests plus a full cold-clone
+verification — details below.
 
-## What changed (4 files)
+## Part 1 — "New" badge
 
-### `server/database.js`
-New column: `invoice_items.special_discount_amt` — per-line discount
-tracking, mirroring `sales.special_discount_amt` from the delivery
-before this one. Needed because the invoice-wide total I built last
-time isn't enough to show *which* lines were discounted and by how
-much — that needs to live on each line.
+### What it is
+The "Discount" button in Products & Pricing is now **"Badge"** — one
+modal, two independent sections (Discount, New Badge), matching your
+own design: a plain on/off switch plus an expiry date for New, no
+scheduled start (unlike Discount, which can still be scheduled ahead).
+The button's live state shows whichever is active — "NEW", "20% off",
+both together, or just "Badge" when neither is set.
 
-**Note on this delivery's own history**: while adding this column, I
-made the exact same mistake I'd made once before in an earlier
-delivery — an edit accidentally deleted the two existing
-`special_discount_amt`/`special_discount` ALTER statements instead of
-adding alongside them. Caught it immediately via `grep` before moving
-on, restored it, and verified with a real database init test that all
-four columns (the two pre-existing ones plus this new one) exist
-correctly. Flagging this plainly rather than leaving it unmentioned —
-it's now the second time this exact slip has happened, so if you'd
-like me to double-check schema edits more deliberately going forward,
-that's a completely fair thing to ask for.
+### Where it shows
+Automatically, everywhere product data already flows: **POS**, **Order
+Portal**, and the **website** (shop grid, and every brand page's product
+cards). No per-surface wiring needed beyond what's in this delivery —
+once a SKU is flagged, it shows up wherever that SKU already appears.
 
-### `server/routes/invoices.js`
-The `generate-invoice` endpoint now carries each sale's
-`special_discount_amt` onto its corresponding `invoice_items` row.
-Confirmed the other 3 places this table gets written to (Delivery
-Orders, which show no pricing at all, and SOA generation, which
-aggregates whole invoices rather than individual products) don't need
-this field — genuinely out of scope, not overlooked.
+### What changed
+- **`server/database.js`** — two new columns on `products`: `is_new`,
+  `new_until`. Added via the safe `ALTER TABLE` pattern already used
+  throughout this file.
+- **`server/lib/pricing.js`** — the shared `withEffectivePrice` helper
+  (already computing `is_discount_active` for every product response)
+  now also computes `is_new_active`, same date-window logic.
+- **`server/routes/products.js`** — the `/:id/discount` endpoint now
+  handles both Discount and New Badge fields together. They're
+  genuinely independent: clearing one never touches the other — verified
+  directly, not assumed.
+- **`server/routes/shop.js`, `server/routes/pos.js`,
+  `server/routes/portal.js`** — each surface's product query now selects
+  and returns `is_new_active`.
+- **`client/src/pages/Products.jsx`** — the combined "Badge" modal.
+- **`pos/src/ProductCard.jsx`, `portal/src/ProductCard.jsx`** — visual
+  "New" badge on the product tile (Portal's sits top-right, since that
+  card already has a "Top Seller" badge top-left).
 
-### `client/src/pages/Invoices.jsx` — the main piece
-`generateInvoicePDF` now checks whether *any* line on the invoice
-actually has a special discount:
-- **If none do** (the large majority of invoices): renders exactly
-  the same 5-column table as before — Brand, Description, Qty, Unit
-  Price, Total. No visible change at all.
-- **If at least one line does**: the table gains a "Discount" column,
-  and the price column is relabeled "List Price" (reconstructed per
-  line as `unit_price + special_discount_amt ÷ qty`, so it shows the
-  real pre-discount figure for that specific SKU). A line within a
-  discounted invoice that itself had no discount just shows "—" in
-  that cell rather than $0.00, and its List Price naturally equals
-  its Unit Price. Brand column is kept throughout, per your note about
-  multi-brand invoices.
-- Subtotal at the bottom now literally equals the sum of what's
-  printed in the table above it — that's the entire point of this fix.
+### A design note worth knowing
+Per-SKU badges are fully automatic (see above). Per-**brand** badges
+aren't — your brand pages are hand-written content, not
+database-driven, so there's no way for a database flag to make a whole
+brand page announce itself as new. That's intentional, per our
+discussion: the reusable banner (Part 2) is what covers a brand-level
+launch instead.
 
-### `client/src/pages/Sales.jsx`
-Renamed the ledger's "List Price" column header to "Unit Price". This
-wasn't originally part of what you asked for this round — I found it
-while double-checking your question about ledger impact. The column
-has always shown `sales.unit_price`, and once a special discount can
-reduce that value, calling it "List Price" was no longer accurate for
-that row. **Important: this is a label-only change.** I checked the
-actual Revenue and Profit SQL formulas directly (`server/routes/
-sales.js`, completely untouched by this delivery — zero diff)
-and confirmed they already correctly account for the net price and
-rebate separately, so no financial figure anywhere changes, only what
-that one column is called.
+## Part 2 — Homepage banner
+
+### What it is
+A reusable full-width takeover banner for announcing a new brand —
+entirely admin-driven from Pawvy App's Marketing page, so a real launch
+is just filling in a form, not a code deploy.
+
+### The admin form (Marketing page → "Homepage Banner")
+- **Image upload** — recommended size shown directly in the form:
+  1920×1080px minimum, landscape, keep the important part centered
+  since it stretches full-width behind text.
+- **Headline** — a single line of text.
+- **Link** — where clicking the banner goes. Leave blank and it falls
+  back to the brand gallery, so a click never dead-ends.
+- **Start/end dates** — either can be left blank for open-ended.
+- **On/off toggle**.
+
+Kept as a small history list (like Instagram Highlights) rather than a
+single settings row, so past launches stay on record rather than
+disappearing the moment you turn one off.
+
+### What changed
+- **`server/database.js`** — new `homepage_banners` table.
+- **`server/routes/homepageBanners.js`** (new file) — staff CRUD,
+  mirrors `instagramPosts.js`'s exact shape.
+- **`server/routes/publicContent.js`** — new `GET /banner` endpoint,
+  checks `is_active` **and** the date window, falls back to the brand
+  gallery if no link was set.
+- **`server/index.js`** — registers the new route.
+- **`client/src/api.js`, `client/src/pages/Marketing.jsx`** — the admin
+  UI.
 
 ## Verified
-- 9 end-to-end tests against real running routes with a seeded
-  database: an invoice with mixed discounted/undiscounted lines (both
-  cases represented on one invoice), confirming per-line
-  `special_discount_amt` persists and reconstructs correctly (a $20
-  net line with $5 discount correctly reconstructs to $25 List
-  Price), and a second invoice with no special discount at all,
-  confirming it behaves identically to before — zero phantom
-  discount, zero column ever showing.
-- Re-ran the core scenario against a genuine fresh `git clone` with
-  this delivery applied — passes there too.
-- Confirmed `server/routes/sales.js` (Revenue/Profit) has zero diff —
-  the Sales Ledger rename is provably a label-only change.
-- Confirmed the only other 3 places `invoice_items` gets written to
-  (Delivery Order, and the two SOA-generation paths) are structurally
-  different and don't need this field.
+- **18 real backend tests** against actual running routes with a
+  seeded database — not syntax checks. Covers: saving Discount and New
+  Badge together, clearing one without touching the other, expired vs.
+  open-ended `new_until`, every one of POS/Portal/website correctly
+  reflecting `is_new_active`, a regression check that an untouched
+  product shows neither badge, and the full banner lifecycle (create,
+  active-within-window, expired, toggled off, re-activated,
+  open-ended, deleted).
+- **A dedicated cross-repo integration test** confirming the exact JSON
+  shape `GET /api/public-content/banner` returns matches precisely
+  what the website's `HomepageBanner.jsx` component expects
+  (`active`/`image`/`headline`/`link`) — not just "it returns
+  something," the actual field names line up.
 - Full build (server + client + portal + POS) passes clean, both
-  locally and on the cold clone.
+  locally and from a genuine fresh `git clone` — re-ran the core tests
+  against that cold clone too, not just the build.
+- **Schema edits double-checked this time**: given two earlier
+  mistakes in prior deliveries, I verified every `ALTER TABLE`/`CREATE
+  TABLE` addition with a real database init test immediately after
+  each edit, before moving on to the next file — not just at the end.
 
 ## Not yet verified
-No live UI access from this sandbox — worth generating one real
-invoice of each kind (with and without a special discount) after
-deploy to see the actual PDF layout, particularly whether the extra
-Discount column feels cramped on a printed page next to Brand,
-Description, Qty, List Price, and Total all on one row.
+No live UI access from this sandbox — worth a real look at the
+combined "Badge" modal and the banner admin form once deployed, and
+confirming the recommended banner image size actually reads clearly
+in the upload UI.
 
 ## To apply
 1. `git checkout main`
 2. `git pull origin main`
 3. Unzip this delivery on top of your local `pawvy-app` folder
 4. `git add -A`
-5. `git commit -m "Invoice: per-line List Price / Discount breakdown when a special discount was used; Sales Ledger label fix"`
+5. `git commit -m "New Badge (per-SKU) + reusable homepage banner system"`
 6. `git push origin main`
+
+## Companion delivery
+This pairs with a `pawvy-website` delivery (New Badge visuals on the
+shop grid and brand-page cards, plus the `HomepageBanner` component).
+Apply both — this backend alone won't show anything new on the
+website until that companion delivery is applied too.

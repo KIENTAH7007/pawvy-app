@@ -147,6 +147,13 @@ export const instagramPostsApi = {
   delete: (id) => api.delete(`/instagram-posts/${id}`),
 };
 
+export const homepageBannersApi = {
+  getAll: () => api.get('/homepage-banners'),
+  create: (p) => api.post('/homepage-banners', p),
+  update: (id, p) => api.patch(`/homepage-banners/${id}`, p),
+  delete: (id) => api.delete(`/homepage-banners/${id}`),
+};
+
 export const restockApi = {
   getAll:  (q) => api.get(`/restock${qs(q)}`),
   get:     (id) => api.get(`/restock/${id}`),

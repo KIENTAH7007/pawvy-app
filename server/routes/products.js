@@ -156,20 +156,24 @@ module.exports = function(db) {
     res.json(product);
   });
 
-  // PATCH /:id/discount — scoped discount management, deliberately separate
-  // from the full PUT above (same reasoning as sales.js's /:id/details
-  // endpoint: a narrow, purpose-built endpoint for one specific thing is
-  // safer than routing every discount change through the full product-edit
-  // form, and lets a future campaign/brand-launch admin UI manage discounts
-  // without needing every other product field). Powers both campaign
-  // discounts and brand-launch discounts described in the BUTTONS spec —
-  // the website reads discount_pct/is_discount_active/effective_price_rrp_sg
-  // (see withEffectivePrice above) rather than storing its own pricing.
+  // PATCH /:id/discount — scoped discount + "New" badge management,
+  // deliberately separate from the full PUT above (same reasoning as
+  // sales.js's /:id/details endpoint: a narrow, purpose-built endpoint for
+  // one specific thing is safer than routing every change through the full
+  // product-edit form). Originally discount-only; now also handles the
+  // "New" badge (is_new/new_until) since KT wanted one combined modal
+  // ("Badge" button) rather than a second button in an already-long action
+  // list — see the modal in client/src/pages/Products.jsx. Both groups are
+  // independent of each other (a product can have either, both, or
+  // neither) but share one endpoint and one Save action; the frontend
+  // always sends the complete current state of both sections together
+  // (same convention this endpoint already used for discount alone), so
+  // there's no partial-update ambiguity to get wrong here.
   router.patch('/:id/discount', (req, res) => {
     const product = db.queryOne('SELECT id, price_rrp_sg FROM products WHERE id = ?', [req.params.id]);
     if (!product) return res.status(404).json({ error: 'Product not found.' });
 
-    const { discount_pct, discount_start, discount_end } = req.body;
+    const { discount_pct, discount_start, discount_end, is_new, new_until } = req.body;
     const pct = discount_pct === undefined || discount_pct === null ? 0 : Number(discount_pct);
 
     if (Number.isNaN(pct) || pct < 0 || pct > 100) {
@@ -180,9 +184,12 @@ module.exports = function(db) {
     }
 
     db.run(`
-      UPDATE products SET discount_pct = ?, discount_start = ?, discount_end = ?, updated_at = CURRENT_TIMESTAMP
+      UPDATE products SET
+        discount_pct = ?, discount_start = ?, discount_end = ?,
+        is_new = ?, new_until = ?,
+        updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
-    `, [pct, discount_start || null, discount_end || null, req.params.id]);
+    `, [pct, discount_start || null, discount_end || null, is_new ? 1 : 0, new_until || null, req.params.id]);
 
     const updated = db.queryOne(`
       SELECT p.*, b.name AS brand_name, b.color AS brand_color

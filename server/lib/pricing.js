@@ -10,12 +10,20 @@ function withEffectivePrice(product) {
     && (!product.discount_start || product.discount_start <= today)
     && (!product.discount_end || product.discount_end >= today);
 
+  // Same today-vs-window comparison as the discount above, just with no
+  // start date to check (a "New" badge is live from whenever the toggle
+  // was switched on, not scheduled in advance) — see the schema comment
+  // in server/database.js for why this is intentionally simpler.
+  const isNewActive = !!product.is_new
+    && (!product.new_until || product.new_until >= today);
+
   return {
     ...product,
     is_discount_active: hasDiscount,
     effective_price_rrp_sg: hasDiscount
       ? Math.round(product.price_rrp_sg * (1 - product.discount_pct / 100) * 100) / 100
       : product.price_rrp_sg,
+    is_new_active: isNewActive,
   };
 }
 

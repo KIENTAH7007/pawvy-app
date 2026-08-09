@@ -31,9 +31,19 @@ export default function ProductCard({ product, cartQty, onAdd, onUpdateQty, onRe
       opacity: outOfStock ? 0.55 : 1,
     }}>
       <div style={{
+        position: 'relative',
         aspectRatio: '1 / 1', background: 'rgba(245,242,235,.05)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
+        {product.is_new_active && (
+          <span style={{
+            position: 'absolute', top: 6, left: 6, zIndex: 1,
+            fontSize: 9, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase',
+            color: 'var(--navy)', background: '#3B82F6', padding: '3px 7px', borderRadius: 5,
+          }}>
+            New
+          </span>
+        )}
         {product.image_data
           ? <img src={product.image_data} alt={product.item_series} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           : <ImageOff size={28} style={{ color: 'rgba(245,242,235,.2)' }} />}

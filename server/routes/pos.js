@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const { upsertCustomerFromSignup } = require('../lib/customers');
 const { recordPosCheckoutButtons, getActiveMultiplierDetail } = require('../lib/buttons');
+const { withEffectivePrice } = require('../lib/pricing');
 
 // Pawvy POS System — a separate public portal (like the Order Portal) used
 // at physical events, so staff never need to open the internal app in front
@@ -43,7 +44,7 @@ module.exports = function(db, inventoryRouter) {
     const rows = db.query(`
       SELECT
         p.id, p.item_series, p.variation, p.image_data, p.barcode,
-        p.price_rrp_sg,
+        p.price_rrp_sg, p.is_new, p.new_until,
         b.id AS brand_id, b.name AS brand_name, b.color AS brand_color,
         COALESCE(home.qty, 0)    AS home_qty,
         COALESCE(storhub.qty, 0) AS storhub_qty
@@ -65,6 +66,7 @@ module.exports = function(db, inventoryRouter) {
       barcode: r.barcode,
       image_data: r.image_data || null,
       price_rrp_sg: r.price_rrp_sg,
+      is_new_active: withEffectivePrice(r).is_new_active,
       stock_status: stockStatus(r.home_qty + r.storhub_qty),
     }));
 

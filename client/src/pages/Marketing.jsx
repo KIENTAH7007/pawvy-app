@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Trash2, Edit2 } from 'lucide-react';
-import { campaignsApi, tickerMessagesApi, instagramPostsApi } from '../api';
+import { campaignsApi, tickerMessagesApi, instagramPostsApi, homepageBannersApi } from '../api';
 import { Page, Table, Badge, Btn, Modal, FormRow, Input, Select, fmt } from '../components/ui';
 
 const CAMPAIGN_EMPTY = { name: '', multiplier: '2', applies_to: 'both', start_date: new Date().toISOString().slice(0, 10), end_date: '', is_active: true };
@@ -27,6 +27,7 @@ export default function Marketing() {
       <CampaignsSection />
       <TickerSection />
       <InstagramSection />
+      <HomepageBannerSection />
     </Page>
   );
 }
@@ -486,6 +487,229 @@ function InstagramSection() {
           {error && <div style={{ color: '#f87171', fontSize: 13 }}>{error}</div>}
           <Btn onClick={save} disabled={saving} size="lg" style={{ justifyContent: 'center' }}>
             {saving ? 'Saving…' : (editing ? 'Save Changes' : 'Add Photo')}
+          </Btn>
+        </div>
+      </Modal>
+    </>
+  );
+}
+
+// Reusable full-width homepage takeover banner — built for announcing a
+// new brand (Wild Balance being the first case), designed so the actual
+// launch is just filling in this form, not a code deploy. Kept as a small
+// history table like InstagramSection above (see the CREATE TABLE comment
+// in server/database.js), rather than a single settings row, so past
+// launches stay on record. Only one is meant to be genuinely live at a
+// time (checked by the public endpoint via is_active + date window), but
+// nothing here prevents keeping several around, e.g. one just-ended and
+// one being prepped for next time.
+//
+// Recommended image size (shown to whoever's uploading, so the design
+// team knows the target without needing to ask): 1920×1080px minimum,
+// ideally supplied larger for sharpness on big screens — see the help
+// text below the upload control.
+function HomepageBannerSection() {
+  const [banners, setBanners] = useState([]);
+  const [modal, setModal] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [form, setForm] = useState({ image_data: '', headline: '', link_url: '', start_date: '', end_date: '', is_active: true });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const load = () => homepageBannersApi.getAll().then(d => setBanners(d.banners));
+  useEffect(() => { load(); }, []);
+
+  const sf = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  function todayStr() { return new Date().toISOString().slice(0, 10); }
+
+  function openNew() {
+    setEditing(null);
+    setError('');
+    setForm({ image_data: '', headline: '', link_url: '', start_date: todayStr(), end_date: '', is_active: true });
+    setModal(true);
+  }
+  function openEdit(row) {
+    setEditing(row);
+    setError('');
+    setForm({
+      image_data: row.image_data || '', headline: row.headline || '', link_url: row.link_url || '',
+      start_date: row.start_date || '', end_date: row.end_date || '', is_active: !!row.is_active,
+    });
+    setModal(true);
+  }
+
+  function handleFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 3 * 1024 * 1024) { setError('Image must be under 3MB. Please resize and try again.'); return; }
+    setError('');
+    const reader = new FileReader();
+    reader.onload = ev => sf('image_data', ev.target.result);
+    reader.readAsDataURL(file);
+  }
+
+  async function save() {
+    if (!form.image_data) { setError('Please upload a banner image.'); return; }
+    if (form.start_date && form.end_date && form.end_date < form.start_date) {
+      setError('End date must be on or after the start date.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      const payload = { ...form, start_date: form.start_date || null, end_date: form.end_date || null };
+      if (editing) await homepageBannersApi.update(editing.id, payload);
+      else await homepageBannersApi.create(payload);
+      load();
+      setModal(false);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function remove(id) {
+    if (!window.confirm('Remove this banner? This cannot be undone.')) return;
+    await homepageBannersApi.delete(id);
+    load();
+  }
+
+  async function toggleActive(row) {
+    await homepageBannersApi.update(row.id, { is_active: !row.is_active });
+    load();
+  }
+
+  // Mirrors the exact is_active + date-window check the public endpoint
+  // uses server-side, purely for the status badge — so what staff see
+  // here always matches what's actually live on the website, same
+  // reasoning as isLive() for campaigns near the top of this file.
+  function isCurrentlyLive(row) {
+    const today = todayStr();
+    return !!row.is_active
+      && (!row.start_date || row.start_date <= today)
+      && (!row.end_date || row.end_date >= today);
+  }
+
+  const cols = [
+    {
+      key: 'image_data', label: 'Banner', render: v => v
+        ? <img src={v} alt="" style={{ width: 64, height: 36, objectFit: 'cover', borderRadius: 6, flexShrink: 0 }} />
+        : <span style={{ color: 'var(--cream-30)', fontSize: 12 }}>No image</span>,
+    },
+    { key: 'headline', label: 'Headline', render: v => v ? <span style={{ fontSize: 12.5 }}>{v}</span> : <span style={{ color: 'var(--cream-30)', fontSize: 12 }}>—</span> },
+    {
+      key: 'link_url', label: 'Links to', render: v => v
+        ? <span style={{ wordBreak: 'break-all', fontSize: 12 }}>{v}</span>
+        : <span style={{ color: 'var(--cream-30)', fontSize: 12 }}>Brand gallery (default)</span>,
+    },
+    {
+      key: 'window', label: 'Active window',
+      render: (_, row) => (
+        <span style={{ fontSize: 12, color: 'var(--cream-60)' }}>
+          {row.start_date ? fmt.date(row.start_date) : 'Anytime'} → {row.end_date ? fmt.date(row.end_date) : 'Open-ended'}
+        </span>
+      ),
+    },
+    {
+      key: 'status', label: 'Status',
+      render: (_, row) => isCurrentlyLive(row) ? <Badge color="#1D9E75">Live now</Badge> : (row.is_active ? <Badge color="#fbbf24">Scheduled</Badge> : <Badge color="#888">Off</Badge>),
+    },
+    {
+      key: 'actions', label: '', align: 'right',
+      render: (_, row) => (
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
+          <Btn variant="ghost" size="sm" onClick={() => toggleActive(row)}>{row.is_active ? 'Turn Off' : 'Turn On'}</Btn>
+          <button onClick={() => openEdit(row)} title="Edit"
+            style={{ background: 'none', border: 'none', color: 'rgba(245,242,235,.5)', cursor: 'pointer', padding: 4, display: 'inline-flex' }}>
+            <Edit2 size={13} />
+          </button>
+          <button onClick={() => remove(row.id)} title="Remove"
+            style={{ background: 'none', border: 'none', color: 'rgba(248,113,113,.5)', cursor: 'pointer', padding: 4, display: 'inline-flex' }}
+            onMouseEnter={e => e.currentTarget.style.color = '#f87171'}
+            onMouseLeave={e => e.currentTarget.style.color = 'rgba(248,113,113,.5)'}>
+            <Trash2 size={13} />
+          </button>
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 28 }}>
+        <div>
+          <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 15, letterSpacing: 1, color: 'var(--cream)' }}>HOMEPAGE BANNER</div>
+          <div style={{ fontSize: 12, color: 'var(--cream-30)', marginTop: 2, maxWidth: 640 }}>
+            The full-width takeover banner shown at the very top of the homepage — for announcing a new brand.
+            Only shows while turned on AND within its active window. Leave the link blank to send clicks to the
+            brand gallery instead of a specific page.
+          </div>
+        </div>
+        <Btn onClick={openNew}><span style={{ fontSize: 16 }}>+</span> Add Banner</Btn>
+      </div>
+
+      <div style={{ background: 'var(--navy)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
+        <Table cols={cols} rows={banners} emptyMsg="No banner set up yet — the homepage looks exactly as it does today until you add one" />
+      </div>
+
+      <Modal open={modal} title={editing ? 'EDIT BANNER' : 'ADD BANNER'} onClose={() => setModal(false)}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--cream-30)', marginBottom: 10 }}>Banner Image *</div>
+            <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+              {form.image_data ? (
+                <img src={form.image_data} alt="" style={{ width: 160, height: 90, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)' }} />
+              ) : (
+                <div style={{ width: 160, height: 90, borderRadius: 8, border: '2px dashed var(--border)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--cream-30)', fontSize: 11, gap: 4 }}>
+                  <span style={{ fontSize: 28 }}>🖼️</span>
+                  <span>No image</span>
+                </div>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 7, border: '1px solid var(--border)', cursor: 'pointer', fontSize: 12, color: 'var(--cream-60)', background: 'transparent' }}>
+                  <span>📁</span>
+                  {form.image_data ? 'Replace Image' : 'Upload Image'}
+                  <input type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} onChange={handleFile} />
+                </label>
+                {form.image_data && (
+                  <button onClick={() => sf('image_data', '')}
+                    style={{ padding: '8px 14px', borderRadius: 7, border: '1px solid rgba(248,113,113,.3)', cursor: 'pointer', fontSize: 12, color: '#f87171', background: 'transparent', textAlign: 'left' }}>
+                    🗑 Remove Image
+                  </button>
+                )}
+                <div style={{ fontSize: 10, color: 'var(--cream-30)', lineHeight: 1.5, maxWidth: 240 }}>
+                  Recommended 1920×1080px or larger, landscape. It'll stretch full-width behind text, so keep the
+                  important part (product, logo) centered rather than near the edges. JPG, PNG, or WebP, under 3MB.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <Input label="Headline" value={form.headline} onChange={e => sf('headline', e.target.value)}
+            placeholder="e.g. Real food, the way nature made it — Wild Balance" />
+          <Input label="Link (optional)" value={form.link_url} onChange={e => sf('link_url', e.target.value)}
+            placeholder="/brands/wild-balance" />
+
+          <FormRow cols={2}>
+            <Input label="Start date" type="date" value={form.start_date} onChange={e => sf('start_date', e.target.value)} />
+            <Input label="End date (leave blank for open-ended)" type="date" value={form.end_date} onChange={e => sf('end_date', e.target.value)} />
+          </FormRow>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={!!form.is_active}
+              onChange={e => sf('is_active', e.target.checked)}
+              style={{ width: 16, height: 16, accentColor: 'var(--orange)', cursor: 'pointer' }}
+            />
+            <span style={{ fontSize: 13, color: 'var(--cream)' }}>Turn on (shows on the homepage once saved, if within the active window)</span>
+          </label>
+
+          {error && <div style={{ color: '#f87171', fontSize: 13 }}>{error}</div>}
+          <Btn onClick={save} disabled={saving} size="lg" style={{ justifyContent: 'center' }}>
+            {saving ? 'Saving…' : (editing ? 'Save Changes' : 'Add Banner')}
           </Btn>
         </div>
       </Modal>

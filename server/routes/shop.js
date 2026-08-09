@@ -39,7 +39,7 @@ module.exports = function(db) {
     let sql = `
       SELECT
         p.id, p.item_series, p.variation, p.image_data,
-        p.price_rrp_sg, p.discount_pct, p.discount_start, p.discount_end,
+        p.price_rrp_sg, p.discount_pct, p.discount_start, p.discount_end, p.is_new, p.new_until,
         b.id AS brand_id, b.name AS brand_name, b.color AS brand_color,
         COALESCE(home.qty, 0)    AS home_qty,
         COALESCE(storhub.qty, 0) AS storhub_qty
@@ -73,7 +73,7 @@ module.exports = function(db) {
     const row = db.queryOne(`
       SELECT
         p.id, p.item_series, p.variation, p.image_data, p.description,
-        p.price_rrp_sg, p.discount_pct, p.discount_start, p.discount_end,
+        p.price_rrp_sg, p.discount_pct, p.discount_start, p.discount_end, p.is_new, p.new_until,
         b.id AS brand_id, b.name AS brand_name, b.color AS brand_color,
         COALESCE(home.qty, 0)    AS home_qty,
         COALESCE(storhub.qty, 0) AS storhub_qty
@@ -106,7 +106,7 @@ module.exports = function(db) {
     const rows = db.query(`
       SELECT
         p.id, p.item_series, p.variation, p.image_data,
-        p.price_rrp_sg, p.discount_pct, p.discount_start, p.discount_end,
+        p.price_rrp_sg, p.discount_pct, p.discount_start, p.discount_end, p.is_new, p.new_until,
         b.id AS brand_id, b.name AS brand_name, b.color AS brand_color,
         COALESCE(home.qty, 0)    AS home_qty,
         COALESCE(storhub.qty, 0) AS storhub_qty,
