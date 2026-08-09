@@ -194,7 +194,16 @@ export function KpiCard({ label, value, sub, featured, trend, trendUp }) {
 /* ── Page Layout ───────────────────────────────────────────────── */
 export function Page({ title, subtitle, action, children }) {
   return (
-    <div style={{ display:'flex', flexDirection:'column', gap:20, height:'100%' }}>
+    // minHeight, not height — a page shorter than the viewport still fills
+    // it (same visual result as before), but a page TALLER than the
+    // viewport can now actually grow past 100% instead of being silently
+    // clipped to it. This was already a latent bug in every page using
+    // Page, just never triggered before — nothing was tall enough to hit
+    // it until Marketing's new Homepage Banner section pushed that page
+    // past the viewport height for the first time. <main>'s own
+    // overflowY:'auto' (in App.jsx) already handles the actual scrolling
+    // once content is allowed to be its real height.
+    <div style={{ display:'flex', flexDirection:'column', gap:20, minHeight:'100%' }}>
       <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', flexShrink:0 }}>
         <div>
           <h1 style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:26, letterSpacing:1.5, color:'var(--cream)' }}>{title}</h1>
