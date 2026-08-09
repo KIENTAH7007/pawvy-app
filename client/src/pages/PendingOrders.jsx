@@ -138,6 +138,17 @@ export default function PendingOrders() {
           partnerId: order.partner_id || '',
           shippingCharged: '',
           shippingCost: '',
+          // KT's one-off, per-occasion discount — same 4-mode pattern as
+          // POS (pos/src/App.jsx), but scoped per-order here since more
+          // than one order can be expanded/edited independently in this
+          // list. Kept separate from the partner's own standing rebate
+          // (calcDiscount below) rather than merged into it, so both
+          // survive on the eventual sale/invoice record independently —
+          // see the schema comment in server/database.js.
+          specialDiscountMode: 'none', // none | per_item | universal | manual_price
+          specialItemDiscounts: {}, // { [product_id]: pct string }
+          specialUniversalPct: '',
+          specialItemPrices: {}, // { [product_id]: price string } — manual_price mode
           items: order.items.map(it => ({
             product_id: it.product_id,
             qty: it.qty,
@@ -182,15 +193,53 @@ export default function PendingOrders() {
     }));
   }
 
+  function specialDiscPctFor(es, productId) {
+    if (es.specialDiscountMode === 'per_item') return parseFloat(es.specialItemDiscounts?.[productId]) || 0;
+    if (es.specialDiscountMode === 'universal') return parseFloat(es.specialUniversalPct) || 0;
+    return 0;
+  }
+
+  // Order of operations, per KT: apply the special discount FIRST, then check
+  // the partner's standing rebate against the RESULT — not the raw subtotal.
+  // Confirmed against his own two examples before building this: $480 order
+  // discounted to $400 still clears the $400 rebate tier (→ $388 collected);
+  // $400 order discounted to $350 does NOT (→ $350 collected, no rebate).
+  //
+  // Each item below gets `unit_price` overwritten to the NET (post-special)
+  // price — this is deliberate: computePerLineDiscountAmts (below, and in
+  // handleApprove) reads `unit_price` to work out each line's revenue share
+  // for distributing the rebate, and that share should reflect what the line
+  // actually nets after the special discount, not its original wholesale
+  // price. `rawPrice` and `specialDiscAmt` are added alongside so the raw
+  // figure and the discount itself are still available for the totals UI
+  // and for what gets sent to the backend.
   function computeTotals(es) {
     const partner = partners.find(p => String(p.id) === String(es?.partnerId));
-    const items = (es?.items || []).filter(it => it.product_id && it.qty > 0);
-    const subtotal = items.reduce((s, it) => s + it.qty * (parseFloat(it.unit_price) || 0), 0);
+    const rawItems = (es?.items || []).filter(it => it.product_id && it.qty > 0);
+
+    const items = rawItems.map(it => {
+      const rawPrice = parseFloat(it.unit_price) || 0;
+      let netPrice;
+      if (es.specialDiscountMode === 'manual_price') {
+        const raw = es.specialItemPrices?.[it.product_id];
+        netPrice = (raw !== undefined && raw !== '') ? (parseFloat(raw) || 0) : rawPrice;
+      } else {
+        const pct = specialDiscPctFor(es, it.product_id);
+        netPrice = parseFloat((rawPrice * (1 - pct / 100)).toFixed(2));
+      }
+      const specialDiscAmt = parseFloat(((rawPrice - netPrice) * it.qty).toFixed(2));
+      return { ...it, rawPrice, unit_price: netPrice, specialDiscAmt };
+    });
+
+    const rawSubtotal = items.reduce((s, it) => s + it.qty * it.rawPrice, 0);
+    const specialDiscountTotal = parseFloat(items.reduce((s, it) => s + it.specialDiscAmt, 0).toFixed(2));
+    const subtotal = parseFloat((rawSubtotal - specialDiscountTotal).toFixed(2));
+
     const discount = partner ? calcDiscount(partner, subtotal) : { amount: 0, label: null, type: 'none' };
     const discountAffectsTotal = discount.type !== 'credit_note' && discount.type !== 'credit_note_unmet';
     const shipCharged = parseFloat(es?.shippingCharged) || 0;
     const netTotal = subtotal - (discountAffectsTotal ? discount.amount : 0) + shipCharged;
-    return { partner, items, subtotal, discount, discountAffectsTotal, shipCharged, netTotal };
+    return { partner, items, rawSubtotal, specialDiscountTotal, subtotal, discount, discountAffectsTotal, shipCharged, netTotal };
   }
 
   async function handleApprove(order) {
@@ -210,9 +259,10 @@ export default function PendingOrders() {
           return items.map((it, i) => ({
             product_id: it.product_id,
             qty: parseInt(it.qty),
-            unit_price: parseFloat(it.unit_price),
+            unit_price: parseFloat(it.unit_price), // already net-of-special-discount
             platform_fee_pct: 0,
             platform_fee_amt: discountAmts[i],
+            special_discount_amt: it.specialDiscAmt,
           }));
         })(),
       };
@@ -425,6 +475,75 @@ export default function PendingOrders() {
                       </Btn>
                     </div>
 
+                    {/* Special discount — one-off, per-occasion (e.g. a partner promo
+                        for this order only), separate from the partner's own standing
+                        rebate below. Same 4-mode pattern as POS (pos/src/App.jsx):
+                        mutually exclusive, staff/KT picks one. */}
+                    <div style={{ marginTop: 14 }}>
+                      <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 13, letterSpacing: 1, color: 'var(--cream)', paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>
+                        SPECIAL DISCOUNT (OPTIONAL)
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 10 }}>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          {[
+                            { key: 'none', label: 'Default' },
+                            { key: 'per_item', label: 'Per item %' },
+                            { key: 'universal', label: 'Universal %' },
+                            { key: 'manual_price', label: 'Set price' },
+                          ].map(opt => (
+                            <button
+                              key={opt.key}
+                              onClick={() => updateEdit(order.id, prev => ({ ...prev, specialDiscountMode: opt.key }))}
+                              style={{
+                                padding: '5px 12px', borderRadius: 20, fontSize: 11.5, fontWeight: 600, cursor: 'pointer',
+                                border: `1px solid ${es.specialDiscountMode === opt.key ? 'var(--orange)' : 'var(--border)'}`,
+                                background: es.specialDiscountMode === opt.key ? 'rgba(243,111,74,.15)' : 'transparent',
+                                color: es.specialDiscountMode === opt.key ? 'var(--orange)' : 'var(--cream-60)',
+                              }}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                        {es.specialDiscountMode === 'universal' && (
+                          <Input type="number" min="0" max="100" step="1"
+                            value={es.specialUniversalPct}
+                            onChange={e => updateEdit(order.id, prev => ({ ...prev, specialUniversalPct: e.target.value }))}
+                            placeholder="Discount % off every item"
+                            style={{ width: 220 }}
+                          />
+                        )}
+                        {es.specialDiscountMode === 'per_item' && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            {es.items.filter(it => it.product_id).map(it => (
+                              <div key={it.product_id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <span style={{ flex: 1, fontSize: 11.5, color: 'var(--cream-60)' }}>{it.item_series}{it.variation ? ` · ${it.variation}` : ''}</span>
+                                <Input type="number" min="0" max="100" step="1" placeholder="0%"
+                                  value={es.specialItemDiscounts?.[it.product_id] || ''}
+                                  onChange={e => updateEdit(order.id, prev => ({ ...prev, specialItemDiscounts: { ...prev.specialItemDiscounts, [it.product_id]: e.target.value } }))}
+                                  style={{ width: 80 }}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {es.specialDiscountMode === 'manual_price' && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            {es.items.filter(it => it.product_id).map(it => (
+                              <div key={it.product_id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <span style={{ flex: 1, fontSize: 11.5, color: 'var(--cream-60)' }}>{it.item_series}{it.variation ? ` · ${it.variation}` : ''} <span style={{ color: 'var(--cream-30)' }}>(RRP {fmt.sgd(it.unit_price)})</span></span>
+                                <Input type="number" min="0" step="0.01" placeholder={parseFloat(it.unit_price).toFixed(2)}
+                                  value={es.specialItemPrices?.[it.product_id] !== undefined ? es.specialItemPrices[it.product_id] : ''}
+                                  onChange={e => updateEdit(order.id, prev => ({ ...prev, specialItemPrices: { ...prev.specialItemPrices, [it.product_id]: e.target.value } }))}
+                                  style={{ width: 100 }}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
                     <div style={{ marginTop: 14 }}>
                       <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 13, letterSpacing: 1, color: 'var(--cream)', paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>
                         SHIPPING (OPTIONAL)
@@ -443,8 +562,14 @@ export default function PendingOrders() {
                       <div style={{ marginTop: 14, padding: 12, background: 'rgba(245,242,235,.03)', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
                           <span style={{ color: 'var(--cream-60)' }}>Subtotal</span>
-                          <span style={{ color: 'var(--cream)' }}>{fmt.sgd(totals.subtotal)}</span>
+                          <span style={{ color: 'var(--cream)' }}>{fmt.sgd(totals.rawSubtotal)}</span>
                         </div>
+                        {totals.specialDiscountTotal > 0 && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
+                            <span style={{ color: '#e0a458' }}>Special discount</span>
+                            <span style={{ color: '#e0a458', fontWeight: 700 }}>− {fmt.sgd(totals.specialDiscountTotal)}</span>
+                          </div>
+                        )}
                         {totals.discount.label && (
                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
                             <span style={{ color: '#7fc93e' }}>{totals.discount.label}</span>

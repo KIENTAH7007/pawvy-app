@@ -89,10 +89,16 @@ module.exports = function(db, inventoryRouter) {
   });
 
   // POST /api/orders/:id/approve — creates real sale records and deducts inventory.
-  // Body: { partner_id, items: [{ product_id, qty, unit_cost, unit_price, platform_fee_pct, platform_fee_amt }] }
+  // Body: { partner_id, items: [{ product_id, qty, unit_cost, unit_price, platform_fee_pct, platform_fee_amt, special_discount_amt }] }
   // Pricing/discount math is computed by the internal review UI (same logic as Record
   // Sale, based on the selected partner's discount model) and passed in already-final —
   // this endpoint's job is just to commit it consistently, the same way /api/sales does.
+  //
+  // special_discount_amt (new): KT's one-off, per-occasion discount, kept separate from
+  // platform_fee_amt (the partner's own standing rebate) purely for audit trail — see the
+  // comment on the sales table schema in server/database.js. unit_price here is still the
+  // FINAL per-unit price (post-special, pre-rebate) — its meaning is unchanged, this is
+  // purely an additive field alongside it.
   router.post('/:id/approve', (req, res) => {
     const order = db.queryOne('SELECT * FROM portal_orders WHERE id = ?', [req.params.id]);
     if (!order) return res.status(404).json({ error: 'Order not found' });
@@ -129,6 +135,7 @@ module.exports = function(db, inventoryRouter) {
       const fee_amt = line.platform_fee_amt !== undefined
         ? parseFloat(line.platform_fee_amt)
         : parseFloat(((qty * line.unit_price) * (fee_pct / 100)).toFixed(2));
+      const special_amt = parseFloat(line.special_discount_amt) || 0;
 
       // Shipping is per-order, not per-line — same convention as Record Sale:
       // only the first created sale row carries it.
@@ -137,11 +144,11 @@ module.exports = function(db, inventoryRouter) {
       const result = db.run(`
         INSERT INTO sales
           (date, product_id, partner_id, channel, market, qty, unit_cost, unit_price,
-           platform_fee_pct, platform_fee_amt, shipping_charged, shipping_cost, notes)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+           platform_fee_pct, platform_fee_amt, special_discount_amt, shipping_charged, shipping_cost, notes)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
       `, [
         today, line.product_id, partner_id || null, 'Wholesale Order', 'SG',
-        qty, cost, line.unit_price, fee_pct, fee_amt,
+        qty, cost, line.unit_price, fee_pct, fee_amt, special_amt,
         isFirst ? shipCharged : 0, isFirst ? shipCost : 0,
         `Order Portal — ${order.company_name}`
       ]);

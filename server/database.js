@@ -839,6 +839,18 @@ function createSchema() {
   // including itself — see server/routes/pos.js.
   try { db.run("ALTER TABLE sales ADD COLUMN pos_checkout_ref INTEGER"); } catch(e) {}
 
+  // KT's per-occasion special discount (Pending Orders) — separate from the
+  // partner's own standing rebate (platform_fee_amt), so both survive on the
+  // record independently for audit trail. sales.unit_price continues to mean
+  // exactly what it always has (the final per-unit price, post-special,
+  // pre-rebate) — nothing about that changes. See client/src/pages/
+  // PendingOrders.jsx for where this gets computed, and the "Subtotal" line
+  // on generated invoices, which is reconstructed as
+  // (net subtotal + special_discount) purely for display — see
+  // generateInvoicePDF in client/src/pages/Invoices.jsx.
+  try { db.run("ALTER TABLE sales ADD COLUMN special_discount_amt REAL DEFAULT 0"); } catch(e) {}
+  try { db.run("ALTER TABLE invoices ADD COLUMN special_discount REAL DEFAULT 0"); } catch(e) {}
+
   // Tracks when a pet's birthday was last actually changed (not just
   // saved — see server/routes/customers.js PUT /me/pet), so that field can
   // be rate-limited to once every 365 days. Without this, a customer could

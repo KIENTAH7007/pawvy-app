@@ -67,9 +67,10 @@ function generateInvoicePDF(invoice) {
   <div style="padding:0 32px 24px;display:flex;justify-content:flex-end">
     <div style="width:280px">
       <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:12px;color:#555">
-        <span>Subtotal</span><span>${sgd(invoice.subtotal)}</span>
+        <span>Subtotal</span><span>${sgd(invoice.subtotal + (invoice.special_discount || 0))}</span>
       </div>
-      ${invoice.discount > 0 ? `<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:12px;color:#27ae60"><span>Discount</span><span>− ${sgd(invoice.discount)}</span></div>` : ''}
+      ${invoice.special_discount > 0 ? `<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:12px;color:#c07a1f"><span>Special Discount</span><span>− ${sgd(invoice.special_discount)}</span></div>` : ''}
+      ${invoice.discount > 0 ? `<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:12px;color:#27ae60"><span>Partner Rebate</span><span>− ${sgd(invoice.discount)}</span></div>` : ''}
       ${invoice.shipping > 0 ? `<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:12px;color:#555"><span>Shipping</span><span>+ ${sgd(invoice.shipping)}</span></div>` : ''}
       <div style="display:flex;justify-content:space-between;padding:10px 0;border-top:2px solid #14213d;margin-top:4px">
         <span style="font-size:14px;font-weight:700;color:#14213d">Amount Due</span>
@@ -233,6 +234,7 @@ function GenerateInvoiceModal({ open, onClose, partners, onGenerated }) {
   const selectedSales = sales.filter(s => selected.has(s.id));
   const subtotal = selectedSales.reduce((s,r) => s + r.qty*r.unit_price, 0);
   const discount = selectedSales.reduce((s,r) => s + (r.platform_fee_amt||0), 0);
+  const specialDiscount = selectedSales.reduce((s,r) => s + (r.special_discount_amt||0), 0);
   const shipping = selectedSales.reduce((s,r) => s + (r.shipping_charged||0), 0);
   const total = subtotal - discount + shipping;
 
@@ -341,8 +343,9 @@ function GenerateInvoiceModal({ open, onClose, partners, onGenerated }) {
               </table>
             </div>
             <div style={{background:'rgba(245,242,235,.04)',border:'1px solid var(--border)',borderRadius:8,padding:'10px 16px',display:'flex',gap:24,flexWrap:'wrap',justifyContent:'flex-end'}}>
-              <span style={{fontSize:12,color:'var(--cream-30)'}}>Subtotal: <strong style={{color:'var(--cream)'}}>{sgd(subtotal)}</strong></span>
-              {discount>0 && <span style={{fontSize:12,color:'var(--cream-30)'}}>Discount: <strong style={{color:'#fbbf24'}}>−{sgd(discount)}</strong></span>}
+              <span style={{fontSize:12,color:'var(--cream-30)'}}>Subtotal: <strong style={{color:'var(--cream)'}}>{sgd(subtotal + specialDiscount)}</strong></span>
+              {specialDiscount>0 && <span style={{fontSize:12,color:'var(--cream-30)'}}>Special Discount: <strong style={{color:'#c07a1f'}}>−{sgd(specialDiscount)}</strong></span>}
+              {discount>0 && <span style={{fontSize:12,color:'var(--cream-30)'}}>Partner Rebate: <strong style={{color:'#fbbf24'}}>−{sgd(discount)}</strong></span>}
               {shipping>0 && <span style={{fontSize:12,color:'var(--cream-30)'}}>Shipping: <strong style={{color:'#7fc93e'}}>+{sgd(shipping)}</strong></span>}
               <span style={{fontSize:14,color:'var(--cream)'}}>Total: <strong style={{color:'var(--orange)'}}>{sgd(total)}</strong></span>
             </div>

@@ -152,6 +152,7 @@ module.exports = function(db) {
 
     const subtotal = sales.reduce((s, row) => s + row.qty * row.unit_price, 0);
     const discount = sales.reduce((s, row) => s + (row.platform_fee_amt || 0), 0);
+    const specialDiscount = sales.reduce((s, row) => s + (row.special_discount_amt || 0), 0);
     const shipping = sales.reduce((s, row) => s + (row.shipping_charged || 0), 0);
     const total    = parseFloat((subtotal - discount + shipping).toFixed(2));
 
@@ -162,10 +163,10 @@ module.exports = function(db) {
     const invoice_number = generateDocNumber('Invoice');
 
     const result = db.run(`
-      INSERT INTO invoices (invoice_number, type, partner_id, date, due_date, market, currency, subtotal, discount, shipping, total, status, notes, outlet_address_id)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      INSERT INTO invoices (invoice_number, type, partner_id, date, due_date, market, currency, subtotal, discount, special_discount, shipping, total, status, notes, outlet_address_id)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     `, [invoice_number, 'Invoice', partner_id, issueDate, due_date, sales[0].market||'SG', 'SGD',
-        parseFloat(subtotal.toFixed(2)), parseFloat(discount.toFixed(2)), parseFloat(shipping.toFixed(2)), total, 'Unpaid', notes||null, outlet_address_id||null]);
+        parseFloat(subtotal.toFixed(2)), parseFloat(discount.toFixed(2)), parseFloat(specialDiscount.toFixed(2)), parseFloat(shipping.toFixed(2)), total, 'Unpaid', notes||null, outlet_address_id||null]);
 
     const invoiceId = result.lastID;
 
