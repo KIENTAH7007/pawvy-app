@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { PlusCircle, TrendingUp, Package, ChevronRight } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LineChart, Line, CartesianGrid, Legend } from 'recharts';
 import { salesApi, reportsApi, partnerReportApi, brandsApi, brandSkuApi } from '../api';
-import { KpiCard, Btn, Badge, Modal, fmt } from '../components/ui';
+import { KpiCard, Btn, Badge, Modal, Input, fmt } from '../components/ui';
 
 const MONTH_LABELS = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const ALL_CHANNELS = ['Event Sale', 'Direct Online Sale', 'Direct Offline Sale', 'Shopee', 'Lazada', 'Amazon', 'TikTok Shop', 'Wholesale Order', 'Consignment Sale'];

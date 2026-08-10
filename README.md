@@ -1,53 +1,47 @@
-# Database indexes + Dashboard Top Partners date range picker
+# HOTFIX — Dashboard crash (missing Input import)
 
-## This delivery is for the App folder (`pawvy-app`) only
+## This is for the App folder (`pawvy-app`) only
 
-2 files changed: `server/database.js`, `client/src/pages/Dashboard.jsx`.
+1 file changed: `client/src/pages/Dashboard.jsx`.
 
-## Indexes (`server/database.js`)
+## What broke
 
-12 new indexes on the columns actually filtered by the Sales Ledger,
-Dashboard, and Reports queries (`date`, `partner_id`, `product_id` across
-`sales`, `invoices`, `invoice_items`, `inventory_movements`,
-`website_orders`, `website_order_items`, `portal_orders`). Purely
-additive (`CREATE INDEX IF NOT EXISTS`) — no data or query results
-change, only how fast SQLite can find matching rows as those tables grow
-over the years. No code changes needed anywhere else; every existing
-query that filters on these columns picks the index up automatically.
+The previous delivery ("DB Indexes and Dashboard Date Range") added
+`<Input type="date" .../>` twice in the new Top Partners date-range
+picker, but I never added `Input` to the import line at the top of the
+file — it only imported `KpiCard, Btn, Badge, Modal, fmt`. Since
+Dashboard is the app's home page and there's no error boundary around
+it, the resulting `ReferenceError: Input is not defined` crashed the
+entire React app on load — the blank navy screen was the base page
+background rendering with nothing mounted on top of it.
 
-## Dashboard — Top Partners date range (`client/src/pages/Dashboard.jsx`)
+**Why my build check didn't catch it**: `npm run build` passing only
+confirms the code is syntactically valid — Vite's JSX transform doesn't
+verify that every component reference actually resolves to something in
+scope; that only fails at runtime, when a browser actually executes it.
+This project also has no ESLint configured, which is the tool that would
+have caught an undefined-variable reference before it ever shipped.
 
-The `GET /api/reports/partners` endpoint was already fully date-range
-agnostic — the YTD restriction was purely a frontend default with no
-documented reasoning behind it (confirmed by reading the actual code, not
-guessed). So this needed zero backend changes.
+## The fix
 
-- Replaced the hardcoded "Jan – {month} YTD" label with a real From/To
-  date range picker, same `Input type="date"` pattern already used on
-  Reports.jsx, for consistency.
-- Defaults to YTD on page load (unchanged from before).
-- Header label switches between "YTD PROFIT RANKING" and "CUSTOM RANGE
-  PROFIT RANKING" depending on whether the selected range still matches
-  YTD exactly.
-- "Reset to YTD" button appears once you've changed the range, to get
-  back to the default in one click.
-- Applies to both the "Partners" and "All Channels" toggle views — same
-  date range drives both, since they're the same underlying report at a
-  different grouping.
+One line:
+```diff
+- import { KpiCard, Btn, Badge, Modal, fmt } from '../components/ui';
++ import { KpiCard, Btn, Badge, Modal, Input, fmt } from '../components/ui';
+```
 
-## Verification performed
+## Verification performed (stronger than last time)
 
-- Real DB init test on a fresh clone: confirmed all 12 indexes are
-  created, and a sanity-check query (sum sales for a partner within a
-  date range) returns the identical correct result with indexes present
-  as it would without them — indexes only change speed, not correctness.
-- Real cold-clone build: fresh `git clone` → applied both files →
-  `npm install` (root + client) → `npm run build` (client) — passed with
-  no errors.
-- Re-ran the index verification a second time against the cold-clone
-  copy specifically, not just the working directory.
-- Byte-for-byte diff confirms both files in this zip match what was
-  cold-clone built and tested.
+- Real cold-clone build: fresh `git clone` → applied the fixed file →
+  `npm install` → `npm run build` — passed.
+- **Manually cross-referenced every single capitalized JSX tag used
+  anywhere in the file against the actual import statements** (not just
+  a build-pass check) — confirmed every tag now resolves to either an
+  import or a component defined locally in the same file. This is the
+  check that should have caught the original bug, and it's what I'm
+  using from now on for any JSX delivery, not just a build-pass.
+- Byte-for-byte diff confirms the zipped file matches what was
+  cold-clone built above.
 
 ## To apply
 
@@ -56,12 +50,13 @@ cd /path/to/your/pawvy-app
 git checkout -- . && git clean -fd && git pull origin main
 ```
 
-Unzip this delivery's files into that folder (overwrite), then:
+Unzip this delivery's file into that folder (overwrite), then:
 
 ```bash
 git add .
-git commit -m "Add DB indexes for scaling; Dashboard Top Partners gets a real date range picker"
+git commit -m "Hotfix: Dashboard crash — missing Input import"
 git push origin main
 ```
 
-Railway auto-deploys from `main` — no other steps needed.
+Railway auto-deploys from `main`. This should bring the app back up
+immediately once deployed.
