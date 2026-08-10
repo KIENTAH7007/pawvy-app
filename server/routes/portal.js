@@ -19,7 +19,7 @@ module.exports = function(db) {
   router.get('/catalogue', (req, res) => {
     const rows = db.query(`
       SELECT
-        p.id, p.item_series, p.variation, p.image_data,
+        p.id, p.item_series, p.variation, p.image_url,
         p.price_wholesale_sg, p.price_rrp_sg, p.is_new, p.new_until,
         b.id AS brand_id, b.name AS brand_name, b.color AS brand_color,
         COALESCE(home.qty, 0)    AS home_qty,
@@ -39,7 +39,7 @@ module.exports = function(db) {
       brand_color: r.brand_color,
       item_series: r.item_series,
       variation: r.variation,
-      image_data: r.image_data || null,
+      image_url: r.image_url || null,
       price_wholesale_sg: r.price_wholesale_sg,
       price_rrp_sg: r.price_rrp_sg,
       is_new_active: withEffectivePrice(r).is_new_active,
@@ -77,7 +77,7 @@ module.exports = function(db) {
     const ids = ranked.map(r => r.product_id);
     const rows = db.query(`
       SELECT
-        p.id, p.item_series, p.variation, p.image_data, p.is_active,
+        p.id, p.item_series, p.variation, p.image_url, p.is_active,
         p.price_wholesale_sg, p.price_rrp_sg,
         b.id AS brand_id, b.name AS brand_name, b.color AS brand_color,
         COALESCE(home.qty, 0)    AS home_qty,
@@ -105,7 +105,7 @@ module.exports = function(db) {
         brand_color: r.brand_color,
         item_series: r.item_series,
         variation: r.variation,
-        image_data: r.image_data || null,
+        image_url: r.image_url || null,
         price_wholesale_sg: r.price_wholesale_sg,
         price_rrp_sg: r.price_rrp_sg,
         stock_status: stockStatus(r.home_qty + r.storhub_qty),

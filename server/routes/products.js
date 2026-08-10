@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const archiver = require('archiver');
 const { withEffectivePrice } = require('../lib/pricing');
+const { uploadBuffer, getObjectStream, decodeDataUrl, buildImageKey, deleteObject } = require('../lib/bucket');
 
 module.exports = function(db) {
   const router = Router();
@@ -28,15 +29,19 @@ module.exports = function(db) {
   });
 
   // ── Export all product images as a ZIP ────────────────────────────
-  // Reads image_data (base64) directly from the live database this is
-  // running against — this only works meaningfully on the real deployed
-  // app, since that's where actual uploaded images live. Registered as a
-  // literal route before /:id so it isn't swallowed by that pattern.
-  router.get('/export-images', (req, res) => {
+  // Post-bucket-migration (Aug 2026): most products now have image_url
+  // instead of image_data, so this fetches those straight from the
+  // bucket (using the same credentials as everywhere else, not the
+  // public proxy route — no need to round-trip through HTTP for a
+  // server-to-bucket read). Falls back to the old base64 column for any
+  // row that somehow wasn't migrated (shouldn't happen after the
+  // startup migration runs, but this keeps the export working either
+  // way rather than silently dropping those products from the zip).
+  router.get('/export-images', async (req, res) => {
     const products = db.query(`
-      SELECT p.id, p.item_series, p.variation, p.image_data, b.name AS brand_name
+      SELECT p.id, p.item_series, p.variation, p.image_data, p.image_url, b.name AS brand_name
       FROM products p JOIN brands b ON b.id = p.brand_id
-      WHERE p.image_data IS NOT NULL AND p.image_data != ''
+      WHERE (p.image_url IS NOT NULL AND p.image_url != '') OR (p.image_data IS NOT NULL AND p.image_data != '')
       ORDER BY b.name, p.item_series, p.variation
     `);
 
@@ -50,11 +55,26 @@ module.exports = function(db) {
     archive.pipe(res);
 
     const usedNames = new Set();
-    products.forEach(p => {
-      const match = /^data:image\/(\w+);base64,(.+)$/.exec(p.image_data);
-      if (!match) return; // skip malformed entries rather than fail the whole export
-      const ext = match[1] === 'jpeg' ? 'jpg' : match[1];
-      const buffer = Buffer.from(match[2], 'base64');
+
+    for (const p of products) {
+      let buffer, ext;
+      try {
+        if (p.image_url) {
+          // image_url is "/api/uploads/<key>" — strip the known prefix to get the bucket key
+          const key = p.image_url.replace(/^\/api\/uploads\//, '');
+          const obj = await getObjectStream(key);
+          const chunks = [];
+          for await (const chunk of obj.Body) chunks.push(chunk);
+          buffer = Buffer.concat(chunks);
+          ext = (obj.ContentType || 'image/jpeg').split('/')[1]?.replace('jpeg', 'jpg') || 'jpg';
+        } else {
+          const decoded = decodeDataUrl(p.image_data);
+          buffer = decoded.buffer;
+          ext = decoded.extension;
+        }
+      } catch {
+        continue; // skip anything unreadable rather than fail the whole export
+      }
 
       let base = `${p.brand_name}_${p.item_series}${p.variation ? '_' + p.variation : ''}`
         .replace(/[^a-zA-Z0-9_\-]/g, '_')
@@ -65,7 +85,7 @@ module.exports = function(db) {
       usedNames.add(filename);
 
       archive.append(buffer, { name: filename });
-    });
+    }
 
     archive.finalize();
   });
@@ -199,24 +219,106 @@ module.exports = function(db) {
   });
 
   // DELETE (soft delete — set inactive)
+  // DELETE /:id/permanent — genuinely removes the product row, unlike
+  // the archive-only route above. Only allowed when the SKU has zero
+  // footprint in any table that represents real historical/financial
+  // records — sales, invoices, orders, consignments, and inventory
+  // audit trails must never silently disappear (they're what the Sales
+  // Ledger, invoices, and reports are built from). If any of those exist,
+  // this refuses with a breakdown of exactly what's blocking it, and the
+  // right move is to archive instead (already fully supported — an
+  // archived SKU already disappears from POS/Portal/website).
+  //
+  // Purely operational/reference state (current stock levels, restock
+  // checklist line items, cost reference config — not financial records,
+  // nothing the Sales Ledger or an invoice depends on) is safe to clear
+  // automatically as part of the delete, so it doesn't block on those.
+  //
+  // Requires the SKU to already be archived first (is_active = 0) — a
+  // deliberate two-step gate so a permanent delete can never happen by
+  // accident on something still live.
+  const PERMANENT_DELETE_BLOCKING_TABLES = [
+    ['sales', 'sales record(s)'],
+    ['invoice_items', 'invoice line item(s)'],
+    ['website_order_items', 'website order line item(s)'],
+    ['portal_order_items', 'portal order line item(s)'],
+    ['shipment_line_items', 'shipment line item(s)'],
+    ['consignment_items', 'consignment item(s)'],
+    ['consignment_placements', 'consignment placement(s)'],
+    ['consignment_returns', 'consignment return(s)'],
+    ['consignment_count_items', 'consignment count item(s)'],
+    ['consignment_snapshots', 'consignment snapshot(s)'],
+    ['inventory_movements', 'inventory movement record(s)'],
+    ['inventory_adjustments', 'inventory adjustment record(s)'],
+    ['cost_variance_ledger', 'cost variance ledger entr(y/ies)'],
+  ];
+  const PERMANENT_DELETE_SAFE_TO_CLEAR_TABLES = ['inventory_levels', 'sku_cost_reference', 'restock_checklist_items'];
+
+  router.delete('/:id/permanent', (req, res) => {
+    const product = db.queryOne('SELECT id, is_active, item_series FROM products WHERE id = ?', [req.params.id]);
+    if (!product) return res.status(404).json({ error: 'Product not found.' });
+    if (product.is_active) {
+      return res.status(400).json({ error: 'Archive this SKU first before permanently deleting it — a deliberate two-step so this can never happen by accident on something still live.' });
+    }
+
+    const blockers = PERMANENT_DELETE_BLOCKING_TABLES
+      .map(([table, label]) => {
+        const { c } = db.queryOne(`SELECT COUNT(*) as c FROM ${table} WHERE product_id = ?`, [req.params.id]);
+        return c > 0 ? `${c} ${label}` : null;
+      })
+      .filter(Boolean);
+
+    if (blockers.length > 0) {
+      return res.status(409).json({
+        error: `Can't permanently delete "${product.item_series}" — it has real history: ${blockers.join(', ')}. Archiving already removes it from POS/Portal/website; permanent delete is only for SKUs with no transaction history at all (e.g. entered by mistake).`,
+        blockers,
+      });
+    }
+
+    for (const table of PERMANENT_DELETE_SAFE_TO_CLEAR_TABLES) {
+      db.run(`DELETE FROM ${table} WHERE product_id = ?`, [req.params.id]);
+    }
+    db.run('DELETE FROM products WHERE id = ?', [req.params.id]);
+    res.json({ ok: true });
+  });
+
   router.delete('/:id', (req, res) => {
     db.run('UPDATE products SET is_active = 0 WHERE id = ?', [req.params.id]);
     res.json({ ok: true });
   });
 
-  // ── Product image (base64 stored in DB) ───────────────────────
-  // POST /api/products/:id/image  — body: { image_data: "data:image/jpeg;base64,..." }
-  router.post('/:id/image', (req, res) => {
+  // ── Product image (Railway Storage Bucket, Aug 2026) ───────────────
+  // POST /api/products/:id/image — body: { image_data: "data:image/jpeg;base64,..." }
+  // Client-side upload UI is unchanged (still reads the file as base64
+  // and POSTs it) — only what the SERVER does with it changed: decode →
+  // upload to the bucket → store the resulting proxied URL in image_url.
+  // image_data itself is no longer written for new uploads.
+  router.post('/:id/image', async (req, res) => {
     const { image_data } = req.body;
     if (!image_data) return res.status(400).json({ error: 'image_data required' });
-    // Sanity-check: must be a data URI (jpeg, png, webp)
     if (!image_data.startsWith('data:image/')) return res.status(400).json({ error: 'Must be a base64 image data URI' });
-    db.run('UPDATE products SET image_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [image_data, req.params.id]);
-    res.json({ ok: true });
+
+    try {
+      const { buffer, contentType, extension } = decodeDataUrl(image_data);
+      const { key, url } = buildImageKey('products', req.params.id, extension);
+      await uploadBuffer(key, buffer, contentType);
+      db.run('UPDATE products SET image_url = ?, image_data = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [url, req.params.id]);
+      res.json({ ok: true, image_url: url });
+    } catch (err) {
+      res.status(502).json({ error: 'Image upload to storage failed: ' + err.message });
+    }
   });
 
-  router.delete('/:id/image', (req, res) => {
-    db.run('UPDATE products SET image_data = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [req.params.id]);
+  router.delete('/:id/image', async (req, res) => {
+    const product = db.queryOne('SELECT image_url FROM products WHERE id = ?', [req.params.id]);
+    db.run('UPDATE products SET image_data = NULL, image_url = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [req.params.id]);
+    // Best-effort bucket cleanup — don't fail the request if this errors,
+    // the DB is already the source of truth and a stray orphaned object
+    // in the bucket costs fractions of a cent, not worth blocking on.
+    if (product?.image_url) {
+      const key = product.image_url.replace(/^\/api\/uploads\//, '');
+      deleteObject(key).catch(() => {});
+    }
     res.json({ ok: true });
   });
 

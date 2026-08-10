@@ -184,8 +184,8 @@ export default function App() {
                     width: 48, height: 48, borderRadius: 8, flexShrink: 0, overflow: 'hidden',
                     background: 'rgba(245,242,235,.05)', display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}>
-                    {l.product.image_data
-                      ? <img src={l.product.image_data} alt={l.product.item_series} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    {l.product.image_url
+                      ? <img src={l.product.image_url} alt={l.product.item_series} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                       : <ImageOff size={18} style={{ color: 'rgba(245,242,235,.2)' }} />}
                   </div>
                   <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: .5, textTransform: 'uppercase', color: l.product.brand_color, flexShrink: 0, width: 60 }}>

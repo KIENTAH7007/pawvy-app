@@ -1,4 +1,5 @@
 const { Router } = require('express');
+const { uploadBuffer, decodeDataUrl, buildImageKey, deleteObject } = require('../lib/bucket');
 
 // Admin-editable homepage takeover banner (the "Wild Balance"-style new
 // brand announcement) — mounted at /api/homepage-banners, staff-only
@@ -15,7 +16,7 @@ module.exports = function(db) {
     res.json({ banners: db.query('SELECT * FROM homepage_banners ORDER BY id DESC') });
   });
 
-  router.post('/', (req, res) => {
+  router.post('/', async (req, res) => {
     const { image_data, headline, link_url, start_date, end_date, is_active } = req.body;
     if (!image_data) return res.status(400).json({ error: 'An image is required.' });
     if (!image_data.startsWith('data:image/')) {
@@ -25,16 +26,24 @@ module.exports = function(db) {
       return res.status(400).json({ error: 'End date must be on or after start date.' });
     }
 
-    const result = db.run(`
-      INSERT INTO homepage_banners (image_data, headline, link_url, start_date, end_date, is_active)
-      VALUES (?,?,?,?,?,?)
-    `, [image_data, headline?.trim() || null, link_url?.trim() || null, start_date || null, end_date || null, is_active ? 1 : 0]);
-
-    res.status(201).json({ ok: true, id: result.lastID });
+    let image_url;
+    try {
+      const { buffer, contentType, extension } = decodeDataUrl(image_data);
+      const result = db.run(`
+        INSERT INTO homepage_banners (headline, link_url, start_date, end_date, is_active)
+        VALUES (?,?,?,?,?)
+      `, [headline?.trim() || null, link_url?.trim() || null, start_date || null, end_date || null, is_active ? 1 : 0]);
+      const { key, url } = buildImageKey('banners', result.lastID, extension);
+      await uploadBuffer(key, buffer, contentType);
+      db.run('UPDATE homepage_banners SET image_url = ? WHERE id = ?', [url, result.lastID]);
+      return res.status(201).json({ ok: true, id: result.lastID });
+    } catch (err) {
+      return res.status(502).json({ error: 'Image upload to storage failed: ' + err.message });
+    }
   });
 
-  router.patch('/:id', (req, res) => {
-    const banner = db.queryOne('SELECT id FROM homepage_banners WHERE id = ?', [req.params.id]);
+  router.patch('/:id', async (req, res) => {
+    const banner = db.queryOne('SELECT id, image_url FROM homepage_banners WHERE id = ?', [req.params.id]);
     if (!banner) return res.status(404).json({ error: 'Banner not found.' });
 
     const { image_data, headline, link_url, start_date, end_date, is_active } = req.body;
@@ -45,9 +54,24 @@ module.exports = function(db) {
       return res.status(400).json({ error: 'End date must be on or after start date.' });
     }
 
+    let newImageUrl = null;
+    if (image_data) {
+      try {
+        const { buffer, contentType, extension } = decodeDataUrl(image_data);
+        const { key, url } = buildImageKey('banners', req.params.id, extension);
+        await uploadBuffer(key, buffer, contentType);
+        newImageUrl = url;
+        if (banner.image_url) {
+          deleteObject(banner.image_url.replace(/^\/api\/uploads\//, '')).catch(() => {});
+        }
+      } catch (err) {
+        return res.status(502).json({ error: 'Image upload to storage failed: ' + err.message });
+      }
+    }
+
     db.run(`
       UPDATE homepage_banners SET
-        image_data = COALESCE(?, image_data),
+        image_url = COALESCE(?, image_url),
         headline = COALESCE(?, headline),
         link_url = COALESCE(?, link_url),
         start_date = COALESCE(?, start_date),
@@ -55,7 +79,7 @@ module.exports = function(db) {
         is_active = COALESCE(?, is_active)
       WHERE id = ?
     `, [
-      image_data || null, headline?.trim() || null, link_url?.trim() || null,
+      newImageUrl, headline?.trim() || null, link_url?.trim() || null,
       start_date || null, end_date || null,
       typeof is_active === 'boolean' ? (is_active ? 1 : 0) : null,
       req.params.id,
@@ -64,9 +88,10 @@ module.exports = function(db) {
   });
 
   router.delete('/:id', (req, res) => {
-    const banner = db.queryOne('SELECT id FROM homepage_banners WHERE id = ?', [req.params.id]);
+    const banner = db.queryOne('SELECT id, image_url FROM homepage_banners WHERE id = ?', [req.params.id]);
     if (!banner) return res.status(404).json({ error: 'Banner not found.' });
     db.run('DELETE FROM homepage_banners WHERE id = ?', [req.params.id]);
+    if (banner.image_url) deleteObject(banner.image_url.replace(/^\/api\/uploads\//, '')).catch(() => {});
     res.json({ ok: true });
   });
 

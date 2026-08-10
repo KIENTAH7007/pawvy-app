@@ -957,6 +957,17 @@ function createSchema() {
   db.run('CREATE INDEX IF NOT EXISTS idx_website_order_items_order_id ON website_order_items(website_order_id)');
   db.run('CREATE INDEX IF NOT EXISTS idx_portal_orders_partner_id ON portal_orders(partner_id)');
 
+  // Bucket migration (Aug 2026): image_url holds the proxied bucket path
+  // (e.g. "/api/uploads/products/123-1723200000000.jpg") once an image
+  // has been moved out of the old base64 image_data column and into the
+  // Railway Storage Bucket. NULL until migrated. image_data itself is
+  // left untouched — this is additive, not destructive — so the
+  // migration (server/jobs/imageMigration.js) can be re-run safely and
+  // there's a fallback if anything ever needs to roll back.
+  try { db.run("ALTER TABLE products ADD COLUMN image_url TEXT"); } catch(e) {}
+  try { db.run("ALTER TABLE homepage_banners ADD COLUMN image_url TEXT"); } catch(e) {}
+  try { db.run("ALTER TABLE instagram_posts ADD COLUMN image_url TEXT"); } catch(e) {}
+
   console.log('✅ Schema ready');
 }
 

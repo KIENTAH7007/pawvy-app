@@ -46,10 +46,10 @@ module.exports = function(db) {
 
   router.get('/instagram', (req, res) => {
     const posts = db.query(
-      "SELECT image_data, link_url FROM instagram_posts WHERE is_active = 1 AND image_data IS NOT NULL AND image_data != '' ORDER BY sort_order ASC, id ASC"
+      "SELECT image_url, link_url FROM instagram_posts WHERE is_active = 1 AND image_url IS NOT NULL AND image_url != '' ORDER BY sort_order ASC, id ASC"
     );
     res.json({
-      items: posts.map(p => ({ image: p.image_data, link: p.link_url || PAWVY_INSTAGRAM_URL })),
+      items: posts.map(p => ({ image: p.image_url, link: p.link_url || PAWVY_INSTAGRAM_URL })),
     });
   });
 
@@ -63,18 +63,18 @@ module.exports = function(db) {
   router.get('/banner', (req, res) => {
     const today = new Date().toISOString().slice(0, 10);
     const banner = db.queryOne(`
-      SELECT image_data, headline, link_url FROM homepage_banners
+      SELECT image_url, headline, link_url FROM homepage_banners
       WHERE is_active = 1
         AND (start_date IS NULL OR start_date <= ?)
         AND (end_date IS NULL OR end_date >= ?)
-        AND image_data IS NOT NULL AND image_data != ''
+        AND image_url IS NOT NULL AND image_url != ''
       ORDER BY id DESC LIMIT 1
     `, [today, today]);
 
     if (!banner) return res.json({ active: false });
     res.json({
       active: true,
-      image: banner.image_data,
+      image: banner.image_url,
       headline: banner.headline || '',
       link: banner.link_url || '/#gallery',
     });

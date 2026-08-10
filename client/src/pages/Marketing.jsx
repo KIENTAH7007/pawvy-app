@@ -331,7 +331,7 @@ function InstagramSection() {
   const [posts, setPosts] = useState([]);
   const [modal, setModal] = useState(false);
   const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState({ image_data: '', link_url: '', sort_order: 0, is_active: true });
+  const [form, setForm] = useState({ image_data: '', image_url: '', link_url: '', sort_order: 0, is_active: true });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -344,13 +344,15 @@ function InstagramSection() {
     setEditing(null);
     setError('');
     const maxOrder = posts.reduce((m, r) => Math.max(m, r.sort_order), 0);
-    setForm({ image_data: '', link_url: '', sort_order: maxOrder + 1, is_active: true });
+    setForm({ image_data: '', image_url: '', link_url: '', sort_order: maxOrder + 1, is_active: true });
     setModal(true);
   }
   function openEdit(row) {
     setEditing(row);
     setError('');
-    setForm({ image_data: row.image_data || '', link_url: row.link_url || '', sort_order: row.sort_order, is_active: !!row.is_active });
+    // image_data stays empty until a NEW file is picked (see handleFile
+    // below) — image_url carries the already-saved bucket image, if any.
+    setForm({ image_data: '', image_url: row.image_url || '', link_url: row.link_url || '', sort_order: row.sort_order, is_active: !!row.is_active });
     setModal(true);
   }
 
@@ -365,7 +367,7 @@ function InstagramSection() {
   }
 
   async function save() {
-    if (!form.image_data) { setError('Please upload an image.'); return; }
+    if (!form.image_data && !form.image_url) { setError('Please upload an image.'); return; }
     setSaving(true);
     setError('');
     try {
@@ -416,7 +418,7 @@ function InstagramSection() {
       ),
     },
     {
-      key: 'image_data', label: 'Photo', render: v => v
+      key: 'image_url', label: 'Photo', render: v => v
         ? <img src={v} alt="" style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 6, flexShrink: 0 }} />
         : <span style={{ color: 'var(--cream-30)', fontSize: 12 }}>No image</span>,
     },
@@ -475,8 +477,8 @@ function InstagramSection() {
           <div>
             <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--cream-30)', marginBottom: 10 }}>Photo *</div>
             <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-              {form.image_data ? (
-                <img src={form.image_data} alt="" style={{ width: 120, height: 120, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)' }} />
+              {(form.image_data || form.image_url) ? (
+                <img src={form.image_data || form.image_url} alt="" style={{ width: 120, height: 120, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)' }} />
               ) : (
                 <div style={{ width: 120, height: 120, borderRadius: 8, border: '2px dashed var(--border)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--cream-30)', fontSize: 11, gap: 4 }}>
                   <span style={{ fontSize: 28 }}>📷</span>
@@ -486,11 +488,11 @@ function InstagramSection() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 7, border: '1px solid var(--border)', cursor: 'pointer', fontSize: 12, color: 'var(--cream-60)', background: 'transparent' }}>
                   <span>📁</span>
-                  {form.image_data ? 'Replace Photo' : 'Upload Photo'}
+                  {(form.image_data || form.image_url) ? 'Replace Photo' : 'Upload Photo'}
                   <input type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} onChange={handleFile} />
                 </label>
-                {form.image_data && (
-                  <button onClick={() => sf('image_data', '')}
+                {(form.image_data || form.image_url) && (
+                  <button onClick={() => { sf('image_data', ''); sf('image_url', ''); }}
                     style={{ padding: '8px 14px', borderRadius: 7, border: '1px solid rgba(248,113,113,.3)', cursor: 'pointer', fontSize: 12, color: '#f87171', background: 'transparent', textAlign: 'left' }}>
                     🗑 Remove Photo
                   </button>
@@ -529,7 +531,7 @@ function HomepageBannerSection() {
   const [banners, setBanners] = useState([]);
   const [modal, setModal] = useState(false);
   const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState({ image_data: '', headline: '', link_url: '', start_date: '', end_date: '', is_active: true });
+  const [form, setForm] = useState({ image_data: '', image_url: '', headline: '', link_url: '', start_date: '', end_date: '', is_active: true });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -543,14 +545,14 @@ function HomepageBannerSection() {
   function openNew() {
     setEditing(null);
     setError('');
-    setForm({ image_data: '', headline: '', link_url: '', start_date: todayStr(), end_date: '', is_active: true });
+    setForm({ image_data: '', image_url: '', headline: '', link_url: '', start_date: todayStr(), end_date: '', is_active: true });
     setModal(true);
   }
   function openEdit(row) {
     setEditing(row);
     setError('');
     setForm({
-      image_data: row.image_data || '', headline: row.headline || '', link_url: row.link_url || '',
+      image_data: '', image_url: row.image_url || '', headline: row.headline || '', link_url: row.link_url || '',
       start_date: row.start_date || '', end_date: row.end_date || '', is_active: !!row.is_active,
     });
     setModal(true);
@@ -567,7 +569,7 @@ function HomepageBannerSection() {
   }
 
   async function save() {
-    if (!form.image_data) { setError('Please upload a banner image.'); return; }
+    if (!form.image_data && !form.image_url) { setError('Please upload a banner image.'); return; }
     if (form.start_date && form.end_date && form.end_date < form.start_date) {
       setError('End date must be on or after the start date.');
       return;
@@ -611,7 +613,7 @@ function HomepageBannerSection() {
 
   const cols = [
     {
-      key: 'image_data', label: 'Banner', render: v => v
+      key: 'image_url', label: 'Banner', render: v => v
         ? <img src={v} alt="" style={{ width: 64, height: 36, objectFit: 'cover', borderRadius: 6, flexShrink: 0 }} />
         : <span style={{ color: 'var(--cream-30)', fontSize: 12 }}>No image</span>,
     },
@@ -676,8 +678,8 @@ function HomepageBannerSection() {
           <div>
             <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--cream-30)', marginBottom: 10 }}>Banner Image *</div>
             <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-              {form.image_data ? (
-                <img src={form.image_data} alt="" style={{ width: 160, height: 90, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)' }} />
+              {(form.image_data || form.image_url) ? (
+                <img src={form.image_data || form.image_url} alt="" style={{ width: 160, height: 90, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)' }} />
               ) : (
                 <div style={{ width: 160, height: 90, borderRadius: 8, border: '2px dashed var(--border)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--cream-30)', fontSize: 11, gap: 4 }}>
                   <span style={{ fontSize: 28 }}>🖼️</span>
@@ -687,11 +689,11 @@ function HomepageBannerSection() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 7, border: '1px solid var(--border)', cursor: 'pointer', fontSize: 12, color: 'var(--cream-60)', background: 'transparent' }}>
                   <span>📁</span>
-                  {form.image_data ? 'Replace Image' : 'Upload Image'}
+                  {(form.image_data || form.image_url) ? 'Replace Image' : 'Upload Image'}
                   <input type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} onChange={handleFile} />
                 </label>
-                {form.image_data && (
-                  <button onClick={() => sf('image_data', '')}
+                {(form.image_data || form.image_url) && (
+                  <button onClick={() => { sf('image_data', ''); sf('image_url', ''); }}
                     style={{ padding: '8px 14px', borderRadius: 7, border: '1px solid rgba(248,113,113,.3)', cursor: 'pointer', fontSize: 12, color: '#f87171', background: 'transparent', textAlign: 'left' }}>
                     🗑 Remove Image
                   </button>

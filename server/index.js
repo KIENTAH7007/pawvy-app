@@ -5,6 +5,7 @@ const fs      = require('fs');
 const dns     = require('dns');
 const cron    = require('node-cron');
 const { init, backupNow, getDbPath } = require('./database');
+const { runImageMigration } = require('./jobs/imageMigration');
 const { runDailyDigest } = require('./jobs/dailyDigest');
 const { runDailyBackup } = require('./jobs/backup');
 const { runAutoRestock } = require('./jobs/autoRestock');
@@ -78,6 +79,7 @@ async function startServer() {
   app.use('/api/consignment', consignmentRouter);
   app.use('/api/brands',      require('./routes/brands')(db));
   app.use('/api/products',    require('./routes/products')(db));
+  app.use('/api/uploads',     require('./routes/uploads')());
   app.use('/api/partners',    require('./routes/partners')(db));
   app.use('/api/sales',       require('./routes/sales')(db, inventoryRouter));
   app.use('/api/inventory',   inventoryRouter);
@@ -157,6 +159,11 @@ async function startServer() {
     } else {
       console.log(`🌐  Local: http://localhost:${PORT}\n`);
     }
+
+    // Fire-and-forget, after the server is already accepting requests —
+    // see the comment at the top of jobs/imageMigration.js for why this
+    // runs here and not before app.listen().
+    runImageMigration(db).catch(err => console.error('⚠️  Image migration failed:', err.message));
   });
 
   // ── Scheduled jobs (Singapore time, DST-free so a fixed cron is safe) ──

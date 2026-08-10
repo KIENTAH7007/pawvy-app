@@ -43,7 +43,7 @@ module.exports = function(db, inventoryRouter) {
   router.get('/catalogue', (req, res) => {
     const rows = db.query(`
       SELECT
-        p.id, p.item_series, p.variation, p.image_data, p.barcode,
+        p.id, p.item_series, p.variation, p.image_url, p.barcode,
         p.price_rrp_sg, p.is_new, p.new_until,
         b.id AS brand_id, b.name AS brand_name, b.color AS brand_color,
         COALESCE(home.qty, 0)    AS home_qty,
@@ -64,7 +64,7 @@ module.exports = function(db, inventoryRouter) {
       item_series: r.item_series,
       variation: r.variation,
       barcode: r.barcode,
-      image_data: r.image_data || null,
+      image_url: r.image_url || null,
       price_rrp_sg: r.price_rrp_sg,
       is_new_active: withEffectivePrice(r).is_new_active,
       stock_status: stockStatus(r.home_qty + r.storhub_qty),

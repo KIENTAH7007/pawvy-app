@@ -45,7 +45,7 @@ module.exports = function(db) {
     const { brand_id, search } = req.query;
     let sql = `
       SELECT
-        p.id, p.item_series, p.variation, p.image_data,
+        p.id, p.item_series, p.variation, p.image_url,
         p.price_rrp_sg, p.discount_pct, p.discount_start, p.discount_end, p.is_new, p.new_until,
         b.id AS brand_id, b.name AS brand_name, b.color AS brand_color,
         COALESCE(home.qty, 0)    AS home_qty,
@@ -79,7 +79,7 @@ module.exports = function(db) {
   router.get('/products/:id', (req, res) => {
     const row = db.queryOne(`
       SELECT
-        p.id, p.item_series, p.variation, p.image_data, p.description,
+        p.id, p.item_series, p.variation, p.image_url, p.description,
         p.price_rrp_sg, p.discount_pct, p.discount_start, p.discount_end, p.is_new, p.new_until,
         b.id AS brand_id, b.name AS brand_name, b.color AS brand_color,
         COALESCE(home.qty, 0)    AS home_qty,
@@ -114,7 +114,7 @@ module.exports = function(db) {
     const limit = Math.min(parseInt(req.query.limit) || 8, 20);
     const rows = db.query(`
       SELECT
-        p.id, p.item_series, p.variation, p.image_data,
+        p.id, p.item_series, p.variation, p.image_url,
         p.price_rrp_sg, p.discount_pct, p.discount_start, p.discount_end, p.is_new, p.new_until,
         b.id AS brand_id, b.name AS brand_name, b.color AS brand_color,
         COALESCE(home.qty, 0)    AS home_qty,

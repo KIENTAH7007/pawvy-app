@@ -11,6 +11,7 @@
     "migrate": "node migrate.js"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1106.0",
     "archiver": "^6.0.2",
     "bcryptjs": "^3.0.3",
     "concurrently": "^8.2.2",

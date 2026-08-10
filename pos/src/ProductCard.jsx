@@ -45,8 +45,8 @@ export default function ProductCard({ product, cartQty, onAdd, onUpdateQty, onRe
             New
           </span>
         )}
-        {product.image_data
-          ? <img src={product.image_data} alt={product.item_series} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        {product.image_url
+          ? <img src={product.image_url} alt={product.item_series} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           : <ImageOff size={28} style={{ color: 'rgba(245,242,235,.2)' }} />}
       </div>
 

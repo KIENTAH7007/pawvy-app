@@ -255,8 +255,8 @@ export default function Products() {
                       <td style={td()}><Badge color={p.brand_color}>{p.brand_name}</Badge></td>
                       <td style={td()}>
                         <div style={{display:'flex',alignItems:'center',gap:10}}>
-                          {p.image_data
-                            ? <img src={p.image_data} alt="" style={{width:36,height:36,objectFit:'cover',borderRadius:6,flexShrink:0}}/>
+                          {p.image_url
+                            ? <img src={p.image_url} alt="" style={{width:36,height:36,objectFit:'cover',borderRadius:6,flexShrink:0}}/>
                             : <div style={{width:36,height:36,borderRadius:6,background:'rgba(245,242,235,.06)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,fontSize:14}}>📷</div>
                           }
                           <div>
@@ -396,8 +396,8 @@ export default function Products() {
             <div style={{borderTop:'1px solid var(--border)',paddingTop:14}}>
               <div style={{fontSize:10,fontWeight:700,letterSpacing:1,textTransform:'uppercase',color:'var(--cream-30)',marginBottom:10}}>Product Image</div>
               <div style={{display:'flex',gap:14,alignItems:'flex-start',flexWrap:'wrap'}}>
-                {form.image_data ? (
-                  <img src={form.image_data} alt="Product" style={{width:120,height:120,objectFit:'cover',borderRadius:8,border:'1px solid var(--border)'}}/>
+                {form.image_url ? (
+                  <img src={form.image_url} alt="Product" style={{width:120,height:120,objectFit:'cover',borderRadius:8,border:'1px solid var(--border)'}}/>
                 ) : (
                   <div style={{width:120,height:120,borderRadius:8,border:'2px dashed var(--border)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',color:'var(--cream-30)',fontSize:11,gap:4}}>
                     <span style={{fontSize:28}}>📷</span>
@@ -407,7 +407,7 @@ export default function Products() {
                 <div style={{display:'flex',flexDirection:'column',gap:8}}>
                   <label style={{display:'inline-flex',alignItems:'center',gap:6,padding:'8px 14px',borderRadius:7,border:'1px solid var(--border)',cursor:'pointer',fontSize:12,color:'var(--cream-60)',background:'transparent'}}>
                     <span>📁</span>
-                    {form.image_data ? 'Replace Image' : 'Upload Image'}
+                    {form.image_url ? 'Replace Image' : 'Upload Image'}
                     <input type="file" accept="image/jpeg,image/png,image/webp" style={{display:'none'}}
                       onChange={async e => {
                         const file = e.target.files?.[0];
@@ -416,16 +416,20 @@ export default function Products() {
                         const reader = new FileReader();
                         reader.onload = async ev => {
                           const data = ev.target.result;
-                          await productsApi.uploadImage(form.id, data);
-                          setForm(f => ({ ...f, image_data: data }));
+                          const result = await productsApi.uploadImage(form.id, data);
+                          // Uploads now go straight to the bucket server-side —
+                          // preview from the real returned image_url rather
+                          // than keeping a local base64 copy around, so this
+                          // form's state matches what's actually stored.
+                          setForm(f => ({ ...f, image_url: result.image_url }));
                           load();
                         };
                         reader.readAsDataURL(file);
                       }}
                     />
                   </label>
-                  {form.image_data && (
-                    <button onClick={async()=>{await productsApi.deleteImage(form.id);setForm(f=>({...f,image_data:null}));load();}}
+                  {form.image_url && (
+                    <button onClick={async()=>{await productsApi.deleteImage(form.id);setForm(f=>({...f,image_url:null}));load();}}
                       style={{padding:'8px 14px',borderRadius:7,border:'1px solid rgba(248,113,113,.3)',cursor:'pointer',fontSize:12,color:'#f87171',background:'transparent',textAlign:'left'}}>
                       🗑 Remove Image
                     </button>
@@ -451,7 +455,21 @@ export default function Products() {
             {modal==='edit' && (
               form.is_active !== 0
                 ? <Btn variant="danger" onClick={async()=>{await productsApi.delete(form.id);load();setModal(null);}}>Archive</Btn>
-                : <Btn variant="secondary" onClick={async()=>{await productsApi.update(form.id,{...form,is_active:1});load();setModal(null);}}>Restore</Btn>
+                : (
+                  <>
+                    <Btn variant="secondary" onClick={async()=>{await productsApi.update(form.id,{...form,is_active:1});load();setModal(null);}}>Restore</Btn>
+                    <Btn variant="danger" onClick={async()=>{
+                      if (!window.confirm(`Permanently delete "${form.item_series}"? This cannot be undone. Only SKUs with zero sales/order/inventory history can be permanently deleted — anything with real history will be refused.`)) return;
+                      try {
+                        await productsApi.permanentDelete(form.id);
+                        load();
+                        setModal(null);
+                      } catch (err) {
+                        alert(err.message);
+                      }
+                    }}>Permanently Delete</Btn>
+                  </>
+                )
             )}
           </div>
         </div>
