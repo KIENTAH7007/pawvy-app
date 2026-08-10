@@ -67,12 +67,17 @@ async function startServer() {
   // system, not the internal staff PIN), /api/checkout (Stripe
   // Checkout Session creation + the Stripe webhook — real website
   // customers and Stripe's own servers, neither of which have a staff PIN),
-  // and /api/public-content (read-only ticker/campaign display data for
+  // /api/public-content (read-only ticker/campaign display data for
   // the website — see routes/publicContent.js for why this is kept
   // separate from the staff-only /api/campaigns and /api/ticker-messages
-  // CRUD routes, which DO stay behind the PIN gate).
+  // CRUD routes, which DO stay behind the PIN gate), and /api/uploads
+  // (Aug 2026 — the image proxy route MUST be public: browsers never
+  // attach a custom Authorization header to a plain <img> tag request,
+  // so gating this would 401 every single image everywhere, including
+  // for already-logged-in staff viewing their own admin pages — this
+  // isn't optional the way it might look at first glance).
   app.use('/api', (req, res, next) => {
-    if (req.path.startsWith('/portal') || req.path.startsWith('/pos') || req.path.startsWith('/customers') || req.path.startsWith('/shop') || req.path.startsWith('/enquiries') || req.path.startsWith('/stockists') || req.path.startsWith('/checkout') || req.path.startsWith('/public-content') || req.path === '/health') return next();
+    if (req.path.startsWith('/portal') || req.path.startsWith('/pos') || req.path.startsWith('/customers') || req.path.startsWith('/shop') || req.path.startsWith('/enquiries') || req.path.startsWith('/stockists') || req.path.startsWith('/checkout') || req.path.startsWith('/public-content') || req.path.startsWith('/uploads') || req.path === '/health') return next();
     return auth.requireAuth(req, res, next);
   });
 
