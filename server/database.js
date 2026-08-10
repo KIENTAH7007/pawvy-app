@@ -652,6 +652,30 @@ function createSchema() {
       unit_price REAL NOT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`,
+
+    // Dedup log for the automated customer reminder emails (BUTTONS expiry
+    // rollup + campaign/birthday multiplier nudge — see
+    // server/jobs/customerReminders.js). One generic table rather than
+    // separate per-email-type tables, since all three reminders need the
+    // exact same question answered at send time ("have we already emailed
+    // this customer about this recently?") and a single table keeps that
+    // dedup logic in one place instead of three near-identical ones.
+    // email_type: 'buttons_expiry' | 'birthday' | 'campaign'.
+    // reference_id: NULL for buttons_expiry (it's a per-customer rollup,
+    // not tied to one batch) and birthday (once-per-year, keyed off
+    // customer + year, not a row elsewhere); the campaign's id for
+    // 'campaign', so frequency dedup is scoped per-campaign — a customer
+    // who qualifies for two simultaneous campaigns over their lifetime
+    // (not at the same *moment*, since only the higher multiplier ever
+    // wins — but across different date ranges) gets each tracked
+    // independently.
+    `CREATE TABLE IF NOT EXISTS automated_email_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+      email_type TEXT NOT NULL,
+      reference_id INTEGER,
+      sent_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
   ];
 
   tables.forEach(sql => db.run(sql));
@@ -901,6 +925,15 @@ function createSchema() {
   // is_discount_active — see that file for the shared date-window logic.
   try { db.run("ALTER TABLE products ADD COLUMN is_new INTEGER DEFAULT 0"); } catch(e) {}
   try { db.run("ALTER TABLE products ADD COLUMN new_until DATE"); } catch(e) {}
+
+  // How often (in days) a live campaign should re-nudge a customer by
+  // email while it's running — e.g. 1 for a one-weekend event like Pet
+  // Expo (remind daily), 7 for a month-long storewide campaign (remind
+  // weekly). NULL means "don't send reminder emails for this campaign at
+  // all" (the safe default for existing rows, and for anyone who doesn't
+  // set it) — see server/jobs/customerReminders.js, which only considers
+  // campaigns where this is set and > 0.
+  try { db.run("ALTER TABLE campaigns ADD COLUMN email_frequency_days INTEGER"); } catch(e) {}
 
   console.log('✅ Schema ready');
 }

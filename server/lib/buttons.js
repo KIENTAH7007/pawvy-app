@@ -97,6 +97,24 @@ function getActiveMultiplierDetail(db, { customerId, onDate = new Date(), channe
   return { multiplier: 1, source: null, campaignName: null };
 }
 
+// Returns the single active campaign with the highest multiplier, across
+// ALL scopes — unlike getActiveMultiplierDetail's `channel` param (which
+// scopes to what one specific purchase channel actually earns at checkout
+// time), this is for server/jobs/customerReminders.js, which needs to
+// know "what's the best campaign running right now, period" so it can
+// tell a customer about it and word the channel correctly in the email
+// itself (see campaignChannelLabel in lib/customerEmails.js), rather than
+// silently excluding e.g. a POS-only campaign just because no channel was
+// specified.
+function getBestActiveCampaign(db, onDate = new Date()) {
+  const dateStr = singaporeDateStr(onDate);
+  return db.queryOne(`
+    SELECT * FROM campaigns
+    WHERE is_active = 1 AND start_date <= ? AND end_date >= ?
+    ORDER BY multiplier DESC LIMIT 1
+  `, [dateStr, dateStr]);
+}
+
 // Redeems B against an order. Enforces the 30% cap (silently reduces the
 // request to the max allowed rather than erroring — a caller asking to
 // redeem more than allowed is a UI bug, not something that should block
@@ -305,7 +323,9 @@ function voidPendingButtons(db, { sourceType, sourceId }) {
 }
 
 module.exports = {
-  calculateEarnedButtons, getActiveMultiplier, getActiveMultiplierDetail, redeemButtons, previewRedemption, recordPurchaseButtons,
+  calculateEarnedButtons, getActiveMultiplier, getActiveMultiplierDetail, getBestActiveCampaign,
+  redeemButtons, previewRedemption, recordPurchaseButtons,
   recordPosCheckoutButtons, processExpiredHolds, voidPendingButtons, buttonsToDollars, dollarsToButtons,
+  singaporeDateStr, singaporeMonth,
   REDEMPTION_CAP_PCT, B_VALUE_DOLLARS, HOLD_DAYS, FIRST_PURCHASE_BONUS_B, REFERRAL_BONUS_B,
 };

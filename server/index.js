@@ -9,6 +9,7 @@ const { runDailyDigest } = require('./jobs/dailyDigest');
 const { runDailyBackup } = require('./jobs/backup');
 const { runAutoRestock } = require('./jobs/autoRestock');
 const { runButtonsHoldCheck } = require('./jobs/buttonsHold');
+const { runCustomerReminders } = require('./jobs/customerReminders');
 
 // Railway's container has no outbound IPv6 route — confirmed via a live
 // ENETUNREACH error connecting to smtp.gmail.com (Google's mail servers
@@ -177,6 +178,14 @@ async function startServer() {
   cron.schedule('0 4 * * *', () => {
     console.log('⏰ Running BUTTONS hold check…');
     runButtonsHoldCheck(db).catch(err => console.error('⚠️  BUTTONS hold check failed:', err.message));
+  }, { timezone: 'Asia/Singapore' });
+
+  // Runs after the hold check (4am) so any batch that just flipped
+  // pending→credited today already has its real expires_at set before
+  // this scans for upcoming expiries.
+  cron.schedule('0 5 * * *', () => {
+    console.log('⏰ Running customer reminder emails (BUTTONS expiry / campaign / birthday)…');
+    runCustomerReminders(db).catch(err => console.error('⚠️  Customer reminders failed:', err.message));
   }, { timezone: 'Asia/Singapore' });
 }
 

@@ -1,5 +1,6 @@
 const { Router } = require('express');
 const { notifyTelegram, sendCustomerEmail } = require('../utils/notify');
+const { buildEnquiryEmail } = require('../lib/customerEmails');
 
 // Public "Contact Us" enquiry endpoint for the website. Mounted at
 // /api/enquiries, added to the PIN-gate exclusion list in server/index.js
@@ -35,12 +36,9 @@ module.exports = function(db) {
       `\n\n${message.trim()}`;
     notifyTelegram(telegramText).catch(err => console.error('⚠️  Enquiry Telegram notify failed:', err.message));
 
-    sendCustomerEmail(
-      email.trim(),
-      'We got your message — Pawvy',
-      "Thanks for reaching out! We've received your message and will get back to you soon.",
-      "<p>Thanks for reaching out! We've received your message and will get back to you soon.</p>"
-    ).catch(err => console.error('⚠️  Enquiry confirmation email failed:', err.message));
+    const { subject, text, html } = buildEnquiryEmail(name?.trim());
+    sendCustomerEmail(email.trim(), subject, text, html)
+      .catch(err => console.error('⚠️  Enquiry confirmation email failed:', err.message));
 
     res.status(201).json({ ok: true, id: result.lastID });
   });

@@ -15,16 +15,19 @@ module.exports = function(db) {
   });
 
   router.post('/', (req, res) => {
-    const { name, multiplier, scope, scope_value, start_date, end_date, is_active } = req.body;
+    const { name, multiplier, scope, scope_value, start_date, end_date, is_active, email_frequency_days } = req.body;
     if (!name || !name.trim()) return res.status(400).json({ error: 'Name is required.' });
     if (!multiplier || multiplier <= 0) return res.status(400).json({ error: 'Multiplier must be a positive number.' });
     if (!start_date || !end_date) return res.status(400).json({ error: 'Start and end date are required.' });
     if (end_date < start_date) return res.status(400).json({ error: 'End date must be on or after the start date.' });
+    if (email_frequency_days != null && email_frequency_days <= 0) {
+      return res.status(400).json({ error: 'Reminder frequency must be a positive number of days, or left blank.' });
+    }
 
     const result = db.run(`
-      INSERT INTO campaigns (name, multiplier, scope, scope_value, start_date, end_date, is_active)
-      VALUES (?,?,?,?,?,?,?)
-    `, [name.trim(), multiplier, scope || 'site_wide', scope_value || null, start_date, end_date, is_active === false ? 0 : 1]);
+      INSERT INTO campaigns (name, multiplier, scope, scope_value, start_date, end_date, is_active, email_frequency_days)
+      VALUES (?,?,?,?,?,?,?,?)
+    `, [name.trim(), multiplier, scope || 'site_wide', scope_value || null, start_date, end_date, is_active === false ? 0 : 1, email_frequency_days || null]);
 
     res.status(201).json({ ok: true, id: result.lastID });
   });
@@ -33,9 +36,12 @@ module.exports = function(db) {
     const campaign = db.queryOne('SELECT id FROM campaigns WHERE id = ?', [req.params.id]);
     if (!campaign) return res.status(404).json({ error: 'Campaign not found.' });
 
-    const { name, multiplier, scope, scope_value, start_date, end_date, is_active } = req.body;
+    const { name, multiplier, scope, scope_value, start_date, end_date, is_active, email_frequency_days } = req.body;
     if (end_date && start_date && end_date < start_date) {
       return res.status(400).json({ error: 'End date must be on or after the start date.' });
+    }
+    if (email_frequency_days != null && email_frequency_days <= 0) {
+      return res.status(400).json({ error: 'Reminder frequency must be a positive number of days, or left blank.' });
     }
 
     db.run(`
@@ -43,12 +49,14 @@ module.exports = function(db) {
         name = COALESCE(?, name), multiplier = COALESCE(?, multiplier),
         scope = COALESCE(?, scope), scope_value = ?,
         start_date = COALESCE(?, start_date), end_date = COALESCE(?, end_date),
-        is_active = COALESCE(?, is_active)
+        is_active = COALESCE(?, is_active),
+        email_frequency_days = CASE WHEN ? THEN ? ELSE email_frequency_days END
       WHERE id = ?
     `, [
       name?.trim() || null, multiplier || null, scope || null, scope_value ?? null,
       start_date || null, end_date || null,
       typeof is_active === 'boolean' ? (is_active ? 1 : 0) : null,
+      email_frequency_days !== undefined ? 1 : 0, email_frequency_days || null,
       req.params.id,
     ]);
     res.json({ ok: true });

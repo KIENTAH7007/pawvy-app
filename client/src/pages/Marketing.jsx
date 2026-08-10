@@ -3,7 +3,7 @@ import { Trash2, Edit2 } from 'lucide-react';
 import { campaignsApi, tickerMessagesApi, instagramPostsApi, homepageBannersApi } from '../api';
 import { Page, Table, Badge, Btn, Modal, FormRow, Input, Select, fmt } from '../components/ui';
 
-const CAMPAIGN_EMPTY = { name: '', multiplier: '2', applies_to: 'both', start_date: new Date().toISOString().slice(0, 10), end_date: '', is_active: true };
+const CAMPAIGN_EMPTY = { name: '', multiplier: '2', applies_to: 'both', start_date: new Date().toISOString().slice(0, 10), end_date: '', is_active: true, email_frequency_days: '' };
 const MESSAGE_EMPTY = { text: '', sort_order: 0, is_active: true };
 
 function todayStr() { return new Date().toISOString().slice(0, 10); }
@@ -55,6 +55,7 @@ function CampaignsSection() {
       name: row.name, multiplier: String(row.multiplier),
       applies_to: row.scope === 'channel' ? (row.scope_value || 'both') : 'both',
       start_date: row.start_date, end_date: row.end_date, is_active: !!row.is_active,
+      email_frequency_days: row.email_frequency_days ? String(row.email_frequency_days) : '',
     });
     setModal(true);
   }
@@ -66,7 +67,8 @@ function CampaignsSection() {
       const { applies_to, ...rest } = form;
       const scope = applies_to === 'both' ? 'site_wide' : 'channel';
       const scope_value = applies_to === 'both' ? null : applies_to;
-      const body = { ...rest, multiplier: parseFloat(form.multiplier), scope, scope_value };
+      const email_frequency_days = form.email_frequency_days ? parseInt(form.email_frequency_days, 10) : null;
+      const body = { ...rest, multiplier: parseFloat(form.multiplier), scope, scope_value, email_frequency_days };
       if (editing) await campaignsApi.update(editing.id, body);
       else await campaignsApi.create(body);
       load();
@@ -100,6 +102,10 @@ function CampaignsSection() {
     },
     { key: 'start_date', label: 'Starts', render: v => fmt.date(v) },
     { key: 'end_date', label: 'Ends', render: v => fmt.date(v) },
+    {
+      key: 'email_frequency_days', label: 'Reminder emails',
+      render: v => v ? <Badge color="#1D9E75">Every {v}d</Badge> : <Badge color="#888">Off</Badge>,
+    },
     {
       key: 'status', label: 'Status',
       render: (_, row) => isLive(row)
@@ -139,6 +145,9 @@ function CampaignsSection() {
             whichever is higher (never both stacked). Choose whether it applies to the website, POS/event sales, or
             both — so e.g. a Website campaign and a separate, higher POS campaign can run at the same time without
             conflicting. A site-wide (Both) campaign also drives the birthday/campaign badge on the website's nav.
+            Optionally set a reminder frequency to email verified customers about a live campaign while it runs
+            (worded for whichever channel it applies to) — birthday-month customers get their own reminder instead,
+            whichever bonus is higher.
           </div>
         </div>
         <Btn onClick={openNew}><span style={{ fontSize: 16 }}>+</span> New Campaign</Btn>
@@ -169,6 +178,14 @@ function CampaignsSection() {
             <Input label="Start date *" type="date" value={form.start_date} onChange={e => sf('start_date', e.target.value)} />
             <Input label="End date *" type="date" value={form.end_date} onChange={e => sf('end_date', e.target.value)} />
           </FormRow>
+          <div>
+            <Input label="Remind customers by email every ___ days" type="number" min="1" step="1"
+              placeholder="Leave blank for no reminder emails"
+              value={form.email_frequency_days} onChange={e => sf('email_frequency_days', e.target.value)} />
+            <div style={{ fontSize: 11, color: 'var(--cream-30)', marginTop: 4 }}>
+              e.g. 1 = daily (good for a short event like Pet Expo), 7 = weekly (good for a month-long campaign). Leave blank to never email customers about this campaign.
+            </div>
+          </div>
           <Btn onClick={save} disabled={saving} size="lg" style={{ justifyContent: 'center' }}>
             {saving ? 'Saving…' : (editing ? 'Save Changes' : 'Create Campaign')}
           </Btn>
