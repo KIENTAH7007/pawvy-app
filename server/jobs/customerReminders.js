@@ -9,10 +9,15 @@ const { sendCustomerEmail } = require('../utils/notify');
 // live in one place each (getBestActiveCampaign in lib/buttons.js,
 // email content in lib/customerEmails.js).
 //
-// Both reminders only ever go to account_status = 'verified' customers —
-// an unverified signup hasn't confirmed their email is real yet, so
-// there's nothing to remind them about (no credited BUTTONS, no
-// meaningful account).
+// Both reminders only ever go to account_status = 'verified' AND
+// is_active = 1 customers — an unverified signup hasn't confirmed their
+// email is real yet, so there's nothing to remind them about (no
+// credited BUTTONS, no meaningful account). is_active = 0 (Aug 2026 —
+// see server/routes/customerAdmin.js) is for accounts that ARE real
+// signups but not real pet owners (e.g. a friend padding the customer
+// count) — excluded from these proactive nudges entirely, though their
+// account still works completely normally otherwise (login, checkout,
+// earning/redeeming BUTTONS if they ever do use it).
 
 const EXPIRY_WARNING_DAYS = 14;
 const EXPIRY_ROLLUP_LIMIT = 3;
@@ -43,6 +48,7 @@ async function runButtonsExpiryReminder(db) {
       AND bb.expires_at > ?
       AND bb.expires_at <= ?
       AND c.account_status = 'verified'
+      AND c.is_active = 1
       AND bb.id NOT IN (
         SELECT reference_id FROM automated_email_log
         WHERE email_type = 'buttons_expiry' AND reference_id IS NOT NULL
@@ -92,7 +98,7 @@ async function runCampaignBirthdayReminder(db) {
   const bestCampaign = getBestActiveCampaign(db, now);
   const campaignMultiplier = bestCampaign ? bestCampaign.multiplier : 1;
 
-  const verifiedCustomers = db.query(`SELECT id, name, email FROM customers WHERE account_status = 'verified'`);
+  const verifiedCustomers = db.query(`SELECT id, name, email FROM customers WHERE account_status = 'verified' AND is_active = 1`);
 
   let sentBirthday = 0;
   let sentCampaign = 0;

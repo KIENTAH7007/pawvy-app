@@ -21,12 +21,25 @@ module.exports = function(db) {
   const router = Router();
 
   // GET /api/customer-admin/customers — list, most recent first.
+  // ?active=true (default) shows only active accounts; ?active=false
+  // shows archived ones; omit both by passing neither for the full list
+  // (not currently used by the admin UI, but matches the same
+  // query-param convention as products.js for anyone scripting against
+  // this API directly).
   router.get('/customers', (req, res) => {
-    const rows = db.query(`
+    const { active } = req.query;
+    let sql = `
       SELECT id, name, email, phone, address, account_status, referral_code,
-             referred_by_customer_id, signup_source, created_at, profile_bonus_claimed
-      FROM customers ORDER BY created_at DESC
-    `);
+             referred_by_customer_id, signup_source, created_at, profile_bonus_claimed, is_active
+      FROM customers
+    `;
+    const params = [];
+    if (active !== undefined) {
+      sql += ' WHERE is_active = ?';
+      params.push(active === 'true' ? 1 : 0);
+    }
+    sql += ' ORDER BY created_at DESC';
+    const rows = db.query(sql, params);
     const withBalances = rows.map(c => ({
       ...c,
       buttons_balance: customerButtonsBalance(db, c.id),
@@ -158,6 +171,20 @@ module.exports = function(db) {
   // procedure doc: real requests should go through that documented process,
   // not just this button, since actual sales/tax records must be retained
   // regardless of what gets deleted here).
+  // PATCH /api/customer-admin/customers/:id/active — archive/restore
+  // toggle, same soft-delete pattern as products.js's is_active. Separate
+  // from the hard "Delete" route below on purpose: this never removes
+  // the row, so the account is still fully intact (BUTTONS balance,
+  // order history, etc.) and simply excluded from the default list view
+  // and from the automated reminder emails while archived.
+  router.patch('/customers/:id/active', (req, res) => {
+    const customer = db.queryOne('SELECT id FROM customers WHERE id = ?', [req.params.id]);
+    if (!customer) return res.status(404).json({ error: 'Customer not found.' });
+    const { is_active } = req.body;
+    db.run('UPDATE customers SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [is_active ? 1 : 0, req.params.id]);
+    res.json({ ok: true });
+  });
+
   router.delete('/customers/:id', (req, res) => {
     const customer = db.queryOne('SELECT id FROM customers WHERE id = ?', [req.params.id]);
     if (!customer) return res.status(404).json({ error: 'Customer not found.' });

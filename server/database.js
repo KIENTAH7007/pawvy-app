@@ -968,6 +968,20 @@ function createSchema() {
   try { db.run("ALTER TABLE homepage_banners ADD COLUMN image_url TEXT"); } catch(e) {}
   try { db.run("ALTER TABLE instagram_posts ADD COLUMN image_url TEXT"); } catch(e) {}
 
+  // "Active/Archived" toggle for customer accounts (Aug 2026) — for
+  // accounts that are real signups (e.g. a friend helping pad the
+  // customer count) but not real BUTTONS-earning pet owners. Defaults to
+  // active for every existing row. Archived customers stay fully in the
+  // `customers` table (never deleted — that's what the existing hard
+  // "Delete" button on the Customers admin page is for, kept separate
+  // and untouched by this) so any future customer-count reporting
+  // naturally still includes them — this flag only ever controls (a)
+  // default visibility in the admin Customers list (same "Show archived"
+  // checkbox pattern already used on Products & Pricing) and (b) whether
+  // the automated reminder emails (BUTTONS expiry / campaign / birthday
+  // — see jobs/customerReminders.js) consider them at all.
+  try { db.run("ALTER TABLE customers ADD COLUMN is_active INTEGER DEFAULT 1"); } catch(e) {}
+
   console.log('✅ Schema ready');
 }
 

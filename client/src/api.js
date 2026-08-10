@@ -33,7 +33,7 @@ export const api = {
 const qs = (q) => q ? '?' + new URLSearchParams(q) : '';
 
 export const brandsApi    = { getAll: () => api.get('/brands'), create: (b) => api.post('/brands',b), update: (id,b) => api.put(`/brands/${id}`,b) };
-export const productsApi  = { getAll: (q) => api.get(`/products${qs(q)}`), get: (id) => api.get(`/products/${id}`), create: (p) => api.post('/products',p), update: (id,p) => api.put(`/products/${id}`,p), delete: (id) => api.delete(`/products/${id}`), uploadImage: (id, image_data) => api.post(`/products/${id}/image`, { image_data }), deleteImage: (id) => api.delete(`/products/${id}/image`), setPortalOrder: (id, portal_sort_order) => api.post(`/products/${id}/portal-order`, { portal_sort_order }), setDiscount: (id, body) => api.patch(`/products/${id}/discount`, body) };
+export const productsApi  = { getAll: (q) => api.get(`/products${qs(q)}`), get: (id) => api.get(`/products/${id}`), create: (p) => api.post('/products',p), update: (id,p) => api.put(`/products/${id}`,p), delete: (id) => api.delete(`/products/${id}`), permanentDelete: (id) => api.delete(`/products/${id}/permanent`), uploadImage: (id, image_data) => api.post(`/products/${id}/image`, { image_data }), deleteImage: (id) => api.delete(`/products/${id}/image`), setPortalOrder: (id, portal_sort_order) => api.post(`/products/${id}/portal-order`, { portal_sort_order }), setDiscount: (id, body) => api.patch(`/products/${id}/discount`, body) };
 export const partnersApi  = { getAll: (q) => api.get(`/partners${qs(q)}`), get: (id) => api.get(`/partners/${id}`), create: (p) => api.post('/partners',p), update: (id,p) => api.put(`/partners/${id}`,p) };
 export const invoicesApi = {
   list:            (q)    => api.get(`/invoices${qs(q)}`),
@@ -122,10 +122,11 @@ export const enquiryAdminApi = {
   markReplied: (id) => api.post(`/enquiry-admin/${id}/mark-replied`, {}),
 };
 export const customerAdminApi = {
-  getAll: () => api.get('/customer-admin/customers'),
+  getAll: (q) => api.get(`/customer-admin/customers${q ? '?' + new URLSearchParams(q) : ''}`),
   get: (id) => api.get(`/customer-admin/customers/${id}`),
   resendVerify: (id) => api.post(`/customer-admin/customers/${id}/resend-verify`, {}),
   awardStamp: (id, body) => api.post(`/customer-admin/customers/${id}/stamp`, body),
+  setActive: (id, is_active) => api.patch(`/customer-admin/customers/${id}/active`, { is_active }),
   delete: (id) => api.delete(`/customer-admin/customers/${id}`),
 };
 export const campaignsApi = {

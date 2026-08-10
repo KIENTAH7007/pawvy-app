@@ -1,67 +1,68 @@
-# HOTFIX — Every image broken everywhere (missing PIN-gate exclusion)
+# Customer accounts: Active/Archived toggle
 
-## This is for the App folder (`pawvy-app`) only
+## This delivery is for the App folder (`pawvy-app`) only
 
-1 file changed: `server/index.js`.
+5 files changed: `server/database.js`, `server/routes/customerAdmin.js`,
+`server/jobs/customerReminders.js`, `client/src/api.js`,
+`client/src/pages/Customers.jsx`.
 
-## Root cause
+## What this does
 
-The image proxy route (`/api/uploads/*`, added in the bucket migration
-delivery) was mounted correctly, but I never added it to the PIN-gate's
-exclusion list — the same list `/shop`, `/portal`, `/pos`, and others are
-already on. Every request to `/api/uploads/*` was hitting
-`auth.requireAuth`, which hard-401s anything without a Bearer token.
+Exact same pattern already used on Products & Pricing — a soft
+`is_active` toggle, not a delete:
 
-This explains every symptom you reported at once:
+- New `customers.is_active` column, defaults to active for every existing
+  and new row.
+- Customers page now defaults to showing only active accounts, with a
+  **"Show archived"** checkbox to reveal archived ones — identical UX to
+  Products & Pricing's archived toggle.
+- Archived customers get an **"ARCHIVED"** badge next to their name when
+  shown, same visual pattern as archived products.
+- New **Archive / Restore** button per row, kept separate from (and
+  before) the existing hard-delete button — archiving never removes the
+  row, so the account (BUTTONS balance, order history, everything) stays
+  completely intact.
+- **The two automated reminder jobs (BUTTONS expiry rollup, campaign/
+  birthday) now skip archived customers entirely** — both queries in
+  `server/jobs/customerReminders.js` gained an `AND c.is_active = 1`
+  clause alongside the existing `account_status = 'verified'` check.
 
-- **New uploads immediately broken**: the upload itself is an
-  authenticated `fetch()` call and succeeded fine — but the moment the
-  browser tries to *display* the result via `<img src>`, that's a plain
-  image request with no Authorization header. Browsers never attach
-  custom headers to `<img>` tags.
-- **Even the logged-in admin app couldn't see its own thumbnails**: same
-  reason — your session token lives in `localStorage` and only gets
-  attached by the app's `fetch()` wrapper, never by native `<img>` loads.
-- **Website, POS, Portal**: all hit the same wall regardless of their own
-  endpoints already being correctly public — `/api/uploads` itself was
-  simply never on the exclusion list.
+**Archiving doesn't affect anything else** — an archived customer can
+still log in, check out, and earn/redeem BUTTONS completely normally.
+It's purely: hidden from the admin list by default, and excluded from
+proactive marketing/reminder nudges. Nothing about verify/login emails
+(those are customer-triggered, not proactive) changed at all.
 
-The bucket, the migration, the route's actual logic, every frontend
-component — all genuinely fine, confirmed by the 192 real files already
-sitting in your bucket at the correct sizes. This was a single missing
-line in the access-control list, not a problem with the migration
-itself.
+## Your question about customer counts
 
-## The fix
-
-One line added to the PIN-gate's exclusion check in `server/index.js`:
-
-```diff
-- if (req.path.startsWith('/portal') || ... || req.path === '/health') return next();
-+ if (req.path.startsWith('/portal') || ... || req.path.startsWith('/uploads') || req.path === '/health') return next();
-```
+Checked the actual code rather than guess: **there's currently no
+"customer count" statistic anywhere in the app** — not on the Customers
+page, not on the Dashboard. So there's no existing logic (verified vs.
+just-captured) to tell you about. Worth knowing for whenever that gets
+built: since archiving is a soft flag and never deletes the row, any
+future count query will naturally include archived customers by default
+unless someone deliberately filters them out — exactly the behavior you
+asked for, no extra work needed on that front later.
 
 ## Verification performed
 
-Rebuilt the *actual* PIN-gate middleware (not a simplified stand-in) and
-ran a real end-to-end test against it:
-
-- Uploaded a real image with a valid staff auth token — confirmed it
-  still succeeds (this part was never broken).
-- Fetched the resulting `image_url` **with no Authorization header at
-  all** — exactly what a browser's `<img>` tag does — confirmed this now
-  returns `200` with the correct image bytes (this is the exact bug,
-  reproduced and confirmed fixed).
-- Confirmed a genuinely staff-only route (`/api/products`, the full
-  product list) **still correctly returns 401 with no auth** — the fix
-  only opens the one route that needs to be public, nothing else.
+- Real backend smoke test (seeded DB, real HTTP calls): confirmed a new
+  customer defaults to active; confirmed the default list (as the admin
+  UI actually calls it) excludes an archived customer; confirmed the
+  "show archived" list correctly reveals it; confirmed restore correctly
+  flips it back; confirmed the reminder job actually skips the archived
+  customer while still emailing the active one (real birthday-bonus
+  scenario, Resend call stubbed).
 - Real cold-clone build: fresh `git clone` → applied the full current
-  state of the repo (matching what you already have from the prior
-  bucket delivery) plus this fix → `npm install` → full project build
-  (client + portal + pos) — passed with no errors.
-- Re-ran the exact same end-to-end test a second time against the
-  cold-clone copy specifically.
-- Byte-for-byte diff confirms the zipped file matches what was tested.
+  repo state (matching what you already have) plus this feature →
+  `npm install` → full project build — passed with no errors.
+- Cross-checked every JSX tag in the modified `Customers.jsx` against its
+  imports before building — the exact check that would have caught the
+  Dashboard crash earlier, now a standing step for any JSX change.
+- Re-ran the smoke test a second time against the cold-clone copy
+  specifically.
+- Byte-for-byte diff confirms every file in this zip matches what was
+  cold-clone built and tested.
 
 ## To apply
 
@@ -70,16 +71,12 @@ cd /path/to/your/pawvy-app
 git checkout -- . && git clean -fd && git pull origin main
 ```
 
-Unzip this delivery's `server/index.js` into that folder (overwrite),
-then:
+Unzip this delivery's files into that folder (overwrite), then:
 
 ```bash
 git add .
-git commit -m "Hotfix: /api/uploads was still behind the staff PIN gate, breaking every image everywhere"
+git commit -m "Customers: add Active/Archived toggle, excluded from automated reminder emails"
 git push origin main
 ```
 
-Railway auto-deploys from `main`. No re-migration needed — your 192
-images are already safely in the bucket; this fix just lets everything
-actually *see* them. Should be visible everywhere (website, admin app,
-POS, Portal) immediately once deployed.
+Railway auto-deploys from `main` — no other steps needed.

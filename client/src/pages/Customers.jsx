@@ -18,9 +18,14 @@ export default function Customers() {
   const [busyId, setBusyId]       = useState(null);
   const [stampBusy, setStampBusy] = useState(false);
   const [copied, setCopied]       = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
 
-  const load = () => customerAdminApi.getAll().then(d => setCustomers(d.customers)).finally(() => setLoading(false));
-  useEffect(() => { load(); }, []);
+  const load = () => {
+    const q = {};
+    if (!showArchived) q.active = 'true';
+    customerAdminApi.getAll(q).then(d => setCustomers(d.customers)).finally(() => setLoading(false));
+  };
+  useEffect(() => { load(); }, [showArchived]);
 
   async function openDetail(row) {
     setDetailLoading(true);
@@ -67,7 +72,17 @@ export default function Customers() {
   }
 
   const cols = [
-    { key: 'name', label: 'Pawrent' },
+    {
+      key: 'name', label: 'Pawrent',
+      render: (v, row) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span>{v || '—'}</span>
+          {row.is_active === 0 && (
+            <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--cream-30)', background: 'rgba(245,242,235,.08)', padding: '1px 5px', borderRadius: 3 }}>ARCHIVED</span>
+          )}
+        </div>
+      ),
+    },
     { key: 'email', label: 'Email' },
     { key: 'phone', label: 'Phone' },
     {
@@ -108,6 +123,12 @@ export default function Customers() {
           </Btn>
           <Btn
             size="sm" variant="secondary"
+            onClick={(e) => { e.stopPropagation(); customerAdminApi.setActive(id, row.is_active === 0).then(load); }}
+          >
+            {row.is_active === 0 ? 'Restore' : 'Archive'}
+          </Btn>
+          <Btn
+            size="sm" variant="secondary"
             style={{ color: '#f87171', borderColor: 'rgba(248,113,113,.3)' }}
             onClick={(e) => {
               e.stopPropagation();
@@ -124,7 +145,14 @@ export default function Customers() {
   ];
 
   return (
-    <Page title="Customers" subtitle="Pawvy rewards accounts — signups from POS and (later) pawvy.co">
+    <Page title="Customers" subtitle={`Pawvy rewards accounts — signups from POS and pawvy.co${showArchived ? ' (including archived)' : ''}`}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontSize: 12, color: 'var(--cream-60)' }}>
+          <input type="checkbox" checked={showArchived} onChange={e => setShowArchived(e.target.checked)}
+            style={{ accentColor: 'var(--orange)', width: 14, height: 14 }} />
+          Show archived
+        </label>
+      </div>
       <Card>
         {loading ? (
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--cream-30)', fontSize: 13 }}>Loading…</div>
