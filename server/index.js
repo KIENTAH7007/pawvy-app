@@ -147,6 +147,13 @@ async function startServer() {
     path.join(__dirname, '..', 'client', 'dist'),  // Railway (built during deploy)
     path.join(__dirname, 'public'),                  // Pre-built (local Windows zip)
   ];
+  // Static brand assets referenced by absolute URL from outside this app
+  // (currently just the logo used in customer emails — see
+  // lib/customerEmails.js). Mounted outside /api, so the PIN gate never
+  // applies here; needs to stay public no matter what. Registered before
+  // the SPA catch-all below so this path is never swallowed by it.
+  app.use('/brand-assets', express.static(path.join(__dirname, '..', 'public-assets')));
+
   const clientBuild = candidates.find(p => fs.existsSync(path.join(p, 'index.html')));
 
   if (clientBuild) {

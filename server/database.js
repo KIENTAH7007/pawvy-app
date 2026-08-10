@@ -982,6 +982,18 @@ function createSchema() {
   // — see jobs/customerReminders.js) consider them at all.
   try { db.run("ALTER TABLE customers ADD COLUMN is_active INTEGER DEFAULT 1"); } catch(e) {}
 
+  // Tracks whether stripe_fee_amt reflects a real value confirmed from
+  // Stripe (1) or is still an unverified placeholder — either the $0
+  // written at webhook time when the fee wasn't available yet, or a
+  // manual guess KT typed into the Sales Ledger edit modal while
+  // waiting. server/jobs/stripeFeeRefresh.js only ever touches rows
+  // where this is 0 — once it successfully fetches the real fee, it
+  // overwrites stripe_fee_amt with the authoritative value and sets
+  // this to 1, so a correct manual guess just quietly stays the same
+  // number, and an incorrect one gets corrected — either way, no
+  // double-counting and no need for KT to remember to check back.
+  try { db.run("ALTER TABLE sales ADD COLUMN stripe_fee_confirmed INTEGER DEFAULT 0"); } catch(e) {}
+
   console.log('✅ Schema ready');
 }
 

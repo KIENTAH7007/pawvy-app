@@ -261,10 +261,9 @@ module.exports = function(db, inventoryRouter, stripeClient) {
   async function fetchStripeFeeAtWebhookTime(paymentIntentId, orderId) {
     const fee = await fetchStripeFee(stripeClient, paymentIntentId, { attempts: 3, delayMs: 1500 });
     if (fee === null) {
-      console.warn(`⚠️  Website order #${orderId}: Stripe fee not available yet (expected for PayNow) — server/jobs/stripeFeeRefresh.js will pick it up once settled.`);
-      return 0;
+      console.warn(`⚠️  Website order #${orderId}: Stripe fee not available yet — server/jobs/stripeFeeRefresh.js will pick it up once settled, or it can be entered manually in the Sales Ledger meanwhile (Aug 2026 — see the edit-details modal).`);
     }
-    return fee;
+    return fee; // null means "not available yet", not "zero fee" — caller decides what that means
   }
 
   // Commits a paid order exactly once: real `sales` rows, inventory
@@ -282,7 +281,9 @@ module.exports = function(db, inventoryRouter, stripeClient) {
     const items = db.query('SELECT * FROM website_order_items WHERE website_order_id = ?', [order.id]);
     const today = new Date().toISOString().slice(0, 10);
     const saleIds = [];
-    const stripeFee = await fetchStripeFeeAtWebhookTime(session.payment_intent, order.id);
+    const fetchedFee = await fetchStripeFeeAtWebhookTime(session.payment_intent, order.id);
+    const stripeFee = fetchedFee ?? 0;
+    const stripeFeeConfirmed = fetchedFee !== null ? 1 : 0;
 
     items.forEach((line, i) => {
       const product = db.queryOne('SELECT unit_cost FROM products WHERE id = ?', [line.product_id]);
@@ -291,10 +292,10 @@ module.exports = function(db, inventoryRouter, stripeClient) {
       const result = db.run(`
         INSERT INTO sales
           (date, product_id, partner_id, channel, market, qty, unit_cost, unit_price,
-           platform_fee_pct, platform_fee_amt, shipping_charged, shipping_cost, stripe_fee_amt, notes,
+           platform_fee_pct, platform_fee_amt, shipping_charged, shipping_cost, stripe_fee_amt, stripe_fee_confirmed, notes,
            mailing_name, mailing_address, mailing_phone, customer_email,
            pdpa_consent, pdpa_consent_text, pdpa_consent_at, website_order_id)
-        VALUES (?,?,?,?,?,?,?,?,0,?,?,0,?,?,?,?,?,?,?,?,?,?)
+        VALUES (?,?,?,?,?,?,?,?,0,?,?,0,?,?,?,?,?,?,?,?,?,?,?)
       `, [
         today, line.product_id, null, 'Direct Online Sale', 'SG', line.qty,
         product?.unit_cost || 0, line.unit_price,
@@ -306,10 +307,12 @@ module.exports = function(db, inventoryRouter, stripeClient) {
         // reduces profit but NOT revenue — same treatment as shipping_cost.
         // Both — like shipping_charged — are only carried on the first
         // line item of a multi-item order, to avoid double-counting when
-        // summing across rows.
+        // summing across rows. stripe_fee_confirmed follows the same
+        // first-item-only convention as the fee itself.
         isFirst ? order.buttons_redemption_value : 0,
         isFirst ? order.shipping_amount : 0,
         isFirst ? stripeFee : 0,
+        isFirst ? stripeFeeConfirmed : 1, // non-first rows have no fee to reconcile, so treat as already "confirmed" (nothing for the refresh job to do there)
         `Direct Online Sale #${order.id}`,
         order.customer_name || null, order.shipping_address || null, order.customer_phone || null,
         order.customer_email, order.pdpa_consent, order.pdpa_consent_text, order.created_at,

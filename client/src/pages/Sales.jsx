@@ -73,6 +73,7 @@ export default function Sales() {
       mailing_phone: s.mailing_phone || '',
       customer_email: s.customer_email || '',
       notes: s.notes || '',
+      stripe_fee_amt: s.stripe_fee_amt || '',
     });
   }
   async function saveEdit() {
@@ -206,11 +207,24 @@ export default function Sales() {
               {editModal.item_series}{editModal.variation ? ` · ${editModal.variation}` : ''} — {fmt.date(editModal.date)}
             </div>
             <div style={{fontSize:10.5,color:'var(--cream-30)',lineHeight:1.5}}>
-              Only shipping, mailing, email, and notes can be edited here — product, quantity,
-              price, and channel affect stock levels, so those still need a void + re-record.
-              PDPA consent itself isn't editable here — it's kept as a record of what the
+              Only shipping, mailing, email, notes{editModal.website_order_id ? ', and the Stripe fee' : ''} can be
+              edited here — product, quantity, price, and channel affect stock levels, so those still need a void +
+              re-record. PDPA consent itself isn't editable here — it's kept as a record of what the
               customer actually agreed to at checkout.
             </div>
+            {editModal.website_order_id && (
+              <div>
+                <Input label="Stripe Fee (SGD)" type="number" step="0.01"
+                  value={editForm.stripe_fee_amt} onChange={e=>setEditForm(f=>({...f,stripe_fee_amt:e.target.value}))}
+                  placeholder="Leave blank if not fetched yet" />
+                <div style={{fontSize:10,color:'var(--cream-30)',marginTop:4}}>
+                  If Stripe hasn't reported the real fee yet (common for PayNow), you can type in what you see on
+                  the Stripe Dashboard as a placeholder. Once Stripe's own fee settles — usually within a day or
+                  two — it's checked automatically overnight and corrected here if your guess was off. Never gets
+                  added on top of the real value either way.
+                </div>
+              </div>
+            )}
             <div style={{display:'flex',gap:10}}>
               <Input label="Shipping Charged (SGD)" type="number" step="0.01"
                 value={editForm.shipping_charged} onChange={e=>setEditForm(f=>({...f,shipping_charged:e.target.value}))} />
