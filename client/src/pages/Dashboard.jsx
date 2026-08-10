@@ -158,6 +158,36 @@ export default function Dashboard() {
   const year    = thisYear();
   const curYear = new Date().getFullYear();
 
+  // Top Partners / All Channels date range — defaults to YTD (matches
+  // the original behavior) but is now a real filter, not hardcoded.
+  // Same From/To date-input pattern as Reports.jsx, for consistency.
+  const [partnersFrom, setPartnersFrom] = useState(year.from);
+  const [partnersTo,   setPartnersTo]   = useState(year.to);
+  const [partnersLoading, setPartnersLoading] = useState(false);
+  const isYtdRange = partnersFrom === year.from && partnersTo === year.to;
+
+  function runPartnersRange() {
+    setPartnersLoading(true);
+    Promise.all([
+      partnerReportApi.top({ date_from: partnersFrom, date_to: partnersTo, limit: 10 }),
+      reportsApi.allChannels({ date_from: partnersFrom, date_to: partnersTo }),
+    ]).then(([pts, ac]) => {
+      setPartners(pts); setAllChannels(ac); setPartnersLoading(false);
+    }).catch(() => setPartnersLoading(false));
+  }
+
+  function resetPartnersToYtd() {
+    setPartnersFrom(year.from);
+    setPartnersTo(year.to);
+    setPartnersLoading(true);
+    Promise.all([
+      partnerReportApi.top({ date_from: year.from, date_to: year.to, limit: 10 }),
+      reportsApi.allChannels({ date_from: year.from, date_to: year.to }),
+    ]).then(([pts, ac]) => {
+      setPartners(pts); setAllChannels(ac); setPartnersLoading(false);
+    }).catch(() => setPartnersLoading(false));
+  }
+
   useEffect(() => {
     Promise.all([
       salesApi.summary({ date_from:period.from, date_to:period.to }),
@@ -217,7 +247,7 @@ export default function Dashboard() {
           sub="across all brands"/>
         <KpiCard label="Active Partners"
           value={loading?'…':String(partners.length||0)}
-          sub="ranked by YTD profit"/>
+          sub="ranked by profit, date range below"/>
       </div>
 
       {/* Brand selector row */}
@@ -314,10 +344,14 @@ export default function Dashboard() {
           <div style={{background:'var(--navy)',border:'1px solid var(--border)',borderRadius:'var(--radius)',overflow:'hidden'}}>
             <div style={{padding:'12px 16px',borderBottom:'1px solid var(--border)',display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8}}>
               <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:14,letterSpacing:1,color:'var(--cream)'}}>
-                {b2cMode ? 'ALL CHANNELS · YTD PROFIT RANKING' : 'TOP PARTNERS · YTD PROFIT RANKING'}
+                {b2cMode ? 'ALL CHANNELS' : 'TOP PARTNERS'} · {isYtdRange ? 'YTD' : 'CUSTOM RANGE'} PROFIT RANKING
               </span>
-              <div style={{display:'flex',alignItems:'center',gap:8}}>
-                <span style={{fontSize:10,color:'var(--cream-30)'}}>Jan – {new Date().toLocaleString('default',{month:'short'})} {curYear}</span>
+              <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                <Input type="date" value={partnersFrom} onChange={e=>setPartnersFrom(e.target.value)} style={{width:135}}/>
+                <span style={{fontSize:11,color:'var(--cream-30)'}}>to</span>
+                <Input type="date" value={partnersTo} onChange={e=>setPartnersTo(e.target.value)} style={{width:135}}/>
+                <Btn onClick={runPartnersRange} disabled={partnersLoading} size="sm">{partnersLoading?'…':'Apply'}</Btn>
+                {!isYtdRange && <Btn onClick={resetPartnersToYtd} disabled={partnersLoading} size="sm" variant="secondary">Reset to YTD</Btn>}
                 <div style={{display:'flex',borderRadius:6,overflow:'hidden',border:'1px solid var(--border)'}}>
                   {[['Partners','false'],['All Channels','true']].map(([label,val])=>(
                     <button key={val} onClick={()=>setB2cMode(val==='true')}
@@ -332,7 +366,7 @@ export default function Dashboard() {
               </div>
             </div>
             <div style={{overflowX:'auto'}}>
-              {loading ? <div style={{padding:30,textAlign:'center',color:'var(--cream-30)',fontSize:12}}>Loading…</div>
+              {(loading || partnersLoading) ? <div style={{padding:30,textAlign:'center',color:'var(--cream-30)',fontSize:12}}>Loading…</div>
               : (b2cMode ? allChannels : partners).length === 0
                 ? <div style={{padding:30,textAlign:'center',color:'var(--cream-30)',fontSize:12}}>No data yet</div>
                 : (

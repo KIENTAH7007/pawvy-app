@@ -935,6 +935,28 @@ function createSchema() {
   // campaigns where this is set and > 0.
   try { db.run("ALTER TABLE campaigns ADD COLUMN email_frequency_days INTEGER"); } catch(e) {}
 
+  // ── Indexes (Aug 2026) ──────────────────────────────────────────
+  // Purely additive — CREATE INDEX IF NOT EXISTS never changes existing
+  // data or query results, only how fast SQLite can find matching rows.
+  // Every filtered query the Sales Ledger, Dashboard, and Reports pages
+  // actually run was a full table scan until now (grep confirmed zero
+  // indexes existed anywhere in this schema). Added on the columns those
+  // WHERE clauses actually filter by — see server/routes/reports.js and
+  // server/routes/sales.js for the real queries these serve. No code
+  // changes needed anywhere else; SQLite picks these up automatically.
+  db.run('CREATE INDEX IF NOT EXISTS idx_sales_date ON sales(date)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_sales_partner_id ON sales(partner_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_sales_product_id ON sales(product_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_invoices_date ON invoices(date)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_invoices_partner_id ON invoices(partner_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_invoice_items_invoice_id ON invoice_items(invoice_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_invoice_items_product_id ON invoice_items(product_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_inventory_movements_date ON inventory_movements(date)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_inventory_movements_product_id ON inventory_movements(product_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_website_orders_customer_id ON website_orders(customer_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_website_order_items_order_id ON website_order_items(website_order_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_portal_orders_partner_id ON portal_orders(partner_id)');
+
   console.log('✅ Schema ready');
 }
 

@@ -1,30 +1,53 @@
-# Hide internal "Pawvy" brand from the public Shop filter
+# Database indexes + Dashboard Top Partners date range picker
 
 ## This delivery is for the App folder (`pawvy-app`) only
 
-Only one file changed: `server/routes/shop.js`.
+2 files changed: `server/database.js`, `client/src/pages/Dashboard.jsx`.
 
-## What changed
+## Indexes (`server/database.js`)
 
-`GET /api/shop/brands` (powers the Shop page's brand filter dropdown) now
-excludes internal-only brand entries via a new `WEBSITE_HIDDEN_BRAND_NAMES`
-list — same pattern already used for `WEBSITE_HIDDEN_BARCODES` (the
-groomer-size Lillidale exclusion) just above it in the same file. Currently
-just `['Pawvy']`. This only affects the public website's filter dropdown —
-`is_active`, POS, Portal, and the internal Pawvy App are all untouched.
+12 new indexes on the columns actually filtered by the Sales Ledger,
+Dashboard, and Reports queries (`date`, `partner_id`, `product_id` across
+`sales`, `invoices`, `invoice_items`, `inventory_movements`,
+`website_orders`, `website_order_items`, `portal_orders`). Purely
+additive (`CREATE INDEX IF NOT EXISTS`) — no data or query results
+change, only how fast SQLite can find matching rows as those tables grow
+over the years. No code changes needed anywhere else; every existing
+query that filters on these columns picks the index up automatically.
 
-Confirmed with you: the "Pawvy" brand has **no active products**, so
-nothing else needed changing — "All brands" (unfiltered) was already not
-showing anything under it.
+## Dashboard — Top Partners date range (`client/src/pages/Dashboard.jsx`)
+
+The `GET /api/reports/partners` endpoint was already fully date-range
+agnostic — the YTD restriction was purely a frontend default with no
+documented reasoning behind it (confirmed by reading the actual code, not
+guessed). So this needed zero backend changes.
+
+- Replaced the hardcoded "Jan – {month} YTD" label with a real From/To
+  date range picker, same `Input type="date"` pattern already used on
+  Reports.jsx, for consistency.
+- Defaults to YTD on page load (unchanged from before).
+- Header label switches between "YTD PROFIT RANKING" and "CUSTOM RANGE
+  PROFIT RANKING" depending on whether the selected range still matches
+  YTD exactly.
+- "Reset to YTD" button appears once you've changed the range, to get
+  back to the default in one click.
+- Applies to both the "Partners" and "All Channels" toggle views — same
+  date range drives both, since they're the same underlying report at a
+  different grouping.
 
 ## Verification performed
 
-- Real cold-clone build: fresh clone → applied this file → `npm install` —
-  clean.
-- Real smoke test: inserted a "Pawvy" row and an unrelated test brand into
-  a seeded DB copy, ran the actual filter logic, confirmed Pawvy is
-  excluded and the other brand (and all 6 real brands) are unaffected.
-- Byte-for-byte diff confirms the zipped file matches what was tested.
+- Real DB init test on a fresh clone: confirmed all 12 indexes are
+  created, and a sanity-check query (sum sales for a partner within a
+  date range) returns the identical correct result with indexes present
+  as it would without them — indexes only change speed, not correctness.
+- Real cold-clone build: fresh `git clone` → applied both files →
+  `npm install` (root + client) → `npm run build` (client) — passed with
+  no errors.
+- Re-ran the index verification a second time against the cold-clone
+  copy specifically, not just the working directory.
+- Byte-for-byte diff confirms both files in this zip match what was
+  cold-clone built and tested.
 
 ## To apply
 
@@ -33,11 +56,11 @@ cd /path/to/your/pawvy-app
 git checkout -- . && git clean -fd && git pull origin main
 ```
 
-Unzip this delivery's `server/routes/shop.js` into that folder (overwrite), then:
+Unzip this delivery's files into that folder (overwrite), then:
 
 ```bash
 git add .
-git commit -m "Shop: hide internal Pawvy brand from public filter dropdown"
+git commit -m "Add DB indexes for scaling; Dashboard Top Partners gets a real date range picker"
 git push origin main
 ```
 
