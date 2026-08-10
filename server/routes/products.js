@@ -293,16 +293,26 @@ module.exports = function(db) {
   // and POSTs it) — only what the SERVER does with it changed: decode →
   // upload to the bucket → store the resulting proxied URL in image_url.
   // image_data itself is no longer written for new uploads.
+  //
+  // If this product already had an image (i.e. this is a "Replace
+  // Image" rather than a first upload), the OLD bucket object is cleaned
+  // up too — the new one is uploaded first and only deleted after that
+  // succeeds, so a failed upload never leaves the product with no image
+  // at all.
   router.post('/:id/image', async (req, res) => {
     const { image_data } = req.body;
     if (!image_data) return res.status(400).json({ error: 'image_data required' });
     if (!image_data.startsWith('data:image/')) return res.status(400).json({ error: 'Must be a base64 image data URI' });
 
     try {
+      const existing = db.queryOne('SELECT image_url FROM products WHERE id = ?', [req.params.id]);
       const { buffer, contentType, extension } = decodeDataUrl(image_data);
       const { key, url } = buildImageKey('products', req.params.id, extension);
       await uploadBuffer(key, buffer, contentType);
       db.run('UPDATE products SET image_url = ?, image_data = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [url, req.params.id]);
+      if (existing?.image_url) {
+        deleteObject(existing.image_url.replace(/^\/api\/uploads\//, '')).catch(() => {});
+      }
       res.json({ ok: true, image_url: url });
     } catch (err) {
       res.status(502).json({ error: 'Image upload to storage failed: ' + err.message });

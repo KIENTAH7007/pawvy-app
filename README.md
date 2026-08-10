@@ -1,68 +1,39 @@
-# Customer accounts: Active/Archived toggle
+# Fix: replacing a product image now cleans up the old bucket file
 
 ## This delivery is for the App folder (`pawvy-app`) only
 
-5 files changed: `server/database.js`, `server/routes/customerAdmin.js`,
-`server/jobs/customerReminders.js`, `client/src/api.js`,
-`client/src/pages/Customers.jsx`.
+1 file changed: `server/routes/products.js`.
 
-## What this does
+## What was wrong
 
-Exact same pattern already used on Products & Pricing — a soft
-`is_active` toggle, not a delete:
+Found while answering your question about how bucket cleanup works: the
+product image "Replace Image" flow (Products & Pricing) was the one place
+that didn't clean up the old bucket file when a new one replaced it —
+banners and Instagram posts already did this correctly, products didn't.
+Not a broken feature exactly (the new image always displayed correctly),
+just a silent, growing pile of orphaned old files in the bucket every time
+a product photo got replaced rather than removed outright.
 
-- New `customers.is_active` column, defaults to active for every existing
-  and new row.
-- Customers page now defaults to showing only active accounts, with a
-  **"Show archived"** checkbox to reveal archived ones — identical UX to
-  Products & Pricing's archived toggle.
-- Archived customers get an **"ARCHIVED"** badge next to their name when
-  shown, same visual pattern as archived products.
-- New **Archive / Restore** button per row, kept separate from (and
-  before) the existing hard-delete button — archiving never removes the
-  row, so the account (BUTTONS balance, order history, everything) stays
-  completely intact.
-- **The two automated reminder jobs (BUTTONS expiry rollup, campaign/
-  birthday) now skip archived customers entirely** — both queries in
-  `server/jobs/customerReminders.js` gained an `AND c.is_active = 1`
-  clause alongside the existing `account_status = 'verified'` check.
+## The fix
 
-**Archiving doesn't affect anything else** — an archived customer can
-still log in, check out, and earn/redeem BUTTONS completely normally.
-It's purely: hidden from the admin list by default, and excluded from
-proactive marketing/reminder nudges. Nothing about verify/login emails
-(those are customer-triggered, not proactive) changed at all.
-
-## Your question about customer counts
-
-Checked the actual code rather than guess: **there's currently no
-"customer count" statistic anywhere in the app** — not on the Customers
-page, not on the Dashboard. So there's no existing logic (verified vs.
-just-captured) to tell you about. Worth knowing for whenever that gets
-built: since archiving is a soft flag and never deletes the row, any
-future count query will naturally include archived customers by default
-unless someone deliberately filters them out — exactly the behavior you
-asked for, no extra work needed on that front later.
+`POST /:id/image` now looks up the product's current `image_url` before
+uploading, and — **only after the new upload succeeds** — deletes the old
+bucket object. Order matters here: if the new upload ever failed, the old
+image stays untouched rather than the product ending up with no image at
+all.
 
 ## Verification performed
 
-- Real backend smoke test (seeded DB, real HTTP calls): confirmed a new
-  customer defaults to active; confirmed the default list (as the admin
-  UI actually calls it) excludes an archived customer; confirmed the
-  "show archived" list correctly reveals it; confirmed restore correctly
-  flips it back; confirmed the reminder job actually skips the archived
-  customer while still emailing the active one (real birthday-bonus
-  scenario, Resend call stubbed).
+- Real test: uploaded an image, replaced it with a second one, confirmed
+  the bucket ends up with exactly 1 object (not 2), confirmed the
+  database points at the new URL, and confirmed the new image is still
+  actually servable through the proxy route after the swap.
 - Real cold-clone build: fresh `git clone` → applied the full current
-  repo state (matching what you already have) plus this feature →
+  repo state (matching what you already have) plus this fix →
   `npm install` → full project build — passed with no errors.
-- Cross-checked every JSX tag in the modified `Customers.jsx` against its
-  imports before building — the exact check that would have caught the
-  Dashboard crash earlier, now a standing step for any JSX change.
-- Re-ran the smoke test a second time against the cold-clone copy
+- Re-ran the same test a second time against the cold-clone copy
   specifically.
-- Byte-for-byte diff confirms every file in this zip matches what was
-  cold-clone built and tested.
+- Byte-for-byte diff confirms the zipped file matches what was tested.
 
 ## To apply
 
@@ -71,12 +42,16 @@ cd /path/to/your/pawvy-app
 git checkout -- . && git clean -fd && git pull origin main
 ```
 
-Unzip this delivery's files into that folder (overwrite), then:
+Unzip this delivery's `server/routes/products.js` into that folder
+(overwrite), then:
 
 ```bash
 git add .
-git commit -m "Customers: add Active/Archived toggle, excluded from automated reminder emails"
+git commit -m "Fix: replacing a product image now cleans up the old bucket file"
 git push origin main
 ```
 
-Railway auto-deploys from `main` — no other steps needed.
+Railway auto-deploys from `main`. Nothing to migrate or clean up
+retroactively — any already-orphaned files from before this fix are
+tiny (fractions of a cent each) and not worth chasing down; this just
+stops new ones from accumulating going forward.
