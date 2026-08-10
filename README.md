@@ -1,36 +1,44 @@
-# Fix: POS and Order Portal New badges now match the website
+# Hide internal "Pawvy" brand from the public Shop filter
 
-## What was wrong
-These two badges were styled separately from the website's — inline
-`<span>`/`<div>` styles, not the shared CSS class the website uses — so
-when the website's badge got bigger and switched to orange, these two
-were never touched and stayed small and blue.
+## This delivery is for the App folder (`pawvy-app`) only
 
-## What changed (2 files)
+Only one file changed: `server/routes/shop.js`.
 
-### `pos/src/ProductCard.jsx`
-Font size, padding, and background now match the website's `.new-tag`
-exactly (12.5px, 6px×14px padding, Pawvy Orange, cream text, subtle
-orange-tinted shadow).
+## What changed
 
-### `portal/src/ProductCard.jsx`
-Same sizing, but kept the **text color as navy**, not cream — this
-card already has a "Top Seller" badge (orange background, navy text)
-sitting right next to where New shows up. Matching that sibling
-badge's own convention means two orange pills on the same card read
-as one consistent design, rather than looking like two different
-components that happened to end up the same color.
+`GET /api/shop/brands` (powers the Shop page's brand filter dropdown) now
+excludes internal-only brand entries via a new `WEBSITE_HIDDEN_BRAND_NAMES`
+list — same pattern already used for `WEBSITE_HIDDEN_BARCODES` (the
+groomer-size Lillidale exclusion) just above it in the same file. Currently
+just `['Pawvy']`. This only affects the public website's filter dropdown —
+`is_active`, POS, Portal, and the internal Pawvy App are all untouched.
 
-## Verified
-- Both POS and Order Portal build clean, locally and from a genuine
-  fresh cold-clone simulation.
-- Confirmed the exact pixel values match the website's `.new-tag` rule
-  directly, not just "similar."
+Confirmed with you: the "Pawvy" brand has **no active products**, so
+nothing else needed changing — "All brands" (unfiltered) was already not
+showing anything under it.
+
+## Verification performed
+
+- Real cold-clone build: fresh clone → applied this file → `npm install` —
+  clean.
+- Real smoke test: inserted a "Pawvy" row and an unrelated test brand into
+  a seeded DB copy, ran the actual filter logic, confirmed Pawvy is
+  excluded and the other brand (and all 6 real brands) are unaffected.
+- Byte-for-byte diff confirms the zipped file matches what was tested.
 
 ## To apply
-1. `git checkout main`
-2. `git pull origin main`
-3. Unzip this delivery on top of your local `pawvy-app` folder
-4. `git add -A`
-5. `git commit -m "POS/Portal: New badge size and color now match the website"`
-6. `git push origin main`
+
+```bash
+cd /path/to/your/pawvy-app
+git checkout -- . && git clean -fd && git pull origin main
+```
+
+Unzip this delivery's `server/routes/shop.js` into that folder (overwrite), then:
+
+```bash
+git add .
+git commit -m "Shop: hide internal Pawvy brand from public filter dropdown"
+git push origin main
+```
+
+Railway auto-deploys from `main` — no other steps needed.

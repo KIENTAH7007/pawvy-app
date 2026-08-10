@@ -28,6 +28,13 @@ const { withEffectivePrice, stockStatus } = require('../lib/pricing');
 //   customers, just not browsable/orderable on the public website.
 const WEBSITE_HIDDEN_BARCODES = ['5060518442339'];
 
+// Internal-only brand entries (e.g. "Pawvy" — used for internal supplies/
+// packaging SKUs, not something a customer shops for) that should never
+// appear in the public Shop filter dropdown. Same exclusion pattern as
+// WEBSITE_HIDDEN_BARCODES above: hide from the public website only, not
+// from is_active or any other route — Pawvy App/POS/Portal are untouched.
+const WEBSITE_HIDDEN_BRAND_NAMES = ['Pawvy'];
+
 module.exports = function(db) {
   const router = Router();
 
@@ -92,7 +99,9 @@ module.exports = function(db) {
 
   // GET /api/shop/brands — for a brand filter on the shop page.
   router.get('/brands', (req, res) => {
-    res.json({ brands: db.query('SELECT id, name, color FROM brands ORDER BY name') });
+    const brands = db.query('SELECT id, name, color FROM brands ORDER BY name')
+      .filter(b => !WEBSITE_HIDDEN_BRAND_NAMES.includes(b.name));
+    res.json({ brands });
   });
 
   // GET /api/shop/top-sellers — powers the cart upsell section. Ranked by
