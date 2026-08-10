@@ -10,6 +10,7 @@ const { runDailyDigest } = require('./jobs/dailyDigest');
 const { runDailyBackup } = require('./jobs/backup');
 const { runAutoRestock } = require('./jobs/autoRestock');
 const { runButtonsHoldCheck } = require('./jobs/buttonsHold');
+const { runStripeFeeRefresh } = require('./jobs/stripeFeeRefresh');
 const { runCustomerReminders } = require('./jobs/customerReminders');
 
 // Railway's container has no outbound IPv6 route — confirmed via a live
@@ -190,6 +191,16 @@ async function startServer() {
   cron.schedule('0 4 * * *', () => {
     console.log('⏰ Running BUTTONS hold check…');
     runButtonsHoldCheck(db).catch(err => console.error('⚠️  BUTTONS hold check failed:', err.message));
+  }, { timezone: 'Asia/Singapore' });
+
+  // Catches Stripe fees (mainly PayNow) that weren't available yet when
+  // the checkout webhook ran — see jobs/stripeFeeRefresh.js for why this
+  // needs its own daily pass rather than just retrying harder at webhook
+  // time. No particular ordering dependency with the other jobs, so this
+  // slot (6am) is just "sometime in the early-morning batch."
+  cron.schedule('0 6 * * *', () => {
+    console.log('⏰ Running Stripe fee refresh…');
+    runStripeFeeRefresh(db, stripe).catch(err => console.error('⚠️  Stripe fee refresh failed:', err.message));
   }, { timezone: 'Asia/Singapore' });
 
   // Runs after the hold check (4am) so any batch that just flipped

@@ -76,16 +76,37 @@ const BRAND_NAVY = '#14213D';
 const BRAND_ORANGE = '#F36F4A';
 const BRAND_CREAM = '#F5F2EB';
 
+// Base64-embedded logo (Aug 2026) — small, single file, reused across
+// every email, so this is a completely different situation from the
+// hundreds-of-product-images base64 bloat problem fixed elsewhere in
+// this app. Inlined deliberately rather than linked to a hosted URL:
+// (1) many email clients block external images by default until the
+// recipient clicks "show images" — inlining shows the logo immediately;
+// (2) avoids depending on pawvy.co being live, the same trap that broke
+// social-share image previews before the domain was pointed. Source:
+// the same real transparent white wordmark already used on the
+// website's own nav bar/footer (public/pawvy-logo-white.png), resized
+// to 101x32 for email use.
+const LOGO_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAGUAAAAgCAYAAAAL6bYQAAAJz0lEQVR4nO2ae8yXZRnHP9fv93s5mBokoGgKSpZB4CGdRVNbsxrEnOmW67Rs2R9tDVvrTKsxt8I2sVVuLM11kgZbkNgfIoiQ5zMmAqLoCAnHIQ6iL77v7/f79sd13Tz3+/D83ve1ErZ4r+3ZfT/3dV/34Trf9/NAgCSTVIv6REm3SZod73WG4MhCSSCzJe2Qw9xoaxzdFR5b0JBkQM3MWpJuA74CCGgBzaO6umMUGhQCmY8LpDdwXUA9rKQhKadrmZkYgrcPJH0i3FWPpLak3nj/9tFe27EIjbCEn+AuqwZYlACXSjoA1IF2PMOBe8xsg6SambXzAcMd1gGZWesI7eP/CyRdHlbRVgFtSS1Vwy5J4yV1xdOIJ7m6IfgvoQFcGfU2oeG4tVjUm1FvRv95Zra904CSRgNfBV4xs4WSrL/4E5ZFzHGoGWAwcSvRd+rbaf5s3kraMt1A8/TXbzC0eZ8GcH5aG4VAuoENwFQ84AsXmAFXS5qKu7h8EsMztouBc2Kid5jZrZLqVa6s5P6qGJPcYLsCZ74Hx5XnyDdZZkrZ7ebvZbq8LOOr1pvWkNNktIfxoWIfhqTnwy01w23tkHR+dLhU0v6SaxsMvBHlr2Ocjm5N0ghJJ0uaIOlsSZMkjcs1WXGG6kDfGADf1aHdwv1W0lbRdRqrYtxGqa0rx3egaxyik/RiMLAnykXRPjLKVZnQJI81vf08Sbi7JE2OMWqlBdSj/KKkLZL2SOqWdDDK3ZLWSVqQKUg63Fo8J0laFuvfJOlmeVyrBX6UpJWSNkt6IARuMcZnJa2XtFGulN9Ic4RC3B10ayQdJ+nCWM8LkpbLY6pl46W1fV3ShqCdK+lESc/E+3OSvpbNY1G+U9Li2MMLkm7IhZKY+aKksUE8UdKr0T5Ya0kJwqOdNCPbxOpBjNcj6cvZZhpR/35F30uyOc4o4eZmuCdKuO2SRgTu2hLuFEmXlNrmZNqdBDNarlAJFksaLmlrifZMuUCGBd0PS/hv5Rqc6pOAhyX9AXgAODnaK82uAhRPj5z5/dF14wlGC9gL/BG4Hbg/8E08pt0q6X3hd5Mv/3TQpWSkFW3JErcCz2bjTwjcSGB0tDejPA4YE+OeFf3bwIvATuBh4OVsrMuib5uCbxfhx4U3432hmb0JfDPbK8B1EWNasZbrsvWvBebnltIulerwPhCkg+dNwYTD4okKS1me0f2t1OcquZUkt/rjDHdONs8muauU3B0dihOSFmXjr4m28ZJei7aeDH9B4O/I2pZlc96S8WO3pFHR3hXlvAy/U+6Wkot6NHAtSdvkbs0kXVNax5VkUs7BSlqUsrIWhWZ2gtS/BdyWtQ0GavKYMEyepSwBHqHI/iZlfWfh6Tkxz9NRfy9wQZZZPZnRnBHlGOD4qD9Gcb93apRnZjRPZ/WlUbaAdwEfjPfEj2Q9Bqwws31AV6xlTkZ7KnBVWMvsoG8AjwJ3Sqp1ylpq0THh0yk9pcWdoBZ9vhsn/npVOtsB0rhpkVCYfFKUFKOuzOj+Cjye9ctxa7P6KXJ3kdxxE7gX6In3JJTTM5qnYs4a8CDwSra2ywDMrCnpNOBcCgEtjXW2gwcrgZUUCvZ5+bFiOsUx5AchKOuYSgYkhq4Crga+AGyLgXJmp/d9wGwzu0kdzib9QK+Ztcys18zelPQe4EO4doH7dHBruCjqu4GNuJYlmKXi+88GCsGOwAUyPt4P4pZ4MN5Pkwf7sWk9wHNRb5hZN3B3Ns+lWf3DwEicuXuAe1PcyPrMoRDadDx+pph0j5mtSjwbSChJQy8A1prZHcACCheVoBWD32Jmv5TU9RYFImC8/MrnY/IU9V7gBArhJ/8+ExgW9Sdj3nUUAXYKrrUA/6QQJrgLSxaxH/g7nmCAC+t0PFiDJwpbop7WsCQb6/yITwZcnrWvMrN/BYMVN/B1M3ss6A1XkGnZ3udk9OTZUZVbSm2jgPmhgbfEYrs4/HvLS9HnrV7rt3ELWIEL42acgRbz3Ghmyb9fkdEtMbOmmW2msBZLfUIx1mX9zwbeHfVduNB2xvspsYYE682sN/aTFOx+4NWonwicFxZxWUa3JATV59oo2n5EYZk9OP8XmdkTuWep4WbazMry0wrcR4DRZrYH+FwM3qD4/gLw+v/4Zvhl4Hoz+15kKxNwl5ZgVmRFvwLGUSjDFZkLeyrrP5lCKNuCodvifSyFheV06aqlbmYHgOVZn4sljaEQ5n48yPdxXRFXa2a2HrgL53sNV8afqXSWawBfwvP0gbTbgG75PdFDkmYCv882mS40/xOoAZuAn+K+eT8ukKfNrDvSziYwAzf9Zsw1qzROOiNNAz4APIO7qARTgZOivqVUjgUuzPomy0x8SYxbivMMPLZ9kiIhWmNmOzvE03QDsCsbrw3sDaEf4n8D+DkwkSILKEMKRjuA6WbWltQws/skXQh8B/gMLpwpFfSDAQO2m9lvy4jkPmLhV2X9U1xLm0mZYbrN/hQulI14sB8JnEehOC9FuTnKcXjABrf+5PbS+InJq3GXNzbGOzFbbpXrKjbpeyif2w5XZPnd02BgecakPvdZcRj6uOKao2yOFXOmw93d2fgPyK8t0jeauvr+0HGqpNflB7C2pBslvV/SVElTJE2WtFbFYfeRoGvI77kSJPqrAz8za0+wWcWhML8YTXtfGGM0M5oDksZ32r+K66EF0b8pPzROKvOzhgeclNKq4knB/I4o09V1O5hWN7P9ZrbCzO4P3GADfZ0idtXMrAk0I3in/wDSYmdSXGMYsNjMNpjZs2b2XPjr+6LvQeBcSVNizOdxTe+O0oB/RN+tUeb451OQL+0ld2HJKg8G7x40s+1y997f/hvZnvOvvIcgZV+dnvQdZQdwZ7Z4X2GR8llo9kApdnlz+2ORjajnuDLMiLWMxF3OhpizruJq5S6KlHMExVliVUbbhafBL4VGb8Ezqq7A1/EssGotraBZgWduw2OeGvC7wA3Eg12x3+E4f18rdxjo8207+vzCzPbJY8lhvx1VHJQGgpT3X4+flA34c7SVtSyNewOe9vYCy8zsDRUfklpRXyVPQKbhGpzOFQvwQ91pMd5qM9udrFzSDPysUcMF9KfYV5+9Zh+89kr6KJ5oDMMt6y+B6/RbVtrHPNxKTwAeN7NXg644jOvwC8kEyV9ulnS84htAP4w+ZuDt5kMnS8k/0V5rZgf01u6xBgUq/nwBaPc3frin2kB9Ixgnph36P019s54+9KWx+9BVQVhMTjPoP3dKe66mK1lK/s+XVHxcGvqX+EiC/HtEs5Te7ZV0TeCHfhs60iD/6JJgj6TfSDorcEMWchSggad3Ah4CVprZy0Dl7zBDcGTg37Whz6y4v5CUAAAAAElFTkSuQmCC';
+
 function emailShell({ statusBand, bodyHtml }) {
+  // No border-radius/overflow:hidden on the outer table (Aug 2026 fix) —
+  // that combination isn't reliably supported across email clients
+  // (particularly Gmail/Outlook), and was the actual cause of the thin
+  // white lines KT spotted at the navy/orange and white/navy seams: the
+  // client fails to clip the rounded corners cleanly and lets slivers of
+  // the outer #F2F2F2 background show through at the row boundaries.
+  // Plain rectangular corners render correctly everywhere — standard
+  // "bulletproof email HTML" practice, not just this app's workaround.
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"></head>
   <body style="margin:0;padding:0;background:#F2F2F2;font-family:Arial,Helvetica,sans-serif;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F2F2F2;padding:32px 0;">
   <tr><td align="center">
-  <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:10px;overflow:hidden;">
+  <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;">
 
     <tr>
       <td style="background:${BRAND_NAVY};padding:28px 32px;text-align:center;">
-        <span style="font-family:Georgia,'Times New Roman',serif;font-size:26px;letter-spacing:2px;color:#ffffff;font-weight:bold;">PAWVY</span>
+        <img src="data:image/png;base64,${LOGO_BASE64}" width="101" height="32" alt="Pawvy" style="display:inline-block;border:0;" />
       </td>
     </tr>
 
@@ -176,10 +197,10 @@ function buildReceiptEmail(order, items) {
   const redemptionHtml = order.buttons_redemption_value > 0
     ? `<tr><td style="padding:6px 0;font-family:Arial,sans-serif;font-size:13px;color:${BRAND_ORANGE};">BUTTONS redeemed (${order.buttons_redeemed}B)</td><td align="right" style="padding:6px 0;font-family:Arial,sans-serif;font-size:13px;color:${BRAND_ORANGE};">-$${order.buttons_redemption_value.toFixed(2)}</td></tr>` : '';
 
-  const text = `Hi ${order.customer_name || 'there'},\n\nThanks for your order! Here's your receipt for Order #${order.id}:\n\n${itemsText}\n\nSubtotal: $${order.subtotal.toFixed(2)}\nShipping: $${order.shipping_amount.toFixed(2)}${redemptionLine}\nTotal paid: $${order.total_amount.toFixed(2)}\n\nWe'll get this packed and shipped soon. Thanks for shopping with Pawvy!`;
+  const text = `Hi ${order.customer_name || 'there'},\n\nThanks for your order! Here's your receipt:\n\n${itemsText}\n\nSubtotal: $${order.subtotal.toFixed(2)}\nShipping: $${order.shipping_amount.toFixed(2)}${redemptionLine}\nTotal paid: $${order.total_amount.toFixed(2)}\n\nWe'll get this packed and shipped soon. Thanks for shopping with Pawvy!`;
   const bodyHtml = `
     <h1 style="margin:0 0 16px;font-family:Georgia,'Times New Roman',serif;font-size:22px;color:${BRAND_NAVY};">Thanks for your order, ${order.customer_name || 'there'}!</h1>
-    <p style="margin:0 0 20px;font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#2B2B2B;">Here's your receipt for <strong>Order #${order.id}</strong>.</p>
+    <p style="margin:0 0 20px;font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#2B2B2B;">Here's your receipt for your order.</p>
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:16px;">
       ${itemsRowsHtml}
       <tr><td colspan="2" style="border-top:1px solid #EEE;padding-top:10px;"></td></tr>
@@ -190,7 +211,7 @@ function buildReceiptEmail(order, items) {
     </table>
     <p style="margin:0;font-family:Arial,sans-serif;font-size:13px;line-height:1.6;color:#6B7280;">We'll get this packed and shipped soon. Thanks for shopping with Pawvy!</p>
   `;
-  const html = emailShell({ statusBand: `ORDER #${order.id} CONFIRMED`, bodyHtml });
+  const html = emailShell({ statusBand: 'ORDER CONFIRMED', bodyHtml });
   return { subject: `Your Pawvy order #${order.id} is confirmed`, text, html };
 }
 

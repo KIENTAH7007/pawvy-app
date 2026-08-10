@@ -4,6 +4,7 @@ const { previewRedemption, redeemButtons, recordPurchaseButtons } = require('../
 const { upsertCustomerFromSignup } = require('../lib/customers');
 const { notifyNewWebsiteOrder, sendCustomerEmail } = require('../utils/notify');
 const { buildReceiptEmail, buildVerifyEmail, baseUrl } = require('../lib/customerEmails');
+const { fetchStripeFee } = require('../lib/stripeFees');
 
 // Real B2C checkout for pawvy.co, paid via Stripe Checkout (card + PayNow).
 // Mounted at /api/checkout, added to the PIN-gate exclusion list in
@@ -244,37 +245,26 @@ module.exports = function(db, inventoryRouter, stripeClient) {
     }
   });
 
-  // Best-effort fetch of Stripe's real processing fee for this payment.
-  // The fee only exists once the underlying Charge's balance_transaction is
-  // computed — this is sometimes not instant, especially for PayNow (an
-  // inherently async payment method). Retries a couple of times with a
-  // short delay before giving up, since in practice this is usually just a
-  // race against Stripe's own internal ledger catching up, not a real
-  // failure. Never blocks or fails fulfillment: on any problem this logs a
-  // warning and returns 0, so KT can cross-check that specific order
-  // against the Stripe Dashboard rather than checkout silently breaking
-  // over a reporting detail.
-  async function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
-
-  async function fetchStripeFee(paymentIntentId, orderId) {
-    if (!paymentIntentId) return 0;
-    const MAX_ATTEMPTS = 3;
-    const DELAY_MS = 1500;
-
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-      try {
-        const pi = await stripeClient.paymentIntents.retrieve(paymentIntentId, {
-          expand: ['latest_charge.balance_transaction'],
-        });
-        const feeCents = pi?.latest_charge?.balance_transaction?.fee;
-        if (typeof feeCents === 'number') return Math.round(feeCents) / 100;
-      } catch (err) {
-        console.warn(`⚠️  Website order #${orderId}: Stripe fee fetch attempt ${attempt} failed — ${err.message}`);
-      }
-      if (attempt < MAX_ATTEMPTS) await sleep(DELAY_MS);
+  // Best-effort fetch of Stripe's real processing fee for this payment,
+  // right at webhook time. This works fine for card payments (fee is
+  // almost always available within a second or two of the charge). For
+  // PayNow specifically, it usually WON'T be available yet — confirmed
+  // against a real transaction where the fee only settled ~2 days later
+  // (Stripe's own "Funds available" timestamp) — a few seconds of retry
+  // here was never going to close a 2-day gap. That's expected, not a
+  // bug: server/jobs/stripeFeeRefresh.js runs daily and catches exactly
+  // this case, updating the sales row once the fee is actually available.
+  // This function still runs first because it's free to try, and does
+  // catch the (common, card-payment) case where the fee IS ready
+  // immediately — no reason to always wait a full day for something
+  // that's often already available.
+  async function fetchStripeFeeAtWebhookTime(paymentIntentId, orderId) {
+    const fee = await fetchStripeFee(stripeClient, paymentIntentId, { attempts: 3, delayMs: 1500 });
+    if (fee === null) {
+      console.warn(`⚠️  Website order #${orderId}: Stripe fee not available yet (expected for PayNow) — server/jobs/stripeFeeRefresh.js will pick it up once settled.`);
+      return 0;
     }
-    console.warn(`⚠️  Website order #${orderId}: Stripe fee still not available after ${MAX_ATTEMPTS} attempts — recorded as $0, check Stripe Dashboard if this matters for reconciliation.`);
-    return 0;
+    return fee;
   }
 
   // Commits a paid order exactly once: real `sales` rows, inventory
@@ -292,7 +282,7 @@ module.exports = function(db, inventoryRouter, stripeClient) {
     const items = db.query('SELECT * FROM website_order_items WHERE website_order_id = ?', [order.id]);
     const today = new Date().toISOString().slice(0, 10);
     const saleIds = [];
-    const stripeFee = await fetchStripeFee(session.payment_intent, order.id);
+    const stripeFee = await fetchStripeFeeAtWebhookTime(session.payment_intent, order.id);
 
     items.forEach((line, i) => {
       const product = db.queryOne('SELECT unit_cost FROM products WHERE id = ?', [line.product_id]);
