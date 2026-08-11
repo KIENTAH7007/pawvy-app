@@ -1,50 +1,64 @@
-# Email dark-mode color inversion — partial mitigation, honest limitation
+# Email dark mode — corrected fix for Outlook/Hotmail specifically
 
 ## This delivery is for the App folder (`pawvy-app`) only
 
 1 file changed: `server/lib/customerEmails.js`.
 
-## What was happening
+## Correcting the last delivery
 
-Your screenshot showed the navy header looking washed-out and the white
-content section rendering with a black background and light text — that's
-Gmail's mobile app automatically trying to "dark-mode-ify" the email,
-inconsistently inverting colors it wasn't designed to touch.
+The previous "dark mode" fix targeted Gmail — wrong client. The actual
+recipient in your test was `ktheland@hotmail.com`, which routes through
+Outlook.com, not Gmail. That was visible in the very first screenshot
+and should have been caught then. This delivery targets the actual
+client.
 
-## Important: this is a genuine limitation, not something fully fixable
+## What's different about Outlook/Hotmail specifically
 
-Checked real, current sources before touching anything (not assumed).
-Confirmed: Gmail's mobile apps specifically **ignore** the standard meta
-tags and CSS media queries that let an email declare "this design is
-intentional, don't invert it" — those work fine on Apple Mail,
-Outlook.com, and Yahoo Mail, just not reliably on Gmail mobile. Multiple
-current sources describe Gmail's behavior here as inconsistent even
-across different emails from the same sender, with "no clear pattern
-across devices or accounts."
-
-**So: this delivery is a real, standard improvement — not a guaranteed
-fix.** It should measurably help on Apple Mail/Outlook.com/Yahoo, and
-costs nothing on Gmail even if Gmail keeps ignoring it.
+Checked real, current sources (Microsoft's own support forums included)
+before touching anything again. Outlook.com is documented as using
+**"full inversion"** — more aggressive than most clients, since it can
+flip already-dark sections (like your navy header) back to light too,
+not just light sections to dark. When Outlook.com inverts an element, it
+tags that specific element with its own `data-ogsc` (original style
+color) / `data-ogsb` (original style background) attributes — this is
+the actual mechanism, and it's the same thing Microsoft's own Q&A
+threads point developers to for fighting it back.
 
 ## The fix
 
-Added two standard meta tags to the email shell (shared by all 6 email
-types):
+Added a `<style>` block targeting those exact attributes, forcing each
+section's real color back with `!important`:
 
-```html
-<meta name="color-scheme" content="light">
-<meta name="supported-color-schemes" content="light">
+```css
+[data-ogsc] .pv-navy, [data-ogsb] .pv-navy { background-color: #14213D !important; color: #ffffff !important; }
+[data-ogsc] .pv-orange, [data-ogsb] .pv-orange { background-color: #F36F4A !important; color: #ffffff !important; }
+[data-ogsc] .pv-white, [data-ogsb] .pv-white { background-color: #ffffff !important; color: #2B2B2B !important; }
 ```
 
-This tells any client that respects it: this email is deliberately
-designed with its own navy/orange/white palette — treat it as light-mode
-content, don't apply automatic dark-mode color inversion.
+Each table cell in the email shell now carries the matching class
+(`pv-navy`, `pv-orange`, `pv-white`) so this can target them precisely.
+Kept the `color-scheme` meta tags from before too — harmless, and still
+helps other clients (Apple Mail, Yahoo) treat this as an intentional
+design.
+
+## Still being honest about the limits
+
+Microsoft's own support forums describe Outlook's dark-mode behavior as
+"particularly unique" and inconsistent across desktop/web/mobile
+versions and account types. This is the real, specifically-targeted
+technique for Outlook.com's actual mechanism — not a generic guess like
+last time — but genuinely can't promise 100% across every Outlook
+surface (classic Windows Outlook uses an entirely different, Word-based
+rendering engine with its own separate quirks).
 
 ## Verification performed
 
-- Confirmed the meta tags appear correctly in the actual generated HTML
-  across multiple email types (Receipt and Verify checked directly, both
-  share the same underlying shell as all 6 types).
+- Confirmed the `[data-ogsc]`/`[data-ogsb]` override rules are present
+  with the correct real hex values (`#14213D`, `#F36F4A`).
+- Confirmed each of the 4 colored sections (header, orange band, white
+  content, footer) is correctly tagged with its matching class.
+- Confirmed this applies across email types — checked on a second type
+  (Verify) in addition to Receipt, both share the same underlying shell.
 - Real cold-clone build: fresh `git clone` → applied the file →
   `npm install` → full project build — passed with no errors.
 - Byte-for-byte diff confirms the file in this zip matches what was
@@ -62,13 +76,10 @@ Unzip this delivery's `server/lib/customerEmails.js` into that folder
 
 ```bash
 git add .
-git commit -m "Email: declare light color-scheme to reduce dark-mode color inversion"
+git commit -m "Email: targeted fix for Outlook.com/Hotmail dark-mode color inversion"
 git push origin main
 ```
 
-Railway auto-deploys from `main`. Worth checking how this looks in Gmail
-specifically after deploying — if it's still inconsistent there, that's
-expected given Gmail's documented behavior, not something to keep trying
-to patch further without a fundamentally different approach (e.g.
-designing an actual dark-mode variant, which Gmail mobile still wouldn't
-reliably use anyway).
+Railway auto-deploys from `main`. Worth testing with another email to
+that same Hotmail address once deployed, since that's the actual client
+this needed to work for.

@@ -97,45 +97,62 @@ function emailShell({ statusBand, bodyHtml }) {
   // the outer #F2F2F2 background show through at the row boundaries.
   // Plain rectangular corners render correctly everywhere — standard
   // "bulletproof email HTML" practice, not just this app's workaround.
-  // color-scheme/supported-color-schemes (Aug 2026): tells email clients
-  // this design is intentional, not "unstyled light content that should
-  // get auto-dark-mode-ified." Confirmed via real research before
-  // shipping this (not assumed): Apple Mail, Outlook.com, and Yahoo Mail
-  // respect this and will stop forcibly inverting the navy/orange/white
-  // design. Gmail's MOBILE apps specifically are documented to ignore
-  // this meta tag — their automatic dark-mode color inversion is known
-  // to be inconsistent even across the same client, so this genuinely
-  // can't be guaranteed fixed the way the logo/white-line issues were.
-  // Still worth shipping: real improvement for every other major client,
-  // zero downside where Gmail ignores it.
+  // color-scheme/supported-color-schemes: helps Apple Mail, Yahoo, and
+  // some Outlook versions treat this as an intentional design rather
+  // than "unstyled light content to auto-dark-mode." Real but limited —
+  // see the [data-ogsc]/[data-ogsb] block below for the part that
+  // actually matters for Outlook.com/Hotmail specifically.
+  //
+  // Outlook.com/Hotmail fix (Aug 2026, corrected — the first attempt at
+  // this targeted the wrong client entirely; the actual complaint was
+  // Outlook/Hotmail, not Gmail): confirmed via real research that
+  // Outlook.com uses "full inversion," documented as more aggressive
+  // than most other clients — it can flip already-dark sections (like
+  // this navy header) back to light too, not just light sections to
+  // dark. When Outlook.com inverts an element, it tags that element with
+  // its own data-ogsc (original style color) / data-ogsb (original
+  // style background) attributes — this is the same mechanism
+  // Microsoft's own support docs point to for fighting the inversion
+  // back: target those attributes directly with !important, once per
+  // section (navy/orange/white), so each keeps its real color
+  // regardless of what Outlook tried to do to it. Genuinely can't
+  // promise 100% — Microsoft's own forums describe Outlook's dark-mode
+  // behavior as "particularly unique" and inconsistent across versions —
+  // but this is the real, specifically-targeted technique for this
+  // client's actual mechanism, not a generic guess.
   return `<!DOCTYPE html><html><head><meta charset="UTF-8">
   <meta name="color-scheme" content="light">
-  <meta name="supported-color-schemes" content="light"></head>
+  <meta name="supported-color-schemes" content="light">
+  <style>
+    [data-ogsc] .pv-navy, [data-ogsb] .pv-navy { background-color: ${BRAND_NAVY} !important; color: #ffffff !important; }
+    [data-ogsc] .pv-orange, [data-ogsb] .pv-orange { background-color: ${BRAND_ORANGE} !important; color: #ffffff !important; }
+    [data-ogsc] .pv-white, [data-ogsb] .pv-white { background-color: #ffffff !important; color: #2B2B2B !important; }
+  </style></head>
   <body style="margin:0;padding:0;background:#F2F2F2;font-family:Arial,Helvetica,sans-serif;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F2F2F2;padding:32px 0;">
   <tr><td align="center">
   <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;">
 
     <tr>
-      <td style="background:${BRAND_NAVY};padding:28px 32px;text-align:center;">
+      <td class="pv-navy" style="background:${BRAND_NAVY};padding:28px 32px;text-align:center;">
         <img src="${LOGO_URL}" width="101" height="32" alt="Pawvy" style="display:inline-block;border:0;" />
       </td>
     </tr>
 
     <tr>
-      <td style="background:${BRAND_ORANGE};padding:14px 32px;text-align:center;">
+      <td class="pv-orange" style="background:${BRAND_ORANGE};padding:14px 32px;text-align:center;">
         <span style="font-family:Arial,sans-serif;font-size:14px;font-weight:bold;color:#ffffff;letter-spacing:0.3px;">${statusBand}</span>
       </td>
     </tr>
 
     <tr>
-      <td style="background:#ffffff;padding:32px;">
+      <td class="pv-white" style="background:#ffffff;padding:32px;">
         ${bodyHtml}
       </td>
     </tr>
 
     <tr>
-      <td style="background:${BRAND_NAVY};padding:24px 32px;text-align:center;">
+      <td class="pv-navy" style="background:${BRAND_NAVY};padding:24px 32px;text-align:center;">
         <p style="margin:0 0 6px;font-family:Arial,sans-serif;font-size:12px;color:#B9C2D6;">Pawvy Limited Partnership &middot; Singapore</p>
         <p style="margin:0;font-family:Arial,sans-serif;font-size:11px;color:#8A96AF;">You're receiving this because you have a Pawvy account.</p>
       </td>
