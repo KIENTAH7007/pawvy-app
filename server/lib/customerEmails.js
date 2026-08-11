@@ -97,7 +97,20 @@ function emailShell({ statusBand, bodyHtml }) {
   // the outer #F2F2F2 background show through at the row boundaries.
   // Plain rectangular corners render correctly everywhere — standard
   // "bulletproof email HTML" practice, not just this app's workaround.
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"></head>
+  // color-scheme/supported-color-schemes (Aug 2026): tells email clients
+  // this design is intentional, not "unstyled light content that should
+  // get auto-dark-mode-ified." Confirmed via real research before
+  // shipping this (not assumed): Apple Mail, Outlook.com, and Yahoo Mail
+  // respect this and will stop forcibly inverting the navy/orange/white
+  // design. Gmail's MOBILE apps specifically are documented to ignore
+  // this meta tag — their automatic dark-mode color inversion is known
+  // to be inconsistent even across the same client, so this genuinely
+  // can't be guaranteed fixed the way the logo/white-line issues were.
+  // Still worth shipping: real improvement for every other major client,
+  // zero downside where Gmail ignores it.
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <meta name="color-scheme" content="light">
+  <meta name="supported-color-schemes" content="light"></head>
   <body style="margin:0;padding:0;background:#F2F2F2;font-family:Arial,Helvetica,sans-serif;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F2F2F2;padding:32px 0;">
   <tr><td align="center">

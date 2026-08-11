@@ -1,74 +1,54 @@
-# Email logo real fix + Stripe fee manual-entry workaround
+# Email dark-mode color inversion — partial mitigation, honest limitation
 
 ## This delivery is for the App folder (`pawvy-app`) only
 
-9 files changed/added, listed in full below.
+1 file changed: `server/lib/customerEmails.js`.
 
-## 1. Email logo — the real fix this time
+## What was happening
 
-My earlier base64-embedded logo fix was wrong. Verified against real
-documentation (not assumed): **Gmail deliberately does not render
-base64/data-URI images in email at all** — that's a real, documented,
-longstanding policy, not a bug. Outlook would have shown it; Gmail
-never will, which is exactly the broken-image icon you saw.
+Your screenshot showed the navy header looking washed-out and the white
+content section rendering with a black background and light text — that's
+Gmail's mobile app automatically trying to "dark-mode-ify" the email,
+inconsistently inverting colors it wasn't designed to touch.
 
-Fixed properly: the logo is now a real hosted file
-(`public-assets/pawvy-logo-email.png`), served by a new static route on
-the backend (`/brand-assets/...`, added in `server/index.js`, outside
-`/api` so the staff PIN gate never applies to it), referenced by an
-absolute URL. Deliberately points at the backend's own Railway domain
-(`pawvy-app-production.up.railway.app` — the same one your Stripe
-webhook already uses) rather than `pawvy.co`, since that domain isn't
-live yet — same trap that broke social-share previews before.
+## Important: this is a genuine limitation, not something fully fixable
 
-**Confirmed this applies to all 6 email types**, not just the receipt —
-every builder shares the same `emailShell()` function where the logo and
-the earlier white-line fix both live.
+Checked real, current sources before touching anything (not assumed).
+Confirmed: Gmail's mobile apps specifically **ignore** the standard meta
+tags and CSS media queries that let an email declare "this design is
+intentional, don't invert it" — those work fine on Apple Mail,
+Outlook.com, and Yahoo Mail, just not reliably on Gmail mobile. Multiple
+current sources describe Gmail's behavior here as inconsistent even
+across different emails from the same sender, with "no clear pattern
+across devices or accounts."
 
-## 2. Stripe fee: manual-entry workaround, with real reconciliation logic
+**So: this delivery is a real, standard improvement — not a guaranteed
+fix.** It should measurably help on Apple Mail/Outlook.com/Yahoo, and
+costs nothing on Gmail even if Gmail keeps ignoring it.
 
-Your idea, built properly rather than as a quick hack. New **Stripe Fee**
-field in the Sales Ledger's edit-details modal (pencil icon), shown only
-for website orders. Type in a guess if Stripe hasn't reported the real
-fee yet.
+## The fix
 
-The key part — a new `stripe_fee_confirmed` column tracks whether a
-value is real (fetched from Stripe) or still a placeholder (either the
-$0 default or your manual guess). The daily 6am SGT job now checks this
-flag instead of just "is the fee $0":
+Added two standard meta tags to the email shell (shared by all 6 email
+types):
 
-- **Your guess was right** → the value doesn't change, just gets marked
-  confirmed. Nothing visibly happens.
-- **Your guess was wrong** → silently corrected to the real value.
-- **Already confirmed** (e.g. a card payment that got its real fee
-  instantly) → never touched again, never re-queried, no wasted API
-  calls.
+```html
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
+```
 
-There's no scenario where your manual entry and the real fee both get
-counted — the job always **overwrites** with the authoritative Stripe
-value once available, never adds to what's there.
+This tells any client that respects it: this email is deliberately
+designed with its own navy/orange/white palette — treat it as light-mode
+content, don't apply automatic dark-mode color inversion.
 
 ## Verification performed
 
-- Real test, 5 scenarios: manual entry correctly resets confirmed status;
-  a correct guess stays the same value after the job runs; a wrong guess
-  gets silently corrected to the real fee; an already-confirmed row is
-  never re-queried or touched; editing an unrelated field (like notes)
-  never disturbs an already-confirmed fee.
-- Real test of the actual webhook endpoint end-to-end (not a simplified
-  stand-in) — confirmed a real settled fee gets written in as already
-  confirmed when available immediately (the common card-payment case).
-- Confirmed the logo fix specifically on a *different* email type
-  (Verify, not Receipt) to prove it's genuinely shared, not
-  coincidentally duplicated.
-- Real cold-clone build: fresh `git clone` → applied the full current
-  repo state (matching what you already have) plus this delivery →
+- Confirmed the meta tags appear correctly in the actual generated HTML
+  across multiple email types (Receipt and Verify checked directly, both
+  share the same underlying shell as all 6 types).
+- Real cold-clone build: fresh `git clone` → applied the file →
   `npm install` → full project build — passed with no errors.
-- Re-ran the reconciliation test and the logo check a second time
-  against the cold-clone copy specifically, not just the working
-  directory.
-- Byte-for-byte diff confirms every file in this zip matches what was
-  cold-clone built and tested above.
+- Byte-for-byte diff confirms the file in this zip matches what was
+  cold-clone built and tested.
 
 ## To apply
 
@@ -77,12 +57,18 @@ cd /path/to/your/pawvy-app
 git checkout -- . && git clean -fd && git pull origin main
 ```
 
-Unzip this delivery's files into that folder (overwrite), then:
+Unzip this delivery's `server/lib/customerEmails.js` into that folder
+(overwrite), then:
 
 ```bash
 git add .
-git commit -m "Fix email logo for real (Gmail blocks base64 images); add manual Stripe fee entry with automatic reconciliation"
+git commit -m "Email: declare light color-scheme to reduce dark-mode color inversion"
 git push origin main
 ```
 
-Railway auto-deploys from `main` — no other steps needed.
+Railway auto-deploys from `main`. Worth checking how this looks in Gmail
+specifically after deploying — if it's still inconsistent there, that's
+expected given Gmail's documented behavior, not something to keep trying
+to patch further without a fundamentally different approach (e.g.
+designing an actual dark-mode variant, which Gmail mobile still wouldn't
+reliably use anyway).
