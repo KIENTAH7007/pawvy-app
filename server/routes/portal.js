@@ -29,7 +29,11 @@ module.exports = function(db) {
       LEFT JOIN inventory_levels home    ON home.product_id = p.id    AND home.location    = 'Home'
       LEFT JOIN inventory_levels storhub ON storhub.product_id = p.id AND storhub.location = 'Storhub'
       WHERE p.is_active = 1
-      ORDER BY b.name, COALESCE(p.portal_sort_order, 999999), p.item_series, p.variation
+      -- Out-of-stock sinks within its own brand group (Aug 2026, per KT),
+      -- same rule and threshold as routes/shop.js and routes/pos.js.
+      ORDER BY b.name,
+        CASE WHEN (COALESCE(home.qty,0) + COALESCE(storhub.qty,0)) <= 0 THEN 1 ELSE 0 END,
+        COALESCE(p.portal_sort_order, 999999), p.item_series, p.variation
     `);
 
     const catalogue = rows.map(r => ({

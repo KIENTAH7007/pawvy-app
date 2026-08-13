@@ -63,7 +63,17 @@ module.exports = function(db) {
       sql += ' AND (p.item_series LIKE ? OR p.variation LIKE ?)';
       params.push(`%${search}%`, `%${search}%`);
     }
-    sql += ' ORDER BY b.name, COALESCE(p.portal_sort_order, 999999), p.item_series, p.variation';
+    // Out-of-stock sinks to the bottom, but WITHIN its own brand group,
+    // not pulled out to the very end of the whole list — brand grouping
+    // (b.name) stays the top-level sort key, exactly as it already was;
+    // this just adds one more tier underneath it. Same threshold as
+    // stockStatus() in lib/pricing.js (<=0 combined qty), and the same
+    // rule applied identically in routes/pos.js and routes/portal.js —
+    // KT's ask (Aug 2026) was for consistent behavior across Website,
+    // POS, and Order Portal.
+    sql += ` ORDER BY b.name,
+      CASE WHEN (COALESCE(home.qty,0) + COALESCE(storhub.qty,0)) <= 0 THEN 1 ELSE 0 END,
+      COALESCE(p.portal_sort_order, 999999), p.item_series, p.variation`;
 
     const rows = db.query(sql, params);
     const products = rows.map(r => {
