@@ -1,42 +1,59 @@
-# Out-of-stock items sink to the bottom — Website, POS, Order Portal
+# Homepage banner carousel — App side (with Show/Hide caption toggle)
 
 ## This delivery is for the App folder (`pawvy-app`) only
 
-3 files changed: `server/routes/shop.js`, `server/routes/pos.js`, `server/routes/portal.js`.
+4 files changed: `server/database.js`, `server/routes/homepageBanners.js`,
+`server/routes/publicContent.js`, `client/src/pages/Marketing.jsx`.
 
-## What changed
+This supersedes the earlier "Homepage Banner Carousel" delivery — same
+carousel fix, plus one addition based on your follow-up (your existing
+banner images already have designed-in text, so a second overlay caption
+can look redundant).
 
-All three catalogue queries (public shop, POS, Order Portal) now sort
-out-of-stock items to the bottom — **within their own brand group**, not
-pulled out to the end of the whole list. Brand grouping stays exactly as
-it was (`b.name` is still the top-level sort key); this just adds one
-more tier underneath it. Everything else about the existing order
-(`portal_sort_order`, then `item_series`, then `variation`) is completely
-unchanged for both the in-stock and out-of-stock groups.
+## What's new in this version
 
-Same threshold as the existing `stockStatus()` helper (`lib/pricing.js`)
-already uses: combined Home + Storhub quantity `<= 0` counts as
-out-of-stock. Nothing new introduced — matches what "greyed out" already
-means everywhere else in the system.
+Each banner now has a **"Show this headline as a caption on the banner
+image"** checkbox, on by default.
+
+- **Checked** (default): works exactly as before — the headline shows as
+  an overlay caption on the banner.
+- **Unchecked**: the headline still exists as real text in the page —
+  still the real H1 for the first banner, still real `alt` text on the
+  image — it's just not visibly rendered on screen. Standard, legitimate
+  accessibility technique (screen-reader-only text), not the same thing
+  as hiding content from Google while showing something different to
+  visitors.
+
+The admin table shows a small "HIDDEN" badge next to any banner with the
+caption turned off, and a small "H1" badge (from the earlier delivery)
+next to whichever banner is currently first in order — so it's clear at
+a glance which banner is driving the page's real heading, and whether
+its text is visible or not.
+
+## The actual bug this whole feature started from, still fixed
+
+The public endpoint used `LIMIT 1` — it only ever showed one banner no
+matter how many you added. Now returns every currently-active banner,
+ordered.
 
 ## Verification performed
 
-- Real test across all 3 endpoints: inserted 4 products in a deliberately
-  scrambled order (2 in-stock, 2 out-of-stock), confirmed all three
-  return them with in-stock items first and out-of-stock items last,
-  identically.
-- Confirmed brand grouping is still the top-level sort — checked that
-  every brand's products appear as one contiguous block in the results,
-  not interleaved by stock status across brands (this was the exact
-  "Option A vs Option B" distinction confirmed with you beforehand).
-- Real cold-clone build: fresh `git clone` → applied all 3 files →
-  `npm install` → syntax check — passed with no errors.
-- Re-ran the sort test a second time against the cold-clone copy
+- Real test against the actual public endpoint: confirmed
+  `showCaption: true` and `showCaption: false` both come through
+  correctly per-banner.
+- Real cold-clone build: fresh `git clone` → applied all 4 files →
+  `npm install` → full project build — passed with no errors.
+- Re-ran the test a second time against the cold-clone copy
   specifically.
 - Byte-for-byte diff confirms every file in this zip matches what was
-  tested above.
+  cold-clone built and tested above.
 
 ## To apply
+
+Apply together with the companion Website-side delivery — the two only
+work correctly together. If you already applied the earlier version of
+this delivery, just apply this one on top — it's the complete, current
+state of all 4 files, not a diff.
 
 ```bash
 cd /path/to/your/pawvy-app
@@ -47,12 +64,8 @@ Unzip this delivery's files into that folder (overwrite), then:
 
 ```bash
 git add .
-git commit -m "Sort out-of-stock items to the bottom (within brand) on Website, POS, and Order Portal"
+git commit -m "Homepage banner: add per-banner Show/Hide caption toggle"
 git push origin main
 ```
 
-Railway auto-deploys from `main`. Apply together with the companion
-Website-side delivery (GiGwi's category cards + the other 5 brands'
-product cards) for the full picture — this delivery alone covers the
-plain Shop grid, POS, and Order Portal; the dedicated brand pages'
-product cards need that separate delivery too.
+Railway auto-deploys from `main`.

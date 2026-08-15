@@ -994,6 +994,26 @@ function createSchema() {
   // double-counting and no need for KT to remember to check back.
   try { db.run("ALTER TABLE sales ADD COLUMN stripe_fee_confirmed INTEGER DEFAULT 0"); } catch(e) {}
 
+  // Homepage banner carousel (Aug 2026, per KT) — same sort_order
+  // convention already used for instagram_posts: a plain integer staff
+  // set directly, lower shows first. The first banner by this order is
+  // the one whose headline gets rendered as the page's real <h1> (see
+  // pawvy-website's HomepageBanner.jsx) — reordering banners in the
+  // admin automatically moves which one that is, nothing else to update.
+  try { db.run("ALTER TABLE homepage_banners ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0"); } catch(e) {}
+
+  // Per-banner caption visibility toggle (Aug 2026, per KT) — his
+  // existing banner images already have designed-in text, so a second
+  // overlay caption on top can look redundant/messy depending on the
+  // specific image. Defaults to shown (1) so existing behavior doesn't
+  // silently change for anyone who already had a banner set up. When
+  // off, the headline text still exists in the real page HTML (still a
+  // real H1 for the first banner, still real alt text on the image) —
+  // this only controls whether it's ALSO rendered as a visible overlay
+  // on screen. See pawvy-website's HomepageBanner.jsx for the actual
+  // sr-only toggle.
+  try { db.run("ALTER TABLE homepage_banners ADD COLUMN show_caption INTEGER NOT NULL DEFAULT 1"); } catch(e) {}
+
   console.log('✅ Schema ready');
 }
 

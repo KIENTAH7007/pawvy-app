@@ -531,7 +531,7 @@ function HomepageBannerSection() {
   const [banners, setBanners] = useState([]);
   const [modal, setModal] = useState(false);
   const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState({ image_data: '', image_url: '', headline: '', link_url: '', start_date: '', end_date: '', is_active: true });
+  const [form, setForm] = useState({ image_data: '', image_url: '', headline: '', link_url: '', start_date: '', end_date: '', is_active: true, sort_order: 0, show_caption: true });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -545,7 +545,7 @@ function HomepageBannerSection() {
   function openNew() {
     setEditing(null);
     setError('');
-    setForm({ image_data: '', image_url: '', headline: '', link_url: '', start_date: todayStr(), end_date: '', is_active: true });
+    setForm({ image_data: '', image_url: '', headline: '', link_url: '', start_date: todayStr(), end_date: '', is_active: true, sort_order: banners.length, show_caption: true });
     setModal(true);
   }
   function openEdit(row) {
@@ -553,7 +553,8 @@ function HomepageBannerSection() {
     setError('');
     setForm({
       image_data: '', image_url: row.image_url || '', headline: row.headline || '', link_url: row.link_url || '',
-      start_date: row.start_date || '', end_date: row.end_date || '', is_active: !!row.is_active,
+      start_date: row.start_date || '', end_date: row.end_date || '', is_active: !!row.is_active, sort_order: row.sort_order ?? 0,
+      show_caption: row.show_caption !== 0,
     });
     setModal(true);
   }
@@ -613,11 +614,33 @@ function HomepageBannerSection() {
 
   const cols = [
     {
+      key: 'sort_order', label: 'Order',
+      render: (v, row) => {
+        const isFirst = row.id === [...banners].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.id - b.id)[0]?.id;
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 12.5 }}>{v ?? 0}</span>
+            {isFirst && <span title="This banner's headline is the page's real H1" style={{ fontSize: 9, fontWeight: 700, color: 'var(--orange)', border: '1px solid var(--orange)', padding: '1px 5px', borderRadius: 3 }}>H1</span>}
+          </div>
+        );
+      },
+    },
+    {
       key: 'image_url', label: 'Banner', render: v => v
         ? <img src={v} alt="" style={{ width: 64, height: 36, objectFit: 'cover', borderRadius: 6, flexShrink: 0 }} />
         : <span style={{ color: 'var(--cream-30)', fontSize: 12 }}>No image</span>,
     },
-    { key: 'headline', label: 'Headline', render: v => v ? <span style={{ fontSize: 12.5 }}>{v}</span> : <span style={{ color: 'var(--cream-30)', fontSize: 12 }}>—</span> },
+    {
+      key: 'headline', label: 'Headline',
+      render: (v, row) => v
+        ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 12.5 }}>{v}</span>
+            {row.show_caption === 0 && <span title="Not shown as a visible caption — still used as the page heading/alt text" style={{ fontSize: 9, fontWeight: 700, color: 'var(--cream-30)', border: '1px solid var(--cream-30)', padding: '1px 5px', borderRadius: 3 }}>HIDDEN</span>}
+          </div>
+        )
+        : <span style={{ color: 'var(--cream-30)', fontSize: 12 }}>—</span>,
+    },
     {
       key: 'link_url', label: 'Links to', render: v => v
         ? <span style={{ wordBreak: 'break-all', fontSize: 12 }}>{v}</span>
@@ -659,18 +682,18 @@ function HomepageBannerSection() {
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 28 }}>
         <div>
-          <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 15, letterSpacing: 1, color: 'var(--cream)' }}>HOMEPAGE BANNER</div>
+          <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 15, letterSpacing: 1, color: 'var(--cream)' }}>HOMEPAGE BANNER CAROUSEL</div>
           <div style={{ fontSize: 12, color: 'var(--cream-30)', marginTop: 2, maxWidth: 640 }}>
-            The full-width takeover banner shown at the very top of the homepage — for announcing a new brand.
-            Only shows while turned on AND within its active window. Leave the link blank to send clicks to the
-            brand gallery instead of a specific page.
+            Replaces the old single-banner takeover and the generic-text hero below it — every active banner now
+            shows as an auto-rotating carousel at the very top of the homepage, in "Order" sequence. Leave the link
+            blank to send clicks to the brand gallery instead of a specific page.
           </div>
         </div>
         <Btn onClick={openNew}><span style={{ fontSize: 16 }}>+</span> Add Banner</Btn>
       </div>
 
       <div style={{ background: 'var(--navy)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
-        <Table cols={cols} rows={banners} emptyMsg="No banner set up yet — the homepage looks exactly as it does today until you add one" />
+        <Table cols={cols} rows={banners} emptyMsg="No banners yet — the homepage shows a plain fallback heading until you add at least one" />
       </div>
 
       <Modal open={modal} title={editing ? 'EDIT BANNER' : 'ADD BANNER'} onClose={() => setModal(false)}>
@@ -707,9 +730,27 @@ function HomepageBannerSection() {
           </div>
 
           <Input label="Headline" value={form.headline} onChange={e => sf('headline', e.target.value)}
-            placeholder="e.g. Real food, the way nature made it — Wild Balance" />
+            placeholder="e.g. Chew toys that are better for your dog" />
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+            <input type="checkbox" checked={form.show_caption} onChange={e => sf('show_caption', e.target.checked)} />
+            <span style={{ fontSize: 13, color: 'var(--cream-60)' }}>Show this headline as a caption on the banner image</span>
+          </label>
+          <div style={{ fontSize: 10, color: 'var(--cream-30)', marginTop: -8, lineHeight: 1.5 }}>
+            {form.show_caption
+              ? 'Overlays the headline in the bottom-left of this banner — turn off if the image already has its own text baked in.'
+              : "Headline stays off-screen — still counts as this banner's real page heading (and image description) for search engines, just not visible on the image."}
+          </div>
+
           <Input label="Link (optional)" value={form.link_url} onChange={e => sf('link_url', e.target.value)}
-            placeholder="/brands/wild-balance" />
+            placeholder="/brands/betterbone-nylon-free-dog-chew#shop" />
+          <div>
+            <Input label="Order (lower shows first)" type="number" value={form.sort_order} onChange={e => sf('sort_order', parseInt(e.target.value, 10) || 0)} />
+            <div style={{ fontSize: 10, color: 'var(--cream-30)', marginTop: 4, lineHeight: 1.5 }}>
+              Whichever active banner has the lowest number shows first in the carousel — and its headline becomes
+              the real page heading search engines read, so worth writing something specific rather than generic.
+            </div>
+          </div>
 
           <FormRow cols={2}>
             <Input label="Start date" type="date" value={form.start_date} onChange={e => sf('start_date', e.target.value)} />

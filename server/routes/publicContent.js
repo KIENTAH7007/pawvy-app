@@ -53,30 +53,34 @@ module.exports = function(db) {
     });
   });
 
-  // The homepage's full-width takeover banner (the "Wild Balance"-style new
-  // brand announcement) — active means both is_active=1 AND today falls
-  // within [start_date, end_date] (either bound can be left blank for
-  // open-ended, same convention already used for campaigns and the New
-  // badge). If no link_url was set for this specific banner, falls back to
-  // the brand gallery so a click never dead-ends — same reasoning as the
-  // Instagram fallback just above.
-  router.get('/banner', (req, res) => {
+  // The homepage's banner carousel — active means both is_active=1 AND
+  // today falls within [start_date, end_date] (either bound can be left
+  // blank for open-ended, same convention already used for campaigns and
+  // the New badge). Returns EVERY currently-active banner as an ordered
+  // array (Aug 2026 fix) — this used to be a single banner via LIMIT 1,
+  // which is exactly why KT saw only one show up even after adding
+  // several; the website now renders all of them as an auto-rotating
+  // carousel (see HomepageBanner.jsx). If a given banner has no link_url
+  // set, falls back to the brand gallery so a click never dead-ends —
+  // same reasoning as the Instagram fallback just above.
+  router.get('/banners', (req, res) => {
     const today = new Date().toISOString().slice(0, 10);
-    const banner = db.queryOne(`
-      SELECT image_url, headline, link_url FROM homepage_banners
+    const rows = db.query(`
+      SELECT image_url, headline, link_url, show_caption FROM homepage_banners
       WHERE is_active = 1
         AND (start_date IS NULL OR start_date <= ?)
         AND (end_date IS NULL OR end_date >= ?)
         AND image_url IS NOT NULL AND image_url != ''
-      ORDER BY id DESC LIMIT 1
+      ORDER BY sort_order ASC, id ASC
     `, [today, today]);
 
-    if (!banner) return res.json({ active: false });
     res.json({
-      active: true,
-      image: banner.image_url,
-      headline: banner.headline || '',
-      link: banner.link_url || '/#gallery',
+      banners: rows.map(b => ({
+        image: b.image_url,
+        headline: b.headline || '',
+        link: b.link_url || '/#gallery',
+        showCaption: b.show_caption !== 0,
+      })),
     });
   });
 
