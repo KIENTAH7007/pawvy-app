@@ -753,7 +753,7 @@ function HomepageBannerSection() {
                   </button>
                 )}
                 <div style={{ fontSize: 10, color: 'var(--cream-30)', lineHeight: 1.5, maxWidth: 240 }}>
-                  A version composed specifically for phones (4:5, portrait) so nothing gets cropped on a narrow
+                  A version composed specifically for phones (2:3, portrait) so nothing gets cropped on a narrow
                   screen. Skip this and the desktop image will be used on mobile too. JPG, PNG, or WebP, under 3MB.
                 </div>
               </div>
