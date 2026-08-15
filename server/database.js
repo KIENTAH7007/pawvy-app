@@ -1014,6 +1014,15 @@ function createSchema() {
   // sr-only toggle.
   try { db.run("ALTER TABLE homepage_banners ADD COLUMN show_caption INTEGER NOT NULL DEFAULT 1"); } catch(e) {}
 
+  // Per-device banner image (Aug 2026, per KT + Janice) — a 16:9 image
+  // designed for desktop crops badly on a narrow phone; rather than
+  // force one image to fit every shape via CSS cropping, staff can now
+  // upload a second image specifically composed for mobile (e.g. 4:5).
+  // Nullable and falls back to the desktop image if not set (see
+  // publicContent.js) — existing banners created before this feature
+  // keep working exactly as before without needing an immediate edit.
+  try { db.run("ALTER TABLE homepage_banners ADD COLUMN image_url_mobile TEXT"); } catch(e) {}
+
   console.log('✅ Schema ready');
 }
 
