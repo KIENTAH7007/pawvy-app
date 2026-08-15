@@ -66,7 +66,7 @@ module.exports = function(db) {
   router.get('/banners', (req, res) => {
     const today = new Date().toISOString().slice(0, 10);
     const rows = db.query(`
-      SELECT image_url, image_url_mobile, headline, link_url, show_caption FROM homepage_banners
+      SELECT image_url, image_url_mobile, image_url_tablet, headline, link_url, show_caption FROM homepage_banners
       WHERE is_active = 1
         AND (start_date IS NULL OR start_date <= ?)
         AND (end_date IS NULL OR end_date >= ?)
@@ -77,12 +77,11 @@ module.exports = function(db) {
     res.json({
       banners: rows.map(b => ({
         image: b.image_url,
-        // Falls back to the desktop image if no mobile-specific one has
-        // been uploaded yet (Aug 2026) — a banner created before this
-        // feature, or one staff hasn't gotten around to adding a mobile
-        // version for, still displays correctly everywhere rather than
-        // showing nothing on phones.
+        // Both fall back to the desktop image if no device-specific
+        // version has been uploaded yet (Aug 2026) — a banner missing
+        // either or both still displays correctly everywhere.
         mobileImage: b.image_url_mobile || b.image_url,
+        tabletImage: b.image_url_tablet || b.image_url,
         headline: b.headline || '',
         link: b.link_url || '/#gallery',
         showCaption: b.show_caption !== 0,

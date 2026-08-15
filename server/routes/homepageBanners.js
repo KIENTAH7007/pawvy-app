@@ -17,13 +17,16 @@ module.exports = function(db) {
   });
 
   router.post('/', async (req, res) => {
-    const { image_data, image_data_mobile, headline, link_url, start_date, end_date, is_active, sort_order, show_caption } = req.body;
+    const { image_data, image_data_mobile, image_data_tablet, headline, link_url, start_date, end_date, is_active, sort_order, show_caption } = req.body;
     if (!image_data) return res.status(400).json({ error: 'A desktop image is required.' });
     if (!image_data.startsWith('data:image/')) {
       return res.status(400).json({ error: 'Must be a base64 image data URI.' });
     }
     if (image_data_mobile && !image_data_mobile.startsWith('data:image/')) {
       return res.status(400).json({ error: 'Mobile image must be a base64 image data URI.' });
+    }
+    if (image_data_tablet && !image_data_tablet.startsWith('data:image/')) {
+      return res.status(400).json({ error: 'Tablet image must be a base64 image data URI.' });
     }
     if (start_date && end_date && end_date < start_date) {
       return res.status(400).json({ error: 'End date must be on or after start date.' });
@@ -40,15 +43,21 @@ module.exports = function(db) {
       await uploadBuffer(key, buffer, contentType);
       db.run('UPDATE homepage_banners SET image_url = ? WHERE id = ?', [url, result.lastID]);
 
-      // Mobile image is optional on create — a banner with just the
-      // desktop image still works fine (falls back to it on mobile too,
-      // see publicContent.js), staff can add the mobile-specific version
-      // whenever it's ready.
+      // Both optional on create — a banner with just the desktop image
+      // still works fine everywhere (falls back to it, see
+      // publicContent.js), staff can add the device-specific versions
+      // whenever they're ready.
       if (image_data_mobile) {
         const m = decodeDataUrl(image_data_mobile);
         const { key: mKey, url: mUrl } = buildImageKey('banners-mobile', result.lastID, m.extension);
         await uploadBuffer(mKey, m.buffer, m.contentType);
         db.run('UPDATE homepage_banners SET image_url_mobile = ? WHERE id = ?', [mUrl, result.lastID]);
+      }
+      if (image_data_tablet) {
+        const t = decodeDataUrl(image_data_tablet);
+        const { key: tKey, url: tUrl } = buildImageKey('banners-tablet', result.lastID, t.extension);
+        await uploadBuffer(tKey, t.buffer, t.contentType);
+        db.run('UPDATE homepage_banners SET image_url_tablet = ? WHERE id = ?', [tUrl, result.lastID]);
       }
 
       return res.status(201).json({ ok: true, id: result.lastID });
@@ -58,15 +67,18 @@ module.exports = function(db) {
   });
 
   router.patch('/:id', async (req, res) => {
-    const banner = db.queryOne('SELECT id, image_url, image_url_mobile FROM homepage_banners WHERE id = ?', [req.params.id]);
+    const banner = db.queryOne('SELECT id, image_url, image_url_mobile, image_url_tablet FROM homepage_banners WHERE id = ?', [req.params.id]);
     if (!banner) return res.status(404).json({ error: 'Banner not found.' });
 
-    const { image_data, image_data_mobile, headline, link_url, start_date, end_date, is_active, sort_order, show_caption } = req.body;
+    const { image_data, image_data_mobile, image_data_tablet, headline, link_url, start_date, end_date, is_active, sort_order, show_caption } = req.body;
     if (image_data && !image_data.startsWith('data:image/')) {
       return res.status(400).json({ error: 'Must be a base64 image data URI.' });
     }
     if (image_data_mobile && !image_data_mobile.startsWith('data:image/')) {
       return res.status(400).json({ error: 'Mobile image must be a base64 image data URI.' });
+    }
+    if (image_data_tablet && !image_data_tablet.startsWith('data:image/')) {
+      return res.status(400).json({ error: 'Tablet image must be a base64 image data URI.' });
     }
     if (start_date && end_date && end_date < start_date) {
       return res.status(400).json({ error: 'End date must be on or after start date.' });
@@ -74,6 +86,7 @@ module.exports = function(db) {
 
     let newImageUrl = null;
     let newImageUrlMobile = null;
+    let newImageUrlTablet = null;
     try {
       if (image_data) {
         const { buffer, contentType, extension } = decodeDataUrl(image_data);
@@ -84,8 +97,7 @@ module.exports = function(db) {
           deleteObject(banner.image_url.replace(/^\/api\/uploads\//, '')).catch(() => {});
         }
       }
-      // Independent from the desktop image on purpose — staff can
-      // replace either one without touching the other.
+      // Each image is independent — replacing one never touches the others.
       if (image_data_mobile) {
         const m = decodeDataUrl(image_data_mobile);
         const { key: mKey, url: mUrl } = buildImageKey('banners-mobile', req.params.id, m.extension);
@@ -93,6 +105,15 @@ module.exports = function(db) {
         newImageUrlMobile = mUrl;
         if (banner.image_url_mobile) {
           deleteObject(banner.image_url_mobile.replace(/^\/api\/uploads\//, '')).catch(() => {});
+        }
+      }
+      if (image_data_tablet) {
+        const t = decodeDataUrl(image_data_tablet);
+        const { key: tKey, url: tUrl } = buildImageKey('banners-tablet', req.params.id, t.extension);
+        await uploadBuffer(tKey, t.buffer, t.contentType);
+        newImageUrlTablet = tUrl;
+        if (banner.image_url_tablet) {
+          deleteObject(banner.image_url_tablet.replace(/^\/api\/uploads\//, '')).catch(() => {});
         }
       }
     } catch (err) {
@@ -103,6 +124,7 @@ module.exports = function(db) {
       UPDATE homepage_banners SET
         image_url = COALESCE(?, image_url),
         image_url_mobile = COALESCE(?, image_url_mobile),
+        image_url_tablet = COALESCE(?, image_url_tablet),
         headline = COALESCE(?, headline),
         link_url = COALESCE(?, link_url),
         start_date = COALESCE(?, start_date),
@@ -112,7 +134,7 @@ module.exports = function(db) {
         show_caption = COALESCE(?, show_caption)
       WHERE id = ?
     `, [
-      newImageUrl, newImageUrlMobile, headline?.trim() || null, link_url?.trim() || null,
+      newImageUrl, newImageUrlMobile, newImageUrlTablet, headline?.trim() || null, link_url?.trim() || null,
       start_date || null, end_date || null,
       typeof is_active === 'boolean' ? (is_active ? 1 : 0) : null,
       sort_order ?? null,
@@ -123,11 +145,12 @@ module.exports = function(db) {
   });
 
   router.delete('/:id', (req, res) => {
-    const banner = db.queryOne('SELECT id, image_url, image_url_mobile FROM homepage_banners WHERE id = ?', [req.params.id]);
+    const banner = db.queryOne('SELECT id, image_url, image_url_mobile, image_url_tablet FROM homepage_banners WHERE id = ?', [req.params.id]);
     if (!banner) return res.status(404).json({ error: 'Banner not found.' });
     db.run('DELETE FROM homepage_banners WHERE id = ?', [req.params.id]);
     if (banner.image_url) deleteObject(banner.image_url.replace(/^\/api\/uploads\//, '')).catch(() => {});
     if (banner.image_url_mobile) deleteObject(banner.image_url_mobile.replace(/^\/api\/uploads\//, '')).catch(() => {});
+    if (banner.image_url_tablet) deleteObject(banner.image_url_tablet.replace(/^\/api\/uploads\//, '')).catch(() => {});
     res.json({ ok: true });
   });
 

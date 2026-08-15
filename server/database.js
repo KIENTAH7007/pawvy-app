@@ -1023,6 +1023,15 @@ function createSchema() {
   // keep working exactly as before without needing an immediate edit.
   try { db.run("ALTER TABLE homepage_banners ADD COLUMN image_url_mobile TEXT"); } catch(e) {}
 
+  // Third device tier (Aug 2026, per KT) — a tablet-shaped viewport
+  // (iPad, an unfolded Samsung Fold) sits between phone-portrait and
+  // desktop; showing it the desktop 16:9 image via object-fit:contain
+  // works but leaves more empty space than necessary. Same fallback
+  // convention as image_url_mobile: nullable, falls back to the desktop
+  // image if not set (see publicContent.js) — never required, never
+  // breaks a banner that only has desktop + mobile images already.
+  try { db.run("ALTER TABLE homepage_banners ADD COLUMN image_url_tablet TEXT"); } catch(e) {}
+
   console.log('✅ Schema ready');
 }
 

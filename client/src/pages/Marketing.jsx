@@ -531,7 +531,7 @@ function HomepageBannerSection() {
   const [banners, setBanners] = useState([]);
   const [modal, setModal] = useState(false);
   const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState({ image_data: '', image_url: '', image_data_mobile: '', image_url_mobile: '', headline: '', link_url: '', start_date: '', end_date: '', is_active: true, sort_order: 0, show_caption: true });
+  const [form, setForm] = useState({ image_data: '', image_url: '', image_data_mobile: '', image_url_mobile: '', image_data_tablet: '', image_url_tablet: '', headline: '', link_url: '', start_date: '', end_date: '', is_active: true, sort_order: 0, show_caption: true });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -545,7 +545,7 @@ function HomepageBannerSection() {
   function openNew() {
     setEditing(null);
     setError('');
-    setForm({ image_data: '', image_url: '', image_data_mobile: '', image_url_mobile: '', headline: '', link_url: '', start_date: todayStr(), end_date: '', is_active: true, sort_order: banners.length, show_caption: true });
+    setForm({ image_data: '', image_url: '', image_data_mobile: '', image_url_mobile: '', image_data_tablet: '', image_url_tablet: '', headline: '', link_url: '', start_date: todayStr(), end_date: '', is_active: true, sort_order: banners.length, show_caption: true });
     setModal(true);
   }
   function openEdit(row) {
@@ -553,6 +553,7 @@ function HomepageBannerSection() {
     setError('');
     setForm({
       image_data: '', image_url: row.image_url || '', image_data_mobile: '', image_url_mobile: row.image_url_mobile || '',
+      image_data_tablet: '', image_url_tablet: row.image_url_tablet || '',
       headline: row.headline || '', link_url: row.link_url || '',
       start_date: row.start_date || '', end_date: row.end_date || '', is_active: !!row.is_active, sort_order: row.sort_order ?? 0,
       show_caption: row.show_caption !== 0,
@@ -759,6 +760,38 @@ function HomepageBannerSection() {
               </div>
             </div>
           </div>
+
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--cream-30)', marginBottom: 10 }}>Tablet Image (optional)</div>
+            <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+              {(form.image_data_tablet || form.image_url_tablet) ? (
+                <img src={form.image_data_tablet || form.image_url_tablet} alt="" style={{ width: 106, height: 80, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)' }} />
+              ) : (
+                <div style={{ width: 106, height: 80, borderRadius: 8, border: '2px dashed var(--border)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--cream-30)', fontSize: 11, gap: 4, textAlign: 'center', padding: '0 6px' }}>
+                  <span style={{ fontSize: 22 }}>🖼️</span>
+                  <span>Uses desktop image if left blank</span>
+                </div>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 7, border: '1px solid var(--border)', cursor: 'pointer', fontSize: 12, color: 'var(--cream-60)', background: 'transparent' }}>
+                  <span>📁</span>
+                  {(form.image_data_tablet || form.image_url_tablet) ? 'Replace Image' : 'Upload Image'}
+                  <input type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} onChange={e => handleFile(e, 'image_data_tablet')} />
+                </label>
+                {(form.image_data_tablet || form.image_url_tablet) && (
+                  <button onClick={() => { sf('image_data_tablet', ''); sf('image_url_tablet', ''); }}
+                    style={{ padding: '8px 14px', borderRadius: 7, border: '1px solid rgba(248,113,113,.3)', cursor: 'pointer', fontSize: 12, color: '#f87171', background: 'transparent', textAlign: 'left' }}>
+                    🗑 Remove Image
+                  </button>
+                )}
+                <div style={{ fontSize: 10, color: 'var(--cream-30)', lineHeight: 1.5, maxWidth: 240 }}>
+                  For tablets and unfolded foldable phones (4:3) — a middle ground between the mobile and desktop
+                  shapes. Skip this and the desktop image is used instead. JPG, PNG, or WebP, under 3MB.
+                </div>
+              </div>
+            </div>
+          </div>
+
 
           <Input label="Headline" value={form.headline} onChange={e => sf('headline', e.target.value)}
             placeholder="e.g. Chew toys that are better for your dog" />
