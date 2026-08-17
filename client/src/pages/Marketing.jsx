@@ -524,9 +524,11 @@ function InstagramSection() {
 // one being prepped for next time.
 //
 // Recommended image size (shown to whoever's uploading, so the design
-// team knows the target without needing to ask): 1920×1080px minimum,
-// ideally supplied larger for sharpness on big screens — see the help
-// text below the upload control.
+// team knows the target without needing to ask): 1920×840px (16:7,
+// changed from 16:9 in Aug 2026 — a shorter ratio keeps the banner from
+// pushing the ticker below the first screen on common desktop
+// resolutions), ideally supplied larger for sharpness on big screens —
+// see the help text below the upload control.
 function HomepageBannerSection() {
   const [banners, setBanners] = useState([]);
   const [modal, setModal] = useState(false);
@@ -724,7 +726,7 @@ function HomepageBannerSection() {
                   </button>
                 )}
                 <div style={{ fontSize: 10, color: 'var(--cream-30)', lineHeight: 1.5, maxWidth: 240 }}>
-                  1920×1080px (16:9), shown on PC and larger screens. JPG, PNG, or WebP, under 3MB.
+                  1920×840px (16:7), shown on PC and larger screens. JPG, PNG, or WebP, under 3MB.
                 </div>
               </div>
             </div>
