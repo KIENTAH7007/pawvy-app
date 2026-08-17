@@ -1,13 +1,13 @@
-# Update desktop banner hint text: 16:9 → 16:7
+# Update desktop banner hint text: 16:7 → 16:8, add nav-bar safe-zone note
 
 ## This is for the App folder (`pawvy-app`) only, targeting `staging`.
 
 1 file changed: `client/src/pages/Marketing.jsx`.
 
-Updates the recommended dimensions shown under the Desktop Image upload
-field from "1920×1080px (16:9)" to "1920×840px (16:7)", matching the
-new ratio on the website side. Also updated the internal dev comment
-above this section for the same reason.
+Updates the recommended dimensions under the Desktop Image upload field
+to "1920×960px (16:8)", matching the website side, and adds a direct
+note about keeping critical content 90-100px clear of the top edge (the
+nav bar sits over that area) — so future uploaders don't need to ask.
 
 ## To apply
 
@@ -24,6 +24,6 @@ Unzip this delivery's file into that folder (overwrite), then:
 
 ```bash
 git add .
-git commit -m "Update desktop banner hint text to match new 16:7 ratio"
+git commit -m "Update desktop banner hint text to 16:8, add nav-bar safe-zone note"
 git push origin staging
 ```
