@@ -1036,7 +1036,7 @@ function createSchema() {
   // additions to products, all optional/backward-compatible:
   //
   // need_tags: which customer "need" categories this product belongs to
-  // (Dental, Skin & Coat, Joints, Gut, Chewing, Enrichment, Treats) —
+  // (Skin & Coat, Chew, Enrichment, Gut, Food, Dental, Grooming, Joints) —
   // a product can belong to more than one, so this is stored as a JSON
   // array string (e.g. '["dental","chewing"]'), NOT a comma list — first
   // use of this pattern in this schema, parse/stringify at the route

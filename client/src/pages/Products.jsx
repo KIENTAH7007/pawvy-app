@@ -31,13 +31,14 @@ const BRAND_COLORS = [
 // Must match NEED_TAGS in server/routes/products.js exactly — these are
 // the slugs stored in the DB and used by the website's /shop?need= route.
 const NEED_TAG_OPTIONS = [
-  { value: 'dental',     label: 'Dental' },
   { value: 'skin-coat',  label: 'Skin & Coat' },
-  { value: 'joints',     label: 'Joints' },
-  { value: 'gut',        label: 'Gut' },
-  { value: 'chewing',    label: 'Chewing' },
+  { value: 'chew',       label: 'Chew' },
   { value: 'enrichment', label: 'Enrichment' },
-  { value: 'treats',     label: 'Treats' },
+  { value: 'gut',        label: 'Gut' },
+  { value: 'food',       label: 'Food' },
+  { value: 'dental',     label: 'Dental' },
+  { value: 'grooming',   label: 'Grooming' },
+  { value: 'joints',     label: 'Joints' },
 ];
 
 export default function Products() {

@@ -9,7 +9,7 @@ const { uploadBuffer, getObjectStream, decodeDataUrl, buildImageKey, deleteObjec
 // (not admin-editable) since adding a new need also requires a matching
 // homepage card and Shop filter option on the website side — a genuinely
 // new need is a small cross-repo change, not just an admin data edit.
-const NEED_TAGS = ['dental', 'skin-coat', 'joints', 'gut', 'chewing', 'enrichment', 'treats'];
+const NEED_TAGS = ['skin-coat', 'chew', 'enrichment', 'gut', 'food', 'dental', 'grooming', 'joints'];
 
 // need_tags is stored as a JSON array string (see database.js) so a
 // product can belong to more than one need — this always hands back a
