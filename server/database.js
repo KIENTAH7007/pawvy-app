@@ -563,6 +563,24 @@ function createSchema() {
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`,
 
+    // Out-of-stock "Notify me" waitlist (Aug 2026, per KT) — mainly for
+    // demand visibility ("how many people actually want this restocked"),
+    // not (yet) wired to an automatic restock email — that's a distinct,
+    // larger follow-up needing a hook into whichever job/flow marks a
+    // product back in stock, plus a Resend template. This just captures
+    // and surfaces the data so that follow-up has something real to build
+    // on when it happens. UNIQUE(product_id, email) means a customer
+    // re-submitting the same product's form twice (e.g. revisiting the
+    // page) is a harmless no-op, not a duplicate row.
+    `CREATE TABLE IF NOT EXISTS product_waitlist (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      product_id INTEGER NOT NULL REFERENCES products(id),
+      email TEXT NOT NULL,
+      notified_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(product_id, email)
+    )`,
+
     // BUTTONS ledger — one row per batch earned. Tracked as discrete batches
     // (not a single running balance) so expiry can be FIFO per-batch, and so
     // the 7-day hold can be enforced per-batch via `status`. remaining is

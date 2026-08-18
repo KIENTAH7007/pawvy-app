@@ -1,117 +1,103 @@
-# Pawvy App — Shop-by-Need Testimonials
+# Pawvy App — Out-of-Stock Waitlist ("Notify Me")
 
 Target branch: **staging**
 Repo: `pawvy-app`
 
-Second piece of the Phase 0 foundation, after the need tags/Best For/
-Pawvy's Picks delivery — this one adds testimonials.
+Third piece of the Phase 0 foundation — after need tags/Best For/Pawvy's
+Picks, and testimonials.
 
 ## What's in this patch
 
 ### New table (`server/database.js`)
 
-`testimonials` — quote, customer handle, one need tag (required — a
-testimonial shows on exactly one need's page, not scattered across
-several), an optional linked product, and two optional photo fields:
+`product_waitlist` — `product_id`, `email`, `notified_at` (nullable),
+`created_at`. `UNIQUE(product_id, email)` so a customer accidentally
+submitting twice for the same product is a harmless no-op, not a
+duplicate row.
 
-- `image_url` — the primary/only photo.
-- `image_url_after` — optional second photo. If set, the website will
-  show a labelled before/after split; if not, it's just a single photo
-  with no label. Same optional-second-image convention the homepage
-  banner already uses for `image_url_mobile`, not a new pattern.
+**Scope note:** this captures and surfaces demand data — it does **not**
+yet automatically email anyone when a product restocks. That's a real,
+separate follow-up (needs a hook into whatever job/flow marks a product
+back in stock, plus a Resend template) that I deliberately didn't build
+into this patch without confirming you actually want that automation
+next — let me know if you do.
 
-### New endpoint (`server/routes/testimonials.js`)
+### Two separate route files — worth understanding why
 
-Full CRUD at `/api/testimonials` — mirrors `homepageBanners.js`'s image
-upload conventions closely (base64 `image_data` in, real bucket URL out,
-old images cleaned up from the bucket on replace/delete so nothing gets
-orphaned). A few things worth knowing:
+This needed both a **public** endpoint (any website visitor can submit
+their email, no login) and **staff-only** endpoints (see who's waiting,
+per-product counts, mark notified, remove). The PIN gate in
+`server/index.js` exempts routes by path *prefix*, all-or-nothing — so
+one route file can't have some paths public and others gated. Split the
+same way `customers.js` (public) and `customerAdmin.js` (staff) already
+are:
 
-- Rejects any `need_tag` not in the canonical list, same validation
-  approach as the products merchandising endpoint.
-- If you link a `product_id` that doesn't exist, it's rejected with a
-  clear error rather than silently saving a broken reference.
-- Removing just the "after" photo (going back to a single-photo card)
-  is a separate explicit action (`remove_image_after: true`) from simply
-  not including `image_data_after` in a request — the latter just leaves
-  whatever's already there untouched, so a routine "edit the quote"
-  save never accidentally wipes a photo.
+- **`server/routes/waitlist.js`** → mounted at `/api/waitlist`, public.
+  Just `POST /` — submit an email for a product.
+- **`server/routes/waitlistAdmin.js`** → mounted at `/api/admin-waitlist`,
+  staff-only (PIN-gated, same as everything else in Products & Pricing).
+  `GET /counts`, `GET /:productId`, `PATCH /:id/notify`, `DELETE /:id`.
 
-### Fixed a real drift risk while I was in here
+One subtlety I made sure to get right: `/api/admin-waitlist` does **not**
+start with `/api/waitlist`, so the gate's exemption check
+(`req.path.startsWith('/waitlist')`) can't accidentally also exempt the
+staff routes. Verified this explicitly in testing, not just by
+inspection — see below.
 
-While building this, I found the admin UI's need-tag list and the
-backend's had briefly drifted out of sync with each other (an old
-version of one still had "Treats"/"Chewing" after the other had already
-been corrected). Rather than just fix it again and risk the same thing
-happening a third time, I pulled both into single shared files:
+### Admin UI (`client/src/pages/Products.jsx`)
 
-- **Backend:** `server/lib/needTags.js` — both `products.js` and the new
-  `testimonials.js` import `NEED_TAGS` from here now, instead of each
-  keeping its own copy.
-- **Frontend:** `client/src/constants.js` — both `Products.jsx` and the
-  new Testimonials section in `Marketing.jsx` import `NEED_TAG_OPTIONS`
-  from here.
-
-Functionally nothing changes for you — the tag list and order are
-exactly what you confirmed (Skin & Coat → Chew → Enrichment → Gut →
-Food → Dental → Grooming → Joints). This just means the two can't go
-out of sync with each other again, since there's only one real copy of
-the list on each side now.
-
-### Admin UI (`client/src/pages/Marketing.jsx`)
-
-New **"Shop-by-Need Testimonials"** section, added to the existing
-Marketing page — right alongside Homepage Banner Carousel, Instagram,
-Campaigns, and the Ticker, rather than a new top-level sidebar item (per
-your earlier note about the sidebar getting long).
-
-- **"+ Add Testimonial"** opens a form: pick the Need (dropdown), write
-  the quote, optional customer name/handle, upload Photo 1, optionally
-  upload Photo 2 ("After" — leave blank for a single photo), optionally
-  link a product from a dropdown of all your products, and a
-  show/hide toggle.
-- The table shows both photos as thumbnails if both are set, the need
-  tag as a badge, a truncated quote preview, which product (if any) is
-  linked, and Show/Hide + Edit + Delete actions — same conventions as
-  every other section on this page.
-- Removing just the "after" photo has its own button in the edit form,
-  separate from replacing Photo 1.
+A small **🔔 N waiting** badge appears next to Edit/Badge/Shop on any
+product row that actually has people waiting — nothing shows for
+products with zero, to keep the row clean. Click it to open a list:
+each entry shows the email, when they joined, a **Mark notified** button
+(for tracking who you've manually reached out to — see the automation
+scope note above), and a remove button.
 
 ## What this does NOT include yet
 
-- The actual customer-facing rendering of testimonials on the website's
-  need pages — that's Phase 1, comes with the rest of the Shop-by-Need
-  build.
-- The product waitlist (OOS "Notify me" capture + admin visibility) —
-  still the next piece after this one.
+- The actual "Notify me" button/form on the website's product pages —
+  that's Phase 1 work, alongside the rest of the Shop-by-Need build
+  (the OOS state, sort-to-bottom, etc. from the original review).
+- Automatic restock emails — flagged above, needs your confirmation
+  before I build it.
 
 ## Verification performed
 
-- **10 real backend tests** against a real Express server + real seeded
-  database, with only the actual network-touching bucket calls mocked
-  (`uploadBuffer`/`deleteObject` — `decodeDataUrl`/`buildImageKey` are
-  pure functions with no network dependency, so those ran for real):
-  create with a real image upload + linked product succeeds; invalid
-  need_tag rejected (400); missing quote rejected (400); invalid
-  product_id rejected (400); the created testimonial appears correctly
-  in the list with the product join and a real `image_url`; adding a
-  second (after) photo via PATCH works; explicitly removing just the
-  after-photo clears only that field and leaves the main photo alone;
-  a partial update (quote only) doesn't wipe the need_tag or product
-  link; delete removes it from the bucket and the list; an unknown ID
-  returns 404 rather than crashing.
-- **Regression check** after the `needTags.js` refactor: re-ran the
-  products merchandising endpoint's tests to confirm pulling `NEED_TAGS`
-  out into a shared file didn't change its behavior — still saves valid
-  tags correctly, still rejects the old "treats" tag.
+**10 real integration tests**, against a real Express server assembled
+with the *exact* PIN gate condition copied from `server/index.js` (not
+a simplified stand-in) plus real session-based auth (a real HTTP login
+against `/api/auth/login` with a test PIN, producing a real Bearer
+token, not a mocked one):
+
+- Public submit works with **zero** Authorization header — proves it's
+  genuinely reachable by real website visitors.
+- Invalid email, missing `product_id`, and unknown `product_id` all
+  correctly rejected (400/400/404).
+- Submitting the same product+email twice is handled gracefully (still
+  201, no duplicate row — confirmed via the count check below).
+- **The staff endpoint correctly returns 401 with no Authorization
+  header** — this was the one genuine security risk in this delivery
+  (public/staff split relying on path-prefix logic), and it's the test
+  I'd flag as most worth you knowing actually ran, not just "looks
+  right on inspection."
+- With a real valid token: counts endpoint returns the right count (2,
+  correctly collapsed from 3 submit attempts including the duplicate);
+  full list returns both real entries; marking one notified correctly
+  drops the counts badge from 2 to 1; delete removes an entry and the
+  list reflects it afterward.
+
+Also:
 - `client` builds clean via `npm run build`, no errors.
-- All 9 changed/new files in this zip byte-diffed against what was
+- Confirmed the `git diff` against origin/staging for `products.js`
+  contains only the previously-delivered `needTags.js` refactor — no
+  new or accidental changes snuck in this round.
+- All 11 changed/new files in this zip byte-diffed against what was
   actually tested — identical.
 
 ## How to apply
 
 If you haven't already merged `main`'s emergency hotfix into staging
-(see the previous delivery's README), do that first.
+(see the first delivery's README), do that first.
 
 ```bash
 git checkout staging
@@ -122,18 +108,23 @@ git pull origin staging
 #   client/src/api.js
 #   client/src/pages/Marketing.jsx
 #   client/src/pages/Products.jsx
-#   client/src/constants.js          <-- NEW FILE
+#   client/src/constants.js
 #   server/database.js
 #   server/index.js
 #   server/routes/products.js
-#   server/lib/needTags.js           <-- NEW FILE
-#   server/routes/testimonials.js    <-- NEW FILE
+#   server/lib/needTags.js
+#   server/routes/testimonials.js
+#   server/routes/waitlist.js         <-- NEW FILE
+#   server/routes/waitlistAdmin.js    <-- NEW FILE
 
 git add .
-git commit -m "Shop-by-Need testimonials: schema, CRUD endpoint, admin UI; shared need-tag list to prevent future drift"
+git commit -m "Out-of-stock waitlist: public submit endpoint, staff-only counts/list/notify/remove, badge in Products & Pricing"
 git push origin staging
 ```
 
-Once live on S-App, go to **Marketing**, scroll down — the new
-"Shop-by-Need Testimonials" section should be right there under
-Homepage Banner Carousel.
+Nothing to test on S-App immediately, since nothing currently calls the
+public submit endpoint yet — that wiring happens when the website's
+Phase 1 "Notify me" button gets built. You can still confirm the admin
+side works today via a direct API call if you want to see the badge
+appear, or just wait until Phase 1 makes it end-to-end testable for
+real.

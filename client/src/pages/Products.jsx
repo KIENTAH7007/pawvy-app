@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Download } from 'lucide-react';
-import { productsApi, brandsApi } from '../api';
+import { Download, Trash2 } from 'lucide-react';
+import { productsApi, brandsApi, waitlistAdminApi } from '../api';
 import { Page, Select, Input, Badge, Btn, Modal, FormRow, Divider } from '../components/ui';
 import { NEED_TAG_OPTIONS } from '../constants';
 
@@ -49,6 +49,10 @@ export default function Products() {
   const [merchForm, setMerchForm] = useState({});
   const [merchError, setMerchError] = useState('');
   const [merchSaving, setMerchSaving] = useState(false);
+  const [waitlistCounts, setWaitlistCounts] = useState({});
+  const [waitlistModal, setWaitlistModal] = useState(null); // the product row, or null
+  const [waitlistEntries, setWaitlistEntries] = useState([]);
+  const [waitlistLoading, setWaitlistLoading] = useState(false);
 
   // Pre-filled SKUs handed off from New Brand Pricing — nothing here writes to the
   // database until each one is individually reviewed and saved through the normal
@@ -99,6 +103,35 @@ export default function Products() {
   };
   useEffect(() => { brandsApi.getAll().then(setBrands); }, []);
   useEffect(() => { load(); }, [filterBrand, search, showArchived]);
+  const loadWaitlistCounts = () => waitlistAdminApi.getCounts().then(d => {
+    const map = {};
+    d.counts.forEach(c => { map[c.product_id] = c.count; });
+    setWaitlistCounts(map);
+  });
+  useEffect(() => { loadWaitlistCounts(); }, []);
+
+  async function openWaitlist(product) {
+    setWaitlistModal(product);
+    setWaitlistLoading(true);
+    try {
+      const d = await waitlistAdminApi.getForProduct(product.id);
+      setWaitlistEntries(d.entries);
+    } finally {
+      setWaitlistLoading(false);
+    }
+  }
+  async function waitlistMarkNotified(id) {
+    await waitlistAdminApi.markNotified(id);
+    const d = await waitlistAdminApi.getForProduct(waitlistModal.id);
+    setWaitlistEntries(d.entries);
+    loadWaitlistCounts(); // notified entries drop out of the badge count
+  }
+  async function waitlistRemove(id) {
+    await waitlistAdminApi.delete(id);
+    const d = await waitlistAdminApi.getForProduct(waitlistModal.id);
+    setWaitlistEntries(d.entries);
+    loadWaitlistCounts();
+  }
 
   const sf = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -339,6 +372,13 @@ export default function Products() {
                               </span>
                             ) : 'Shop'}
                           </Btn>
+                          {waitlistCounts[p.id] > 0 && (
+                            <Btn size="sm" variant="ghost" onClick={e => { e.stopPropagation(); openWaitlist(p); }} title="Customers waiting for this to restock">
+                              <span style={{display:'flex',alignItems:'center',gap:5}}>
+                                🔔 <Badge color="#378ADD">{waitlistCounts[p.id]} waiting</Badge>
+                              </span>
+                            </Btn>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -710,6 +750,51 @@ export default function Products() {
               {merchSaving ? 'Saving…' : 'Save'}
             </Btn>
           </div>
+        </div>
+      </Modal>
+
+      {/* Waitlist detail modal — read-only visibility + light manual
+          tracking (mark notified / remove) into who's asked to be told
+          when this product restocks. No automatic restock email exists
+          yet (see the product_waitlist table comment in database.js) —
+          this is demand visibility for now, not a marketing tool. */}
+      <Modal open={!!waitlistModal} title="WAITLIST" onClose={() => setWaitlistModal(null)} width={440}>
+        <div style={{display:'flex',flexDirection:'column',gap:14}}>
+          <div style={{fontSize:13,color:'var(--cream-60)'}}>
+            {waitlistModal && `${waitlistModal.item_series}${waitlistModal.variation ? ' — '+waitlistModal.variation : ''}`}
+          </div>
+          {waitlistLoading ? (
+            <div style={{fontSize:13,color:'var(--cream-30)'}}>Loading…</div>
+          ) : waitlistEntries.length === 0 ? (
+            <div style={{fontSize:13,color:'var(--cream-30)'}}>No one currently waiting.</div>
+          ) : (
+            <div style={{display:'flex',flexDirection:'column',gap:8}}>
+              {waitlistEntries.map(entry => (
+                <div key={entry.id} style={{
+                  display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,
+                  padding:'8px 10px',borderRadius:7,border:'1px solid var(--border)',
+                  background: entry.notified_at ? 'rgba(245,242,235,.02)' : 'rgba(245,242,235,.05)',
+                }}>
+                  <div>
+                    <div style={{fontSize:12.5,color:'var(--cream)'}}>{entry.email}</div>
+                    <div style={{fontSize:10.5,color:'var(--cream-30)'}}>
+                      Joined {new Date(entry.created_at).toLocaleDateString()}
+                      {entry.notified_at && ` · Notified ${new Date(entry.notified_at).toLocaleDateString()}`}
+                    </div>
+                  </div>
+                  <div style={{display:'flex',gap:6}}>
+                    {!entry.notified_at && (
+                      <Btn size="sm" variant="ghost" onClick={() => waitlistMarkNotified(entry.id)}>Mark notified</Btn>
+                    )}
+                    <button onClick={() => waitlistRemove(entry.id)} title="Remove"
+                      style={{background:'none',border:'none',color:'rgba(248,113,113,.5)',cursor:'pointer',padding:4}}>
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </Modal>
 

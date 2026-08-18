@@ -78,7 +78,7 @@ async function startServer() {
   // for already-logged-in staff viewing their own admin pages — this
   // isn't optional the way it might look at first glance).
   app.use('/api', (req, res, next) => {
-    if (req.path.startsWith('/portal') || req.path.startsWith('/pos') || req.path.startsWith('/customers') || req.path.startsWith('/shop') || req.path.startsWith('/enquiries') || req.path.startsWith('/stockists') || req.path.startsWith('/checkout') || req.path.startsWith('/public-content') || req.path.startsWith('/uploads') || req.path === '/health') return next();
+    if (req.path.startsWith('/portal') || req.path.startsWith('/pos') || req.path.startsWith('/customers') || req.path.startsWith('/shop') || req.path.startsWith('/enquiries') || req.path.startsWith('/stockists') || req.path.startsWith('/checkout') || req.path.startsWith('/public-content') || req.path.startsWith('/uploads') || req.path.startsWith('/waitlist') || req.path === '/health') return next();
     return auth.requireAuth(req, res, next);
   });
 
@@ -110,6 +110,8 @@ async function startServer() {
   app.use('/api/instagram-posts', require('./routes/instagramPosts')(db));
   app.use('/api/homepage-banners', require('./routes/homepageBanners')(db));
   app.use('/api/testimonials',     require('./routes/testimonials')(db));
+  app.use('/api/waitlist',         require('./routes/waitlist')(db));
+  app.use('/api/admin-waitlist',   require('./routes/waitlistAdmin')(db));
   app.use('/api/public-content', require('./routes/publicContent')(db));
 
   // Stripe client for website checkout (card + PayNow). STRIPE_SECRET_KEY

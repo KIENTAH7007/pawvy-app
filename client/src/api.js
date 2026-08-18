@@ -162,6 +162,13 @@ export const testimonialsApi = {
   delete: (id) => api.delete(`/testimonials/${id}`),
 };
 
+export const waitlistAdminApi = {
+  getCounts: () => api.get('/admin-waitlist/counts'),
+  getForProduct: (productId) => api.get(`/admin-waitlist/${productId}`),
+  markNotified: (id) => api.patch(`/admin-waitlist/${id}/notify`),
+  delete: (id) => api.delete(`/admin-waitlist/${id}`),
+};
+
 export const restockApi = {
   getAll:  (q) => api.get(`/restock${qs(q)}`),
   get:     (id) => api.get(`/restock/${id}`),
