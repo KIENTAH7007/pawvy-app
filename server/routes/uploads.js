@@ -1,4 +1,5 @@
 const { Router } = require('express');
+const { pipeline } = require('stream/promises');
 const { getObjectStream } = require('../lib/bucket');
 
 // Railway Buckets are private-only (no public buckets, per Railway's own
@@ -21,17 +22,40 @@ module.exports = function() {
     const key = req.params[0];
     if (!key) return res.status(400).json({ error: 'Missing image key.' });
 
+    let obj;
     try {
-      const obj = await getObjectStream(key);
-      res.setHeader('Content-Type', obj.ContentType || 'application/octet-stream');
-      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-      if (obj.ContentLength) res.setHeader('Content-Length', obj.ContentLength);
-      obj.Body.pipe(res);
+      obj = await getObjectStream(key);
     } catch (err) {
       // Bucket SDK throws a generic error for missing keys rather than a
       // clean 404 type — treat any failure here as "not found" rather
       // than leaking bucket error details to the client.
-      res.status(404).json({ error: 'Image not found.' });
+      return res.status(404).json({ error: 'Image not found.' });
+    }
+
+    res.setHeader('Content-Type', obj.ContentType || 'application/octet-stream');
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    if (obj.ContentLength) res.setHeader('Content-Length', obj.ContentLength);
+
+    // Root cause of the socket-pool exhaustion incident (Aug 2026): plain
+    // obj.Body.pipe(res) does NOT clean up the source stream if the
+    // destination (res) closes early — e.g. a browser picking a different
+    // <picture> source once it's decided which one wins, a mobile
+    // connection dropping mid-load, or a user navigating away. Each of
+    // those left the underlying bucket connection's socket permanently
+    // checked out of the pool (default cap: 50), and this route gets hit
+    // by every image, on every page view, from every visitor — so it was
+    // only a matter of traffic and time before the pool filled up
+    // entirely and every further image request (uploads included) queued
+    // indefinitely behind it. stream.pipeline() guarantees both streams
+    // are destroyed/cleaned up whichever side ends first, so the socket
+    // always goes back to the pool. The try/catch below only exists to
+    // swallow the now-expected "client disconnected mid-stream" case
+    // quietly — the response is already partially sent by that point, so
+    // there's nothing meaningful left to respond with anyway.
+    try {
+      await pipeline(obj.Body, res);
+    } catch (err) {
+      // Expected on client disconnect — not an error worth logging.
     }
   });
 

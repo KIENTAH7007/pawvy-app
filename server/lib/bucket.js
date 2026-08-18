@@ -1,4 +1,5 @@
 const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand } = require('@aws-sdk/client-s3');
+const { NodeHttpHandler } = require('@smithy/node-http-handler');
 
 // Wraps the Railway Storage Bucket (S3-compatible — confirmed against
 // Railway's own docs, Aug 2026) behind a small, boring API. Buckets are
@@ -26,6 +27,13 @@ function getClient() {
     region: BUCKET_REGION || 'auto',
     credentials: { accessKeyId: BUCKET_ACCESS_KEY_ID, secretAccessKey: BUCKET_SECRET_ACCESS_KEY },
     forcePathStyle: false, // Railway Buckets use virtual-hosted-style URLs by default (per Railway docs) — only flip if the bucket's Credentials tab says otherwise
+    // Aug 2026 incident: default maxSockets (50) filled up entirely from a
+    // stream-cleanup leak in uploads.js (now fixed — see that file's
+    // comment). This raise is just headroom on top of the real fix, not a
+    // substitute for it — every image on the site (banners, products,
+    // Instagram) goes through this one client, so 50 was always thin for
+    // real traffic even without a leak.
+    requestHandler: new NodeHttpHandler({ maxSockets: 200 }),
   });
   return client;
 }
