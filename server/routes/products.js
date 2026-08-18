@@ -3,6 +3,30 @@ const archiver = require('archiver');
 const { withEffectivePrice } = require('../lib/pricing');
 const { uploadBuffer, getObjectStream, decodeDataUrl, buildImageKey, deleteObject } = require('../lib/bucket');
 
+// Canonical Shop-by-Need tags (Aug 2026) — slugs match the /shop?need=
+// query param used on the website, so a tag stored here plugs directly
+// into that route without any translation layer. Kept as a fixed list
+// (not admin-editable) since adding a new need also requires a matching
+// homepage card and Shop filter option on the website side — a genuinely
+// new need is a small cross-repo change, not just an admin data edit.
+const NEED_TAGS = ['dental', 'skin-coat', 'joints', 'gut', 'chewing', 'enrichment', 'treats'];
+
+// need_tags is stored as a JSON array string (see database.js) so a
+// product can belong to more than one need — this always hands back a
+// real array to API consumers rather than making every route remember to
+// parse it. Defensive fallback to [] on anything unexpected (missing
+// column on a not-yet-migrated row, corrupted value, etc.) rather than
+// letting a bad value 500 the whole products list.
+function withParsedNeedTags(product) {
+  if (!product) return product;
+  let need_tags = [];
+  try {
+    const parsed = JSON.parse(product.need_tags || '[]');
+    if (Array.isArray(parsed)) need_tags = parsed;
+  } catch (e) { /* leave as [] */ }
+  return { ...product, need_tags };
+}
+
 module.exports = function(db) {
   const router = Router();
 
@@ -25,7 +49,7 @@ module.exports = function(db) {
     }
 
     sql += ' ORDER BY b.name, p.item_series, p.variation';
-    res.json(db.query(sql, params).map(withEffectivePrice));
+    res.json(db.query(sql, params).map(withEffectivePrice).map(withParsedNeedTags));
   });
 
   // ── Export all product images as a ZIP ────────────────────────────
@@ -98,7 +122,7 @@ module.exports = function(db) {
       WHERE p.id = ?
     `, [req.params.id]);
     if (!product) return res.status(404).json({ error: 'Product not found' });
-    res.json(withEffectivePrice(product));
+    res.json(withParsedNeedTags(withEffectivePrice(product)));
   });
 
   // POST create product
@@ -135,7 +159,7 @@ module.exports = function(db) {
       ]);
 
       const product = db.queryOne('SELECT p.*, b.name AS brand_name, b.color AS brand_color FROM products p JOIN brands b ON b.id = p.brand_id WHERE p.id = ?', [result.lastID]);
-      res.status(201).json(product);
+      res.status(201).json(withParsedNeedTags(product));
     } catch (e) {
       res.status(409).json({ error: 'Barcode already exists' });
     }
@@ -173,7 +197,7 @@ module.exports = function(db) {
     ]);
 
     const product = db.queryOne('SELECT p.*, b.name AS brand_name, b.color AS brand_color FROM products p JOIN brands b ON b.id = p.brand_id WHERE p.id = ?', [req.params.id]);
-    res.json(product);
+    res.json(withParsedNeedTags(product));
   });
 
   // PATCH /:id/discount — scoped discount + "New" badge management,
@@ -215,7 +239,56 @@ module.exports = function(db) {
       SELECT p.*, b.name AS brand_name, b.color AS brand_color
       FROM products p JOIN brands b ON b.id = p.brand_id WHERE p.id = ?
     `, [req.params.id]);
-    res.json(withEffectivePrice(updated));
+    res.json(withParsedNeedTags(withEffectivePrice(updated)));
+  });
+
+  // PATCH /:id/merchandising — Shop-by-Need tags, "Best for" line, and
+  // Pawvy's Pick flag. Deliberately a separate endpoint from the main PUT
+  // above, same reasoning as /:id/discount: these are website-facing
+  // merchandising fields with nothing to do with pricing/inventory, and
+  // keeping them on their own narrow endpoint means a bug here can't
+  // touch the core product-edit form, and vice versa.
+  router.patch('/:id/merchandising', (req, res) => {
+    const product = db.queryOne('SELECT id FROM products WHERE id = ?', [req.params.id]);
+    if (!product) return res.status(404).json({ error: 'Product not found.' });
+
+    const { need_tags, best_for, is_pawvy_pick } = req.body;
+
+    let tagsArray = [];
+    if (need_tags !== undefined) {
+      if (!Array.isArray(need_tags)) {
+        return res.status(400).json({ error: 'need_tags must be an array.' });
+      }
+      const invalid = need_tags.filter(t => !NEED_TAGS.includes(t));
+      if (invalid.length) {
+        return res.status(400).json({ error: `Unknown need tag(s): ${invalid.join(', ')}. Valid tags: ${NEED_TAGS.join(', ')}.` });
+      }
+      tagsArray = need_tags;
+    } else {
+      // Not included in this request — keep whatever's already stored
+      // rather than silently wiping it (same convention as best_for/
+      // is_pawvy_pick below).
+      const current = db.queryOne('SELECT need_tags FROM products WHERE id = ?', [req.params.id]);
+      try { tagsArray = JSON.parse(current.need_tags || '[]'); } catch (e) { tagsArray = []; }
+    }
+
+    db.run(`
+      UPDATE products SET
+        need_tags = ?, best_for = ?, is_pawvy_pick = ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `, [
+      JSON.stringify(tagsArray),
+      best_for !== undefined ? (best_for || null) : db.queryOne('SELECT best_for FROM products WHERE id = ?', [req.params.id]).best_for,
+      is_pawvy_pick !== undefined ? (is_pawvy_pick ? 1 : 0) : db.queryOne('SELECT is_pawvy_pick FROM products WHERE id = ?', [req.params.id]).is_pawvy_pick,
+      req.params.id
+    ]);
+
+    const updated = db.queryOne(`
+      SELECT p.*, b.name AS brand_name, b.color AS brand_color
+      FROM products p JOIN brands b ON b.id = p.brand_id WHERE p.id = ?
+    `, [req.params.id]);
+    res.json(withParsedNeedTags(withEffectivePrice(updated)));
   });
 
   // DELETE (soft delete — set inactive)

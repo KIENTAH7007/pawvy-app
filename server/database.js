@@ -1032,6 +1032,28 @@ function createSchema() {
   // breaks a banner that only has desktop + mobile images already.
   try { db.run("ALTER TABLE homepage_banners ADD COLUMN image_url_tablet TEXT"); } catch(e) {}
 
+  // Shop-by-Need foundation (Aug 2026, per KT) — three independent
+  // additions to products, all optional/backward-compatible:
+  //
+  // need_tags: which customer "need" categories this product belongs to
+  // (Dental, Skin & Coat, Joints, Gut, Chewing, Enrichment, Treats) —
+  // a product can belong to more than one, so this is stored as a JSON
+  // array string (e.g. '["dental","chewing"]'), NOT a comma list — first
+  // use of this pattern in this schema, parse/stringify at the route
+  // boundary (see products.js). Defaults to '[]' (empty array), never
+  // NULL, so callers can always safely JSON.parse it without a null check.
+  //
+  // best_for: short "Best for: X" line shown under the product name on
+  // the website (e.g. "daily plaque control") — plain nullable text,
+  // no display at all if unset.
+  //
+  // is_pawvy_pick: whether this shows in the homepage's admin-curated
+  // "Pawvy's Picks" section (replaces the earlier sales-ranked
+  // "Bestsellers" idea — KT wants editorial control, not an algorithm).
+  try { db.run("ALTER TABLE products ADD COLUMN need_tags TEXT NOT NULL DEFAULT '[]'"); } catch(e) {}
+  try { db.run("ALTER TABLE products ADD COLUMN best_for TEXT"); } catch(e) {}
+  try { db.run("ALTER TABLE products ADD COLUMN is_pawvy_pick INTEGER NOT NULL DEFAULT 0"); } catch(e) {}
+
   console.log('✅ Schema ready');
 }
 

@@ -28,6 +28,18 @@ const BRAND_COLORS = [
   '#E0445A','#F7B731','#20BF6B','#2D98DA','#8854D0','#A55EEA',
 ];
 
+// Must match NEED_TAGS in server/routes/products.js exactly — these are
+// the slugs stored in the DB and used by the website's /shop?need= route.
+const NEED_TAG_OPTIONS = [
+  { value: 'dental',     label: 'Dental' },
+  { value: 'skin-coat',  label: 'Skin & Coat' },
+  { value: 'joints',     label: 'Joints' },
+  { value: 'gut',        label: 'Gut' },
+  { value: 'chewing',    label: 'Chewing' },
+  { value: 'enrichment', label: 'Enrichment' },
+  { value: 'treats',     label: 'Treats' },
+];
+
 export default function Products() {
   const location = useLocation();
   const navigate  = useNavigate();
@@ -45,6 +57,9 @@ export default function Products() {
   const [discountForm, setDiscountForm] = useState({});
   const [discountError, setDiscountError] = useState('');
   const [discountSaving, setDiscountSaving] = useState(false);
+  const [merchForm, setMerchForm] = useState({});
+  const [merchError, setMerchError] = useState('');
+  const [merchSaving, setMerchSaving] = useState(false);
 
   // Pre-filled SKUs handed off from New Brand Pricing — nothing here writes to the
   // database until each one is individually reviewed and saved through the normal
@@ -313,6 +328,27 @@ export default function Products() {
                                 {p.is_discount_active && <Badge color="#7fc93e">{p.discount_pct}% off</Badge>}
                               </span>
                             ) : 'Badge'}
+                          </Btn>
+                          <Btn size="sm" variant="ghost" onClick={e=>{
+                            e.stopPropagation();
+                            setMerchForm({
+                              id: p.id, name: `${p.item_series}${p.variation ? ' — '+p.variation : ''}`,
+                              need_tags: Array.isArray(p.need_tags) ? p.need_tags : [],
+                              best_for: p.best_for || '',
+                              is_pawvy_pick: !!p.is_pawvy_pick,
+                            });
+                            setMerchError('');
+                            setModal('merch');
+                          }}>
+                            {/* Same live-state-becomes-the-label pattern as the Badge
+                                button above — shows what's actually set instead of a
+                                static "Shop" label whenever there's something to show. */}
+                            {(Array.isArray(p.need_tags) && p.need_tags.length > 0) || p.is_pawvy_pick ? (
+                              <span style={{display:'flex',alignItems:'center',gap:5}}>
+                                {p.is_pawvy_pick && <Badge color="#F36F4A">PICK</Badge>}
+                                {Array.isArray(p.need_tags) && p.need_tags.length > 0 && <Badge color="#639922">{p.need_tags.length} need{p.need_tags.length>1?'s':''}</Badge>}
+                              </span>
+                            ) : 'Shop'}
                           </Btn>
                         </div>
                       </td>
@@ -595,6 +631,95 @@ export default function Products() {
                 Clear New Badge
               </Btn>
             )}
+          </div>
+        </div>
+      </Modal>
+
+      {/* Merchandising modal — Shop-by-Need tags, "Best for" line, and
+          Pawvy's Pick flag. Same one-button-shows-current-state pattern as
+          Badge above. Save always sends the complete current state of all
+          three fields together (same no-partial-update-ambiguity reasoning
+          as the Badge modal) — backend endpoint is PATCH /:id/merchandising. */}
+      <Modal open={modal==='merch'} title="SHOP SETTINGS" onClose={()=>setModal(null)} width={460}>
+        <div style={{display:'flex',flexDirection:'column',gap:18}}>
+          <div style={{fontSize:13,color:'var(--cream-60)'}}>{merchForm.name}</div>
+
+          <div>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:13,letterSpacing:1,color:'var(--cream)',paddingBottom:8,marginBottom:10,borderBottom:'1px solid var(--border)'}}>NEEDS THIS PRODUCT ADDRESSES</div>
+            <div style={{fontSize:11.5,color:'var(--cream-60)',marginBottom:10}}>Select any that apply — shows this product under those categories on the Shop-by-Need pages.</div>
+            <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+              {NEED_TAG_OPTIONS.map(opt => {
+                const active = (merchForm.need_tags || []).includes(opt.value);
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setMerchForm(f => ({
+                      ...f,
+                      need_tags: active
+                        ? f.need_tags.filter(t => t !== opt.value)
+                        : [...(f.need_tags || []), opt.value],
+                    }))}
+                    style={{
+                      padding:'7px 13px', borderRadius:20, fontSize:12.5, cursor:'pointer',
+                      border: active ? '1px solid var(--orange)' : '1px solid var(--border)',
+                      background: active ? 'var(--orange)' : 'rgba(245,242,235,.04)',
+                      color: active ? '#fff' : 'var(--cream)',
+                      fontWeight: active ? 600 : 400,
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:13,letterSpacing:1,color:'var(--cream)',paddingBottom:8,marginBottom:10,borderBottom:'1px solid var(--border)'}}>BEST FOR</div>
+            <Input
+              label="Short line shown under the product name on the website"
+              placeholder="e.g. daily plaque control"
+              value={merchForm.best_for || ''}
+              onChange={e=>setMerchForm(f=>({...f,best_for:e.target.value}))}
+            />
+          </div>
+
+          <div>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:13,letterSpacing:1,color:'var(--cream)',paddingBottom:8,marginBottom:10,borderBottom:'1px solid var(--border)'}}>PAWVY'S PICKS</div>
+            <label style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer'}}>
+              <input
+                type="checkbox"
+                checked={!!merchForm.is_pawvy_pick}
+                onChange={e=>setMerchForm(f=>({...f,is_pawvy_pick:e.target.checked}))}
+                style={{width:16,height:16,accentColor:'var(--orange)',cursor:'pointer'}}
+              />
+              <span style={{fontSize:13,color:'var(--cream)'}}>Feature in Pawvy's Picks on the homepage</span>
+            </label>
+          </div>
+
+          {merchError && <div style={{color:'#f87171',fontSize:12.5}}>{merchError}</div>}
+
+          <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+            <Btn disabled={merchSaving} onClick={async()=>{
+              setMerchSaving(true);
+              setMerchError('');
+              try {
+                await productsApi.setMerchandising(merchForm.id, {
+                  need_tags: merchForm.need_tags || [],
+                  best_for: merchForm.best_for || null,
+                  is_pawvy_pick: !!merchForm.is_pawvy_pick,
+                });
+                await load();
+                setModal(null);
+              } catch (err) {
+                setMerchError(err?.message || 'Could not save.');
+              } finally {
+                setMerchSaving(false);
+              }
+            }}>
+              {merchSaving ? 'Saving…' : 'Save'}
+            </Btn>
           </div>
         </div>
       </Modal>
