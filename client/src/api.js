@@ -155,6 +155,13 @@ export const homepageBannersApi = {
   delete: (id) => api.delete(`/homepage-banners/${id}`),
 };
 
+export const testimonialsApi = {
+  getAll: () => api.get('/testimonials'),
+  create: (p) => api.post('/testimonials', p),
+  update: (id, p) => api.patch(`/testimonials/${id}`, p),
+  delete: (id) => api.delete(`/testimonials/${id}`),
+};
+
 export const restockApi = {
   getAll:  (q) => api.get(`/restock${qs(q)}`),
   get:     (id) => api.get(`/restock/${id}`),

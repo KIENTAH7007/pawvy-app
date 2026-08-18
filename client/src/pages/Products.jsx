@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Download } from 'lucide-react';
 import { productsApi, brandsApi } from '../api';
 import { Page, Select, Input, Badge, Btn, Modal, FormRow, Divider } from '../components/ui';
+import { NEED_TAG_OPTIONS } from '../constants';
 
 const MARKET_FIELDS = {
   SG: [
@@ -26,19 +27,6 @@ const MARKET_FIELDS = {
 const BRAND_COLORS = [
   '#f36f4a','#378ADD','#639922','#BA7517','#7F77DD','#1D9E75',
   '#E0445A','#F7B731','#20BF6B','#2D98DA','#8854D0','#A55EEA',
-];
-
-// Must match NEED_TAGS in server/routes/products.js exactly — these are
-// the slugs stored in the DB and used by the website's /shop?need= route.
-const NEED_TAG_OPTIONS = [
-  { value: 'skin-coat',  label: 'Skin & Coat' },
-  { value: 'chew',       label: 'Chew' },
-  { value: 'enrichment', label: 'Enrichment' },
-  { value: 'gut',        label: 'Gut' },
-  { value: 'food',       label: 'Food' },
-  { value: 'dental',     label: 'Dental' },
-  { value: 'grooming',   label: 'Grooming' },
-  { value: 'joints',     label: 'Joints' },
 ];
 
 export default function Products() {

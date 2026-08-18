@@ -2,14 +2,7 @@ const { Router } = require('express');
 const archiver = require('archiver');
 const { withEffectivePrice } = require('../lib/pricing');
 const { uploadBuffer, getObjectStream, decodeDataUrl, buildImageKey, deleteObject } = require('../lib/bucket');
-
-// Canonical Shop-by-Need tags (Aug 2026) — slugs match the /shop?need=
-// query param used on the website, so a tag stored here plugs directly
-// into that route without any translation layer. Kept as a fixed list
-// (not admin-editable) since adding a new need also requires a matching
-// homepage card and Shop filter option on the website side — a genuinely
-// new need is a small cross-repo change, not just an admin data edit.
-const NEED_TAGS = ['skin-coat', 'chew', 'enrichment', 'gut', 'food', 'dental', 'grooming', 'joints'];
+const { NEED_TAGS } = require('../lib/needTags');
 
 // need_tags is stored as a JSON array string (see database.js) so a
 // product can belong to more than one need — this always hands back a

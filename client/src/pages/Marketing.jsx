@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Trash2, Edit2 } from 'lucide-react';
-import { campaignsApi, tickerMessagesApi, instagramPostsApi, homepageBannersApi } from '../api';
+import { campaignsApi, tickerMessagesApi, instagramPostsApi, homepageBannersApi, testimonialsApi, productsApi } from '../api';
 import { Page, Table, Badge, Btn, Modal, FormRow, Input, Select, fmt } from '../components/ui';
+import { NEED_TAG_OPTIONS } from '../constants';
 
 const CAMPAIGN_EMPTY = { name: '', multiplier: '2', applies_to: 'both', start_date: new Date().toISOString().slice(0, 10), end_date: '', is_active: true, email_frequency_days: '' };
 const MESSAGE_EMPTY = { text: '', sort_order: 0, is_active: true };
@@ -28,6 +29,7 @@ export default function Marketing() {
       <TickerSection />
       <InstagramSection />
       <HomepageBannerSection />
+      <TestimonialsSection />
     </Page>
   );
 }
@@ -840,6 +842,267 @@ function HomepageBannerSection() {
           {error && <div style={{ color: '#f87171', fontSize: 13 }}>{error}</div>}
           <Btn onClick={save} disabled={saving} size="lg" style={{ justifyContent: 'center' }}>
             {saving ? 'Saving…' : (editing ? 'Save Changes' : 'Add Banner')}
+          </Btn>
+        </div>
+      </Modal>
+    </>
+  );
+}
+
+// Shop-by-Need testimonials (Aug 2026, per KT) — shown on each need's page,
+// tied to exactly one need_tag and optionally one linked product for a
+// shoppable row on the card. Photo behavior mirrors the homepage banner's
+// optional-second-image pattern: image_data is always the primary/only
+// photo, image_data_after is optional — set both and the card shows a
+// labelled before/after split on the website, set just the first and it's
+// a plain single photo with no label (see testimonials.js for the actual
+// display-side logic once the website side is built in Phase 1).
+function TestimonialsSection() {
+  const [testimonials, setTestimonials] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [modal, setModal] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [form, setForm] = useState({
+    need_tag: NEED_TAG_OPTIONS[0].value, quote: '', customer_handle: '',
+    image_data: '', image_url: '', image_data_after: '', image_url_after: '',
+    product_id: '', sort_order: 0, is_active: true,
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const load = () => testimonialsApi.getAll().then(d => setTestimonials(d.testimonials));
+  useEffect(() => {
+    load();
+    // Full product list, not just active ones — a testimonial can still
+    // reference a since-archived product without breaking the link.
+    productsApi.getAll().then(setProducts);
+  }, []);
+
+  const sf = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  function openNew() {
+    setEditing(null);
+    setError('');
+    const maxOrder = testimonials.reduce((m, r) => Math.max(m, r.sort_order), 0);
+    setForm({
+      need_tag: NEED_TAG_OPTIONS[0].value, quote: '', customer_handle: '',
+      image_data: '', image_url: '', image_data_after: '', image_url_after: '',
+      product_id: '', sort_order: maxOrder + 1, is_active: true,
+    });
+    setModal(true);
+  }
+  function openEdit(row) {
+    setEditing(row);
+    setError('');
+    setForm({
+      need_tag: row.need_tag, quote: row.quote, customer_handle: row.customer_handle || '',
+      image_data: '', image_url: row.image_url || '', image_data_after: '', image_url_after: row.image_url_after || '',
+      product_id: row.product_id || '', sort_order: row.sort_order, is_active: !!row.is_active,
+    });
+    setModal(true);
+  }
+
+  function handleFile(field, e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { setError('Image must be under 2MB. Please resize and try again.'); return; }
+    setError('');
+    const reader = new FileReader();
+    reader.onload = ev => sf(field, ev.target.result);
+    reader.readAsDataURL(file);
+  }
+
+  async function save() {
+    if (!form.quote.trim()) { setError('Please enter the testimonial text.'); return; }
+    setSaving(true);
+    setError('');
+    try {
+      const body = {
+        need_tag: form.need_tag,
+        quote: form.quote,
+        customer_handle: form.customer_handle || null,
+        image_data: form.image_data || undefined,
+        image_data_after: form.image_data_after || undefined,
+        product_id: form.product_id || null,
+        sort_order: form.sort_order,
+        is_active: form.is_active,
+      };
+      if (editing) await testimonialsApi.update(editing.id, body);
+      else await testimonialsApi.create(body);
+      load();
+      setModal(false);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function remove(id) {
+    if (!window.confirm('Delete this testimonial?')) return;
+    await testimonialsApi.delete(id);
+    load();
+  }
+
+  async function toggleActive(row) {
+    await testimonialsApi.update(row.id, { is_active: !row.is_active });
+    load();
+  }
+
+  async function removeAfterPhoto() {
+    // Explicit removal, distinct from just clearing the field locally —
+    // needs a real request so the backend also deletes the old bucket
+    // object rather than silently orphaning it (see testimonials.js's
+    // remove_image_after handling).
+    sf('image_url_after', '');
+    sf('image_data_after', '');
+    if (editing) {
+      setSaving(true);
+      try { await testimonialsApi.update(editing.id, { remove_image_after: true }); load(); }
+      finally { setSaving(false); }
+    }
+  }
+
+  const needLabel = (value) => NEED_TAG_OPTIONS.find(o => o.value === value)?.label || value;
+
+  const cols = [
+    {
+      key: 'need_tag', label: 'Need', render: v => <Badge color="#F36F4A">{needLabel(v)}</Badge>,
+    },
+    {
+      key: 'image_url', label: 'Photo', render: (v, row) => v
+        ? (
+          <div style={{ display: 'flex', gap: 4 }}>
+            <img src={v} alt="" style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 6, flexShrink: 0 }} />
+            {row.image_url_after && <img src={row.image_url_after} alt="" style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 6, flexShrink: 0 }} />}
+          </div>
+        )
+        : <span style={{ color: 'var(--cream-30)', fontSize: 12 }}>No image</span>,
+    },
+    {
+      key: 'quote', label: 'Quote', render: v => <span style={{ fontSize: 12.5, maxWidth: 260, display: 'inline-block' }}>{v.length > 80 ? v.slice(0, 80) + '…' : v}</span>,
+    },
+    {
+      key: 'product_name', label: 'Linked product', render: (v, row) => v
+        ? <span style={{ fontSize: 12 }}>{row.product_brand_name} — {v}{row.product_variation ? ` (${row.product_variation})` : ''}</span>
+        : <span style={{ color: 'var(--cream-30)', fontSize: 12 }}>None</span>,
+    },
+    {
+      key: 'status', label: 'Status',
+      render: (_, row) => row.is_active ? <Badge color="#1D9E75">Showing</Badge> : <Badge color="#888">Hidden</Badge>,
+    },
+    {
+      key: 'actions', label: '', align: 'right',
+      render: (_, row) => (
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
+          <Btn variant="ghost" size="sm" onClick={() => toggleActive(row)}>{row.is_active ? 'Hide' : 'Show'}</Btn>
+          <button onClick={() => openEdit(row)} title="Edit"
+            style={{ background: 'none', border: 'none', color: 'rgba(245,242,235,.5)', cursor: 'pointer', padding: 4, display: 'inline-flex' }}>
+            <Edit2 size={13} />
+          </button>
+          <button onClick={() => remove(row.id)} title="Delete"
+            style={{ background: 'none', border: 'none', color: 'rgba(248,113,113,.5)', cursor: 'pointer', padding: 4, display: 'inline-flex' }}
+            onMouseEnter={e => e.currentTarget.style.color = '#f87171'}
+            onMouseLeave={e => e.currentTarget.style.color = 'rgba(248,113,113,.5)'}>
+            <Trash2 size={13} />
+          </button>
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 28 }}>
+        <div>
+          <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 15, letterSpacing: 1, color: 'var(--cream)' }}>SHOP-BY-NEED TESTIMONIALS</div>
+          <div style={{ fontSize: 12, color: 'var(--cream-30)', marginTop: 2, maxWidth: 640 }}>
+            Each testimonial is tied to one Need category and shows on that need's page on the website. Upload
+            one photo, or two for a before/after — leave the second blank for a single photo with no label.
+            Optionally link a product for a shoppable "Add to cart" row on the card.
+          </div>
+        </div>
+        <Btn onClick={openNew}><span style={{ fontSize: 16 }}>+</span> Add Testimonial</Btn>
+      </div>
+
+      <div style={{ background: 'var(--navy)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden', marginTop: 14 }}>
+        <Table cols={cols} rows={testimonials} emptyMsg="No testimonials added yet" />
+      </div>
+
+      <Modal open={modal} title={editing ? 'EDIT TESTIMONIAL' : 'ADD TESTIMONIAL'} onClose={() => setModal(false)} width={520}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <Select label="Need" value={form.need_tag} onChange={e => sf('need_tag', e.target.value)}>
+            {NEED_TAG_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+          </Select>
+
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--cream-30)', marginBottom: 6 }}>Quote *</div>
+            <textarea
+              value={form.quote}
+              onChange={e => sf('quote', e.target.value)}
+              rows={3}
+              placeholder="What the customer said..."
+              style={{ width: '100%', background: 'rgba(245,242,235,.05)', border: '1px solid var(--border)', borderRadius: 7, color: 'var(--cream)', fontSize: 13, padding: '10px 12px', fontFamily: 'inherit', resize: 'vertical' }}
+            />
+          </div>
+
+          <Input label="Customer name / handle (optional)" value={form.customer_handle} onChange={e => sf('customer_handle', e.target.value)} placeholder="e.g. @rachel.and.beagle, or Rachel T." />
+
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--cream-30)', marginBottom: 10 }}>Photo 1 {form.image_data || form.image_url ? '(this is "Before" if a second photo is also added)' : ''}</div>
+            <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+              {(form.image_data || form.image_url) ? (
+                <img src={form.image_data || form.image_url} alt="" style={{ width: 90, height: 90, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)' }} />
+              ) : (
+                <div style={{ width: 90, height: 90, borderRadius: 8, border: '2px dashed var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--cream-30)', fontSize: 22 }}>📷</div>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRadius: 7, border: '1px solid var(--border)', cursor: 'pointer', fontSize: 12, color: 'var(--cream-60)' }}>
+                  <span>📁</span>{(form.image_data || form.image_url) ? 'Replace' : 'Upload'}
+                  <input type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} onChange={e => handleFile('image_data', e)} />
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--cream-30)', marginBottom: 10 }}>Photo 2 — "After" (optional)</div>
+            <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+              {(form.image_data_after || form.image_url_after) ? (
+                <img src={form.image_data_after || form.image_url_after} alt="" style={{ width: 90, height: 90, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)' }} />
+              ) : (
+                <div style={{ width: 90, height: 90, borderRadius: 8, border: '2px dashed var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--cream-30)', fontSize: 22 }}>📷</div>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRadius: 7, border: '1px solid var(--border)', cursor: 'pointer', fontSize: 12, color: 'var(--cream-60)' }}>
+                  <span>📁</span>{(form.image_data_after || form.image_url_after) ? 'Replace' : 'Upload'}
+                  <input type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} onChange={e => handleFile('image_data_after', e)} />
+                </label>
+                {(form.image_data_after || form.image_url_after) && (
+                  <button onClick={removeAfterPhoto} style={{ padding: '7px 12px', borderRadius: 7, border: '1px solid rgba(248,113,113,.3)', cursor: 'pointer', fontSize: 12, color: '#f87171', background: 'transparent', textAlign: 'left' }}>
+                    🗑 Remove (back to single photo)
+                  </button>
+                )}
+              </div>
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--cream-30)', marginTop: 8 }}>Leave blank for a single photo with no before/after label.</div>
+          </div>
+
+          <Select label="Link a product (optional — shows a shoppable row on the card)" value={form.product_id} onChange={e => sf('product_id', e.target.value)}>
+            <option value="">None</option>
+            {products.map(p => (
+              <option key={p.id} value={p.id}>{p.brand_name} — {p.item_series}{p.variation ? ` (${p.variation})` : ''}</option>
+            ))}
+          </Select>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+            <input type="checkbox" checked={!!form.is_active} onChange={e => sf('is_active', e.target.checked)} style={{ width: 16, height: 16, accentColor: 'var(--orange)', cursor: 'pointer' }} />
+            <span style={{ fontSize: 13, color: 'var(--cream)' }}>Show on the website</span>
+          </label>
+
+          {error && <div style={{ color: '#f87171', fontSize: 13 }}>{error}</div>}
+          <Btn onClick={save} disabled={saving} size="lg" style={{ justifyContent: 'center' }}>
+            {saving ? 'Saving…' : (editing ? 'Save Changes' : 'Add Testimonial')}
           </Btn>
         </div>
       </Modal>

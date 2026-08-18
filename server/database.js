@@ -540,6 +540,29 @@ function createSchema() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`,
 
+    // Shop-by-Need testimonials (Aug 2026, per KT) — shown on each need's
+    // page, tied to exactly one need_tag (a testimonial about dental
+    // chews only makes sense on the Dental page, not repeated everywhere)
+    // and optionally one product, for a shoppable "Add to cart" row on
+    // the card. image_url is always the primary/only photo; image_url_after
+    // is optional — if set, the card shows a before/after split (labelled),
+    // if not, it's just a single photo with no label. This mirrors the
+    // homepage banner's optional-second-image convention (image_url_mobile)
+    // rather than inventing a new pattern.
+    `CREATE TABLE IF NOT EXISTS testimonials (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      need_tag TEXT NOT NULL,
+      quote TEXT NOT NULL,
+      customer_handle TEXT,
+      image_url TEXT,
+      image_url_after TEXT,
+      product_id INTEGER REFERENCES products(id),
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+
     // BUTTONS ledger — one row per batch earned. Tracked as discrete batches
     // (not a single running balance) so expiry can be FIFO per-batch, and so
     // the 7-day hold can be enforced per-batch via `status`. remaining is
