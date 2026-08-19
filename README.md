@@ -1,130 +1,99 @@
-# Pawvy App — Out-of-Stock Waitlist ("Notify Me")
+# Pawvy App — Public Shop-by-Need Endpoints
 
 Target branch: **staging**
 Repo: `pawvy-app`
 
-Third piece of the Phase 0 foundation — after need tags/Best For/Pawvy's
-Picks, and testimonials.
+This is the backend piece Phase 1 (the actual website build) needs to
+even start — the public, no-login endpoints the website will call.
+Everything from here on out (homepage need cards, the `/shop?need=`
+page, testimonials display) is website-side (`pawvy-website`) work that
+calls these.
 
-## What's in this patch
+Only one file changed this round — everything from the previous three
+deliveries (need tags, testimonials, waitlist) is already on your
+staging and confirmed matching, so nothing else needed to move.
 
-### New table (`server/database.js`)
+## What's in this patch (`server/routes/shop.js`)
 
-`product_waitlist` — `product_id`, `email`, `notified_at` (nullable),
-`created_at`. `UNIQUE(product_id, email)` so a customer accidentally
-submitting twice for the same product is a harmless no-op, not a
-duplicate row.
+### 1. `?need=` filtering on the existing product list
 
-**Scope note:** this captures and surfaces demand data — it does **not**
-yet automatically email anyone when a product restocks. That's a real,
-separate follow-up (needs a hook into whatever job/flow marks a product
-back in stock, plus a Resend template) that I deliberately didn't build
-into this patch without confirming you actually want that automation
-next — let me know if you do.
+`GET /api/shop/products?need=dental` now returns only products tagged
+with that need. Validated against the canonical need list first — an
+unknown/typo'd `?need=` value returns a clear 400 instead of silently
+returning an empty list that'd be confusing to debug later. No `?need=`
+param at all still works exactly as before (existing brand/search
+filters, full catalogue) — this is purely additive.
 
-### Two separate route files — worth understanding why
+Also added `need_tags` and `best_for` to both the product list and
+single-product-detail responses — the website will need these to render
+category chips and the "Best for" line from the original UX review.
 
-This needed both a **public** endpoint (any website visitor can submit
-their email, no login) and **staff-only** endpoints (see who's waiting,
-per-product counts, mark notified, remove). The PIN gate in
-`server/index.js` exempts routes by path *prefix*, all-or-nothing — so
-one route file can't have some paths public and others gated. Split the
-same way `customers.js` (public) and `customerAdmin.js` (staff) already
-are:
+### 2. `GET /api/shop/pawvy-picks`
 
-- **`server/routes/waitlist.js`** → mounted at `/api/waitlist`, public.
-  Just `POST /` — submit an email for a product.
-- **`server/routes/waitlistAdmin.js`** → mounted at `/api/admin-waitlist`,
-  staff-only (PIN-gated, same as everything else in Products & Pricing).
-  `GET /counts`, `GET /:productId`, `PATCH /:id/notify`, `DELETE /:id`.
+The homepage's curated section — only products staff have flagged via
+the Shop Settings modal in Products & Pricing. Deliberately **not**
+sales-ranked (that's what the existing `/top-sellers` endpoint is for,
+used elsewhere for the cart upsell) — this is purely editorial, matching
+your explicit preference for curation over an algorithm.
 
-One subtlety I made sure to get right: `/api/admin-waitlist` does **not**
-start with `/api/waitlist`, so the gate's exemption check
-(`req.path.startsWith('/waitlist')`) can't accidentally also exempt the
-staff routes. Verified this explicitly in testing, not just by
-inspection — see below.
+### 3. `GET /api/shop/testimonials?need=dental`
 
-### Admin UI (`client/src/pages/Products.jsx`)
-
-A small **🔔 N waiting** badge appears next to Edit/Badge/Shop on any
-product row that actually has people waiting — nothing shows for
-products with zero, to keep the row clean. Click it to open a list:
-each entry shows the email, when they joined, a **Mark notified** button
-(for tracking who you've manually reached out to — see the automation
-scope note above), and a remove button.
-
-## What this does NOT include yet
-
-- The actual "Notify me" button/form on the website's product pages —
-  that's Phase 1 work, alongside the rest of the Shop-by-Need build
-  (the OOS state, sort-to-bottom, etc. from the original review).
-- Automatic restock emails — flagged above, needs your confirmation
-  before I build it.
+Only active testimonials for one need at a time. Includes the linked
+product's shop-facing details (name, brand, image, price) directly in
+the response — not just a product ID — so the website can render the
+shoppable "Add to cart" row on a testimonial card without a second
+API call per testimonial. A testimonial with no linked product simply
+omits those fields rather than erroring. Missing/invalid `?need=`
+returns 400, same validation approach as the products filter.
 
 ## Verification performed
 
-**10 real integration tests**, against a real Express server assembled
-with the *exact* PIN gate condition copied from `server/index.js` (not
-a simplified stand-in) plus real session-based auth (a real HTTP login
-against `/api/auth/login` with a test PIN, producing a real Bearer
-token, not a mocked one):
+**9 real backend tests**, against a real Express server with the actual
+`products.js`, `testimonials.js`, and `shop.js` routers all mounted
+together (only the network-touching bucket calls mocked), running
+against a real seeded database:
 
-- Public submit works with **zero** Authorization header — proves it's
-  genuinely reachable by real website visitors.
-- Invalid email, missing `product_id`, and unknown `product_id` all
-  correctly rejected (400/400/404).
-- Submitting the same product+email twice is handled gracefully (still
-  201, no duplicate row — confirmed via the count check below).
-- **The staff endpoint correctly returns 401 with no Authorization
-  header** — this was the one genuine security risk in this delivery
-  (public/staff split relying on path-prefix logic), and it's the test
-  I'd flag as most worth you knowing actually ran, not just "looks
-  right on inspection."
-- With a real valid token: counts endpoint returns the right count (2,
-  correctly collapsed from 3 submit attempts including the duplicate);
-  full list returns both real entries; marking one notified correctly
-  drops the counts badge from 2 to 1; delete removes an entry and the
-  list reflects it afterward.
-
-Also:
-- `client` builds clean via `npm run build`, no errors.
-- Confirmed the `git diff` against origin/staging for `products.js`
-  contains only the previously-delivered `needTags.js` refactor — no
-  new or accidental changes snuck in this round.
-- All 11 changed/new files in this zip byte-diffed against what was
-  actually tested — identical.
+- Tagged two real products with different needs, flagged one as a
+  Pawvy's Pick, created two testimonials (one linked to a product, one
+  not) — then confirmed:
+  - `?need=dental` returns exactly the dental-tagged product, excludes
+    the gut-tagged one; `?need=gut` is the correct mirror image.
+  - An invalid `?need=` value is rejected with 400.
+  - **No `?need=` param at all still returns the full, unfiltered
+    catalogue correctly** — explicit regression check that existing
+    website behavior (today's live Shop page) isn't touched.
+  - Single product detail correctly includes `need_tags` (as a real
+    array) and `best_for`.
+  - `/pawvy-picks` returns only the flagged product.
+  - `/testimonials?need=dental` returns both testimonials; the linked
+    one carries correct product name and computed effective price; the
+    unlinked one has no product/price fields and doesn't error.
+  - A need with zero testimonials returns a clean empty array, not an
+    error.
+  - Missing `?need=` on the testimonials endpoint is rejected with 400.
+- `client` rebuilt clean via `npm run build` — confirms nothing on the
+  admin side broke, even though this patch is backend-only.
+- Directly compared every file from the previous three deliveries
+  against the real current `origin/staging` (fetched fresh, not
+  assumed) — confirmed all of them match exactly what you already
+  applied, so this delivery is genuinely just the one new file.
 
 ## How to apply
-
-If you haven't already merged `main`'s emergency hotfix into staging
-(see the first delivery's README), do that first.
 
 ```bash
 git checkout staging
 git pull origin staging
 
-# then copy/overwrite these files from this zip into your local
-# pawvy-app folder, preserving the same paths:
-#   client/src/api.js
-#   client/src/pages/Marketing.jsx
-#   client/src/pages/Products.jsx
-#   client/src/constants.js
-#   server/database.js
-#   server/index.js
-#   server/routes/products.js
-#   server/lib/needTags.js
-#   server/routes/testimonials.js
-#   server/routes/waitlist.js         <-- NEW FILE
-#   server/routes/waitlistAdmin.js    <-- NEW FILE
+# then copy/overwrite this one file from this zip into your local
+# pawvy-app folder, preserving the same path:
+#   server/routes/shop.js
 
 git add .
-git commit -m "Out-of-stock waitlist: public submit endpoint, staff-only counts/list/notify/remove, badge in Products & Pricing"
+git commit -m "Public shop endpoints: ?need= product filtering, Pawvy's Picks, testimonials-by-need"
 git push origin staging
 ```
 
-Nothing to test on S-App immediately, since nothing currently calls the
-public submit endpoint yet — that wiring happens when the website's
-Phase 1 "Notify me" button gets built. You can still confirm the admin
-side works today via a direct API call if you want to see the badge
-appear, or just wait until Phase 1 makes it end-to-end testable for
-real.
+Nothing to visually check on S-App for this one — it's a backend-only
+change with no admin UI. I'll confirm it's working correctly once the
+website side (Phase 1) is built on top of it and actually calls these
+endpoints.

@@ -1,5 +1,18 @@
 const { Router } = require('express');
 const { withEffectivePrice, stockStatus } = require('../lib/pricing');
+const { NEED_TAGS } = require('../lib/needTags');
+
+// Small local parser, same behavior as products.js's withParsedNeedTags
+// but kept separate on purpose — that one lives in an already-tested
+// file, no need to add a cross-file dependency just to save a few lines.
+function parseNeedTags(product) {
+  let need_tags = [];
+  try {
+    const parsed = JSON.parse(product.need_tags || '[]');
+    if (Array.isArray(parsed)) need_tags = parsed;
+  } catch (e) { /* leave as [] */ }
+  return { ...product, need_tags };
+}
 
 // Public product-browsing API for pawvy.co. Deliberately separate from
 // server/routes/products.js (staff-only, exposes wholesale/cost pricing)
@@ -42,10 +55,10 @@ module.exports = function(db) {
   // pricing + stock status. Supports the same brand_id/search filters as
   // the staff endpoint for consistency, minus anything staff-only.
   router.get('/products', (req, res) => {
-    const { brand_id, search } = req.query;
+    const { brand_id, search, need } = req.query;
     let sql = `
       SELECT
-        p.id, p.item_series, p.variation, p.image_url,
+        p.id, p.item_series, p.variation, p.image_url, p.need_tags, p.best_for,
         p.price_rrp_sg, p.discount_pct, p.discount_start, p.discount_end, p.is_new, p.new_until,
         b.id AS brand_id, b.name AS brand_name, b.color AS brand_color,
         COALESCE(home.qty, 0)    AS home_qty,
@@ -63,6 +76,19 @@ module.exports = function(db) {
       sql += ' AND (p.item_series LIKE ? OR p.variation LIKE ?)';
       params.push(`%${search}%`, `%${search}%`);
     }
+    if (need) {
+      // need_tags is a JSON array string (e.g. '["dental","chew"]') — no
+      // JSON1 dependency here, just a quoted-substring match, which is
+      // exact (not a false-positive-prone plain substring check) since
+      // every tag in the array is individually quoted. Validated against
+      // the canonical list first so a typo'd/unknown ?need= value returns
+      // a clean empty result instead of a confusing always-empty LIKE.
+      if (!NEED_TAGS.includes(need)) {
+        return res.status(400).json({ error: `Unknown need "${need}". Valid: ${NEED_TAGS.join(', ')}.` });
+      }
+      sql += ' AND p.need_tags LIKE ?';
+      params.push(`%"${need}"%`);
+    }
     // Out-of-stock sinks to the bottom, but WITHIN its own brand group,
     // not pulled out to the very end of the whole list — brand grouping
     // (b.name) stays the top-level sort key, exactly as it already was;
@@ -78,7 +104,7 @@ module.exports = function(db) {
     const rows = db.query(sql, params);
     const products = rows.map(r => {
       const { home_qty, storhub_qty, ...rest } = withEffectivePrice(r);
-      return { ...rest, stock_status: stockStatus(home_qty + storhub_qty) };
+      return parseNeedTags({ ...rest, stock_status: stockStatus(home_qty + storhub_qty) });
     });
     res.json({ products });
   });
@@ -89,7 +115,7 @@ module.exports = function(db) {
   router.get('/products/:id', (req, res) => {
     const row = db.queryOne(`
       SELECT
-        p.id, p.item_series, p.variation, p.image_url, p.description,
+        p.id, p.item_series, p.variation, p.image_url, p.description, p.need_tags, p.best_for,
         p.price_rrp_sg, p.discount_pct, p.discount_start, p.discount_end, p.is_new, p.new_until,
         b.id AS brand_id, b.name AS brand_name, b.color AS brand_color,
         COALESCE(home.qty, 0)    AS home_qty,
@@ -104,7 +130,7 @@ module.exports = function(db) {
 
     if (!row) return res.status(404).json({ error: 'Product not found.' });
     const { home_qty, storhub_qty, ...rest } = withEffectivePrice(row);
-    res.json({ product: { ...rest, stock_status: stockStatus(home_qty + storhub_qty) } });
+    res.json({ product: parseNeedTags({ ...rest, stock_status: stockStatus(home_qty + storhub_qty) }) });
   });
 
   // GET /api/shop/brands — for a brand filter on the shop page.
@@ -151,6 +177,71 @@ module.exports = function(db) {
       .slice(0, limit);
 
     res.json({ products });
+  });
+
+  // GET /api/shop/pawvy-picks — the homepage's admin-curated section
+  // (staff toggle it per-product in Products & Pricing → Shop Settings).
+  // Deliberately not sales-ranked like /top-sellers above — this is
+  // editorial, not algorithmic, per KT's explicit preference.
+  router.get('/pawvy-picks', (req, res) => {
+    const rows = db.query(`
+      SELECT
+        p.id, p.item_series, p.variation, p.image_url, p.need_tags, p.best_for,
+        p.price_rrp_sg, p.discount_pct, p.discount_start, p.discount_end, p.is_new, p.new_until,
+        b.id AS brand_id, b.name AS brand_name, b.color AS brand_color,
+        COALESCE(home.qty, 0)    AS home_qty,
+        COALESCE(storhub.qty, 0) AS storhub_qty
+      FROM products p
+      JOIN brands b ON b.id = p.brand_id
+      LEFT JOIN inventory_levels home    ON home.product_id = p.id    AND home.location    = 'Home'
+      LEFT JOIN inventory_levels storhub ON storhub.product_id = p.id AND storhub.location = 'Storhub'
+      WHERE p.is_active = 1 AND p.is_pawvy_pick = 1
+        AND p.barcode NOT IN (${WEBSITE_HIDDEN_BARCODES.map(() => '?').join(',')})
+      ORDER BY b.name, p.item_series, p.variation
+    `, [...WEBSITE_HIDDEN_BARCODES]);
+
+    const products = rows.map(r => {
+      const { home_qty, storhub_qty, ...rest } = withEffectivePrice(r);
+      return parseNeedTags({ ...rest, stock_status: stockStatus(home_qty + storhub_qty) });
+    });
+    res.json({ products });
+  });
+
+  // GET /api/shop/testimonials?need=dental — only active testimonials,
+  // for exactly one need at a time (a testimonial belongs to one need,
+  // see database.js). Includes the linked product's shop-facing fields
+  // directly (not just an id) so the website can render the shoppable
+  // row without a second round-trip per testimonial.
+  router.get('/testimonials', (req, res) => {
+    const { need } = req.query;
+    if (!need || !NEED_TAGS.includes(need)) {
+      return res.status(400).json({ error: `A valid need is required. Valid: ${NEED_TAGS.join(', ')}.` });
+    }
+    const rows = db.query(`
+      SELECT
+        t.id, t.quote, t.customer_handle, t.image_url, t.image_url_after,
+        p.id AS product_id, p.item_series AS product_name, p.variation AS product_variation,
+        p.image_url AS product_image_url, p.price_rrp_sg, p.discount_pct, p.discount_start, p.discount_end,
+        b.name AS product_brand_name
+      FROM testimonials t
+      LEFT JOIN products p ON p.id = t.product_id AND p.is_active = 1
+      LEFT JOIN brands b ON b.id = p.brand_id
+      WHERE t.is_active = 1 AND t.need_tag = ?
+      ORDER BY t.sort_order ASC, t.id ASC
+    `, [need]);
+
+    const testimonials = rows.map(r => {
+      const { price_rrp_sg, discount_pct, discount_start, discount_end, ...rest } = r;
+      // Only compute effective pricing if a product is actually linked —
+      // withEffectivePrice expects those fields to exist, and a
+      // testimonial with no linked product legitimately has none of them.
+      if (rest.product_id) {
+        const priced = withEffectivePrice({ price_rrp_sg, discount_pct, discount_start, discount_end });
+        return { ...rest, price_rrp_sg: priced.price_rrp_sg, effective_price_rrp_sg: priced.effective_price_rrp_sg, is_discount_active: priced.is_discount_active };
+      }
+      return rest;
+    });
+    res.json({ testimonials });
   });
 
   return router;
