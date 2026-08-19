@@ -55,7 +55,7 @@ module.exports = function(db) {
   // pricing + stock status. Supports the same brand_id/search filters as
   // the staff endpoint for consistency, minus anything staff-only.
   router.get('/products', (req, res) => {
-    const { brand_id, search, need } = req.query;
+    const { brand_id, search, need, item_series } = req.query;
     let sql = `
       SELECT
         p.id, p.item_series, p.variation, p.image_url, p.need_tags, p.best_for,
@@ -75,6 +75,16 @@ module.exports = function(db) {
     if (search) {
       sql += ' AND (p.item_series LIKE ? OR p.variation LIKE ?)';
       params.push(`%${search}%`, `%${search}%`);
+    }
+    if (item_series) {
+      // Exact match, not LIKE — used by the product detail page to find
+      // sibling variants of the same product line (different size/flavor
+      // of the same item_series). A LIKE match here risks false positives
+      // if one product's item_series text happens to be a substring of
+      // another's, or matches inside a variation field via the shared
+      // `search` filter above — exact equality avoids that entirely.
+      sql += ' AND p.item_series = ?';
+      params.push(item_series);
     }
     if (need) {
       // need_tags is a JSON array string (e.g. '["dental","chew"]') — no
