@@ -11,5 +11,5 @@ export const NEED_TAG_OPTIONS = [
   { value: 'food',       label: 'Food' },
   { value: 'dental',     label: 'Dental' },
   { value: 'grooming',   label: 'Grooming' },
-  { value: 'joints',     label: 'Joints' },
+  { value: 'joints',     label: 'Joint' },
 ];

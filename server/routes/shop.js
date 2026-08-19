@@ -55,7 +55,7 @@ module.exports = function(db) {
   // pricing + stock status. Supports the same brand_id/search filters as
   // the staff endpoint for consistency, minus anything staff-only.
   router.get('/products', (req, res) => {
-    const { brand_id, search, need, item_series } = req.query;
+    const { brand_id, search, need, item_series, ids } = req.query;
     let sql = `
       SELECT
         p.id, p.item_series, p.variation, p.image_url, p.need_tags, p.best_for,
@@ -85,6 +85,24 @@ module.exports = function(db) {
       // `search` filter above — exact equality avoids that entirely.
       sql += ' AND p.item_series = ?';
       params.push(item_series);
+    }
+    if (ids) {
+      // Explicit ID list (e.g. "12,45,88") — used by the product page's
+      // variant switcher when a brand-page card already resolved its own
+      // exact sibling set (see BrandDeepDive.jsx/CategoryBrowser.jsx/
+      // FitCard.jsx). Not every brand's data shares one item_series
+      // across size/color variants (GiGwi's colors are genuinely
+      // different item_series values, matched by SKU prefix instead —
+      // see matchByPrefix in the website's CategoryBrowser.jsx), so
+      // re-deriving "siblings" from item_series alone doesn't work
+      // universally. Passing the already-correct ID list sidesteps that
+      // entirely, regardless of how a given brand's catalog is shaped.
+      const idList = String(ids).split(',').map(s => parseInt(s.trim(), 10)).filter(n => !Number.isNaN(n));
+      if (idList.length === 0) {
+        return res.json({ products: [] });
+      }
+      sql += ` AND p.id IN (${idList.map(() => '?').join(',')})`;
+      params.push(...idList);
     }
     if (need) {
       // need_tags is a JSON array string (e.g. '["dental","chew"]') — no
