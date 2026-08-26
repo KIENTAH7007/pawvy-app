@@ -1050,7 +1050,7 @@ function TestimonialsSection() {
 
           <div>
             <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--cream-30)', marginBottom: 4 }}>Photo 1 {form.image_data || form.image_url ? '(this is "Before" if a second photo is also added)' : ''}</div>
-            <div style={{ fontSize: 10, color: 'var(--cream-30)', marginBottom: 10, textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}>Recommended 900×1200px (3:4 portrait) — matches the size shown on the website. JPG, PNG, or WebP, under 2MB.</div>
+            <div style={{ fontSize: 10, color: 'var(--cream-30)', marginBottom: 10, textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}>Recommended 700×930px (3:4 portrait) — matches the homepage's own customer-review card size at 2x for sharp screens. JPG, PNG, or WebP, under 2MB.</div>
             <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', flexWrap: 'wrap' }}>
               {(form.image_data || form.image_url) ? (
                 <img src={form.image_data || form.image_url} alt="" style={{ width: 90, height: 90, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)' }} />
@@ -1068,7 +1068,7 @@ function TestimonialsSection() {
 
           <div>
             <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--cream-30)', marginBottom: 4 }}>Photo 2 — "After" (optional)</div>
-            <div style={{ fontSize: 10, color: 'var(--cream-30)', marginBottom: 10, textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}>Same recommended size as Photo 1 (900×1200px, 3:4 portrait) — shown side by side with Photo 1 on the website, each keeping its own portrait shape rather than being squeezed.</div>
+            <div style={{ fontSize: 10, color: 'var(--cream-30)', marginBottom: 10, textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}>Same recommended size as Photo 1 (700×930px, 3:4 portrait) — shown side by side with Photo 1 on the website, each keeping its own portrait shape rather than being squeezed.</div>
             <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', flexWrap: 'wrap' }}>
               {(form.image_data_after || form.image_url_after) ? (
                 <img src={form.image_data_after || form.image_url_after} alt="" style={{ width: 90, height: 90, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)' }} />
