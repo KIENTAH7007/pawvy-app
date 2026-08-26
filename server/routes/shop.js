@@ -117,16 +117,23 @@ module.exports = function(db) {
       sql += ' AND p.need_tags LIKE ?';
       params.push(`%"${need}"%`);
     }
-    // Out-of-stock sinks to the bottom, but WITHIN its own brand group,
-    // not pulled out to the very end of the whole list — brand grouping
-    // (b.name) stays the top-level sort key, exactly as it already was;
-    // this just adds one more tier underneath it. Same threshold as
-    // stockStatus() in lib/pricing.js (<=0 combined qty), and the same
-    // rule applied identically in routes/pos.js and routes/portal.js —
-    // KT's ask (Aug 2026) was for consistent behavior across Website,
-    // POS, and Order Portal.
-    sql += ` ORDER BY b.name,
+    // Aug 2026 (per KT): was brand-first / stock-second (Available
+    // BetterBone → OOS BetterBone → Available Lillidale → OOS
+    // Lillidale...) — fine for browsing one brand's full range, but once
+    // Shop-by-Need filters down to a handful of SKUs per brand, having
+    // every brand's own OOS items interspersed mid-list made shopping
+    // genuinely harder. Now stock status is the TOP-level sort key
+    // instead: every available product across every brand first (in
+    // brand order), then every OOS product across every brand (in brand
+    // order) — Available BetterBone → Available Lillidale → ... → OOS
+    // BetterBone → OOS Lillidale → ...
+    //
+    // Same rule applied identically in routes/pos.js and routes/portal.js
+    // — kept consistent across Website, POS, and Order Portal per KT's
+    // explicit request.
+    sql += ` ORDER BY
       CASE WHEN (COALESCE(home.qty,0) + COALESCE(storhub.qty,0)) <= 0 THEN 1 ELSE 0 END,
+      b.name,
       COALESCE(p.portal_sort_order, 999999), p.item_series, p.variation`;
 
     const rows = db.query(sql, params);

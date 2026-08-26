@@ -1,83 +1,74 @@
-# Pawvy App — URGENT: Dashboard Profit Missing Stripe Fee, Testimonial Photo Hints
+# Pawvy App — Availability-First Sort: Website, POS, and Order Portal
 
 Target branch: **staging**
 Repo: `pawvy-app`
 
-## The real bug you found (item 4)
+This replaces the earlier "Website Sort Availability First" zip — same
+fix, now applied to all three systems for consistency, per your
+confirmation.
 
-**Confirmed and fixed.** Your diagnosis was exactly right.
+## What changed
 
-**Root cause:** `server/routes/sales.js` has a correct, canonical profit
-formula (`PROFIT_EXPR`, at the top of the file) that subtracts the
-Stripe processing fee — added in "Patch 122". But the `/sales/summary`
-endpoint, which feeds the Dashboard's top-left KPI card, had **three of
-its own separately hand-written copies** of the profit formula (for the
-overall total, the by-brand breakdown, and the by-month breakdown) that
-were written *before* Patch 122 and never updated when it shipped. So
-the ledger listing and the monthly trend chart (which both use the
-correct, up-to-date formula) showed the right number, while the
-Dashboard's top card — using these three stale duplicates — silently
-under-subtracted the Stripe fee.
+All three product listing endpoints now sort by **stock status first,
+brand second**, instead of the previous brand-first ordering:
 
-**Proof, not just a theory:** I reproduced your exact scenario with a
-real database — a $69.00 sale with a $30.18 cost and a $5.15 Stripe
-fee:
-- **Old formula: $38.82** — matches the profit figure shown for that
-  exact Lillidale transaction in your screenshot.
-- **New formula: $33.67** — matches what the correct calculation should
-  be (revenue − cost − Stripe fee).
-- **Difference: exactly $5.15** — the precise amount you identified.
+**Before:** Available BetterBone → OOS BetterBone → Available Lillidale
+→ OOS Lillidale → ...
 
-## The fix
+**Now:** Available BetterBone → Available Lillidale → Available GiGwi
+→ ... → OOS BetterBone → OOS Lillidale → OOS GiGwi → ...
 
-Rather than patch just the one spot, I removed the duplication
-entirely — added a new `PROFIT_RAW_EXPR` constant (same formula as
-`PROFIT_EXPR`, without the double-rounding issue that would come from
-reusing `PROFIT_EXPR` directly inside a `SUM()`), and pointed all three
-`/sales/summary` sub-queries at it. There's now exactly one place in
-this file that defines what "profit" means — nothing to drift out of
-sync again next time a fee or cost type gets added.
+Applied identically to:
+- **`server/routes/shop.js`** — `GET /api/shop/products` (the website's
+  Shop page and every Shop-by-Need page)
+- **`server/routes/pos.js`** — `GET /api/pos/catalogue`
+- **`server/routes/portal.js`** — `GET /api/portal/catalogue`
 
-## Testimonial photo sizes (item 1 from the other conversation)
-
-Updated `client/src/pages/Marketing.jsx`'s hint text to reflect the
-corrected, smaller sizes — see the separate pawvy-website zip's README
-for the full explanation (short version: single photo ~500×667px,
-before/after ~350×640px each, matching your two real reference cards
-exactly instead of my earlier oversized guess).
+Within each tier (available / out-of-stock), brand order and your
+existing sort priority (`portal_sort_order`, then item name) are
+unchanged — only the availability/brand priority swapped, identically
+in all three places.
 
 ## Verification performed
 
-**4 real backend tests** against a real Express server + real database:
-inserted an actual sale row with a Stripe fee, confirmed the summary
-endpoint's top-level total, by-brand breakdown, and by-month breakdown
-all now correctly subtract it; then cross-checked against the separate
-`/reports/trend` endpoint (the one behind your monthly chart) for the
-same data and confirmed **the two numbers now agree** — directly
-resolving the exact discrepancy you flagged. Also independently
-verified the old formula's error reproduces your $38.82 figure exactly,
-and that the gap is precisely $5.15.
+**Real backend tests** against a real seeded database with genuine
+mixed inventory inserted across multiple brands (the seed DB ships with
+zero stock rows by default, so this needed real data to actually
+exercise the available/OOS boundary):
+
+- Confirmed all **three** endpoints independently return every
+  available product before every out-of-stock product, with real mixed
+  data (215-217 products each, a real split between available and OOS
+  found in each result set — not a trivial all-one-state test).
+- Confirmed brand order is correctly preserved as the secondary sort
+  within each tier, on all three.
+- Checked the POS and Portal frontend code for any client-side
+  re-sorting that might override the backend order — found only
+  `.sort()` calls building a brand-name filter dropdown list, not
+  re-ordering the product catalogue itself, so the backend order is
+  what actually reaches the screen in both.
+- Confirmed all three files load with no syntax errors.
+- All 3 changed files byte-diffed against what was actually tested —
+  identical.
 
 ## How to apply
-
-Per your note — this can go to **staging first** like everything else;
-you'll merge to `main` together with the rest once 1-3 are confirmed
-okay.
 
 ```bash
 git checkout staging
 git pull origin staging
 
-# copy/overwrite:
-#   server/routes/sales.js
-#   client/src/pages/Marketing.jsx
+# copy/overwrite these files:
+#   server/routes/shop.js
+#   server/routes/pos.js
+#   server/routes/portal.js
 
 git add .
-git commit -m "Fix dashboard profit KPI missing Stripe fee deduction (3 stale duplicate formulas in /sales/summary, never updated after Patch 122); reduce testimonial photo size hints"
+git commit -m "Sort product listings by availability first, then brand — consistently across Website, POS, and Order Portal"
 git push origin staging
 ```
 
-## Worth checking on S-App once live
-
-Look at the Dashboard's top-left profit card and the monthly chart
-tooltip for the same month — they should now show the **same number**.
+Worth checking on S-App: a product list in each of the three tools
+(Shop-by-Need on the website, the POS catalogue, and the Order Portal
+catalogue) with a mix of in-stock and OOS items across a few brands —
+confirm every available product now shows before any OOS one, in all
+three.
