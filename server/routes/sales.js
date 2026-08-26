@@ -22,6 +22,23 @@ const PROFIT_EXPR = `ROUND(
   - COALESCE(s.stripe_fee_amt,0),
 2)`;
 
+// Same formula, without the outer ROUND — for use inside SUM() aggregates
+// (rounding once after summing exact values is more correct than summing
+// several already-rounded values, and matches the pattern already used in
+// reports.js's PROFIT_SQL). This is the single source of truth for "what
+// counts as profit" in this file — the /summary endpoint below used to
+// have three separate hand-copied versions of this formula that quietly
+// drifted out of sync with PROFIT_EXPR after the Stripe fee was added in
+// Patch 122, so the dashboard's top KPI card silently under-subtracted
+// fees while the ledger and monthly trend chart (which used the correct,
+// up-to-date formula) did not — always reference this constant instead of
+// writing the formula out again.
+const PROFIT_RAW_EXPR = `s.qty * (s.unit_price - s.unit_cost)
+  - s.platform_fee_amt
+  + COALESCE(s.shipping_charged,0)
+  - COALESCE(s.shipping_cost,0)
+  - COALESCE(s.stripe_fee_amt,0)`;
+
 module.exports = function(db, inventoryRouter) {
   const router = Router();
 
@@ -77,7 +94,7 @@ module.exports = function(db, inventoryRouter) {
       THEN s.qty * s.unit_price + COALESCE(s.shipping_charged,0)
       ELSE s.qty * s.unit_price - s.platform_fee_amt + COALESCE(s.shipping_charged,0)
     END)`;
-    const profitExpr = `SUM(s.qty * (s.unit_price - s.unit_cost) - s.platform_fee_amt + COALESCE(s.shipping_charged,0) - COALESCE(s.shipping_cost,0))`;
+    const profitExpr = `SUM(${PROFIT_RAW_EXPR})`;
 
     const totals = db.queryOne(`
       SELECT
@@ -95,7 +112,7 @@ module.exports = function(db, inventoryRouter) {
     const byBrand = db.query(`
       SELECT
         b.id, b.name, b.color,
-        ROUND(SUM(s.qty * (s.unit_price - s.unit_cost) - s.platform_fee_amt + COALESCE(s.shipping_charged,0) - COALESCE(s.shipping_cost,0)), 2) AS profit,
+        ROUND(SUM(${PROFIT_RAW_EXPR}), 2) AS profit,
         SUM(s.qty) AS units
       FROM sales s
       JOIN products p ON p.id = s.product_id
@@ -108,7 +125,7 @@ module.exports = function(db, inventoryRouter) {
     const byMonth = db.query(`
       SELECT
         strftime('%Y-%m', s.date) AS month,
-        ROUND(SUM(s.qty * (s.unit_price - s.unit_cost) - s.platform_fee_amt + COALESCE(s.shipping_charged,0) - COALESCE(s.shipping_cost,0)), 2) AS profit,
+        ROUND(SUM(${PROFIT_RAW_EXPR}), 2) AS profit,
         ROUND(SUM(CASE WHEN s.channel IN ('Shopee','Lazada','Amazon','TikTok Shop')
           THEN s.qty * s.unit_price + COALESCE(s.shipping_charged,0)
           ELSE s.qty * s.unit_price - s.platform_fee_amt + COALESCE(s.shipping_charged,0)

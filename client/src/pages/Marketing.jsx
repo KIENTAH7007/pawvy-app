@@ -1050,7 +1050,7 @@ function TestimonialsSection() {
 
           <div>
             <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--cream-30)', marginBottom: 4 }}>Photo 1 {form.image_data || form.image_url ? '(this is "Before" if a second photo is also added)' : ''}</div>
-            <div style={{ fontSize: 10, color: 'var(--cream-30)', marginBottom: 10, textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}>Recommended 700×930px (3:4 portrait) — matches the homepage's own customer-review card size at 2x for sharp screens. JPG, PNG, or WebP, under 2MB.</div>
+            <div style={{ fontSize: 10, color: 'var(--cream-30)', marginBottom: 10, textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}>If this is your only photo: ~500×667px (3:4, matches the homepage's customer-review card). If adding a Photo 2 below (before/after): ~350×640px each — Photo 1 becomes "Before". JPG, PNG, or WebP, under 2MB.</div>
             <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', flexWrap: 'wrap' }}>
               {(form.image_data || form.image_url) ? (
                 <img src={form.image_data || form.image_url} alt="" style={{ width: 90, height: 90, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)' }} />
@@ -1068,7 +1068,7 @@ function TestimonialsSection() {
 
           <div>
             <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--cream-30)', marginBottom: 4 }}>Photo 2 — "After" (optional)</div>
-            <div style={{ fontSize: 10, color: 'var(--cream-30)', marginBottom: 10, textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}>Same recommended size as Photo 1 (700×930px, 3:4 portrait) — shown side by side with Photo 1 on the website, each keeping its own portrait shape rather than being squeezed.</div>
+            <div style={{ fontSize: 10, color: 'var(--cream-30)', marginBottom: 10, textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}>~350×640px — matches Lillidale's existing before/after cards (tall and narrow, not the same shape as a single Photo 1). Shown side by side with Photo 1 as "Before" / "After".</div>
             <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', flexWrap: 'wrap' }}>
               {(form.image_data_after || form.image_url_after) ? (
                 <img src={form.image_data_after || form.image_url_after} alt="" style={{ width: 90, height: 90, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)' }} />
