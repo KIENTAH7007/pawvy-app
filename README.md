@@ -1,83 +1,59 @@
-# Pawvy App — Problem-Based Bundles (Stage 1)
+# Pawvy App — Bundle Refinements: Required Need, Optional Hero Image
 
 Target branch: **staging**
 Repo: `pawvy-app`
 
-**Apply this one first** — the website delivery calls these new endpoints.
+**Apply this one first** — the website delivery depends on the new
+`image_url` field in the public bundle response.
 
-Note: staging was one commit behind `main` (the availability-first sort
-fix you applied directly). This was merged in locally first before
-building on top of it — a clean fast-forward, no conflicts, but worth
-doing the same on your end before applying this if you haven't already:
-`git checkout staging && git pull origin staging && git merge main && git push origin staging`
+Addresses points 2 and 5 from your feedback (points 1, 3, 4 are
+website-side — see that zip's README).
 
-## What's in this patch
+## 2. Need is now required, not optional
 
-### New tables (`server/database.js`)
+**The honest answer to your question** ("if I don't choose a need,
+where does it show?") was: nowhere. The only place a bundle currently
+renders on the website is a specific Shop-by-Need page, so a bundle
+with no need tag was genuinely invisible — a real gap in how Stage 1
+was first scoped, not something that was ever going to reveal itself
+gracefully later.
 
-- **`bundles`** — name, description, an optional single need tag
-  (same convention as testimonials), active toggle. **Deliberately no
-  price field at all** — Stage 1 bundles don't have their own price;
-  see below.
-- **`bundle_products`** — which real products make up a bundle, and how
-  many of each. A bundle can span any number of products across any
-  number of brands.
+Fixed by making it required, both sides:
+- **Backend** (`server/routes/bundles.js`): rejects a create or update
+  with a missing/blank need tag, with a clear error message explaining
+  why.
+- **Admin UI**: removed the "None" option from the Need dropdown,
+  removed "(optional)" from the label, and added the same validation
+  client-side before it even reaches the server.
 
-### Admin CRUD (`server/routes/bundles.js`, new file)
+## 5. Optional single bundle hero image
 
-Staff-only, PIN-gated like everything else. Validates: a bundle needs
-at least 2 products, every product ID must be real, need tag (if set)
-must be one of the canonical 8.
+New `image_url` column on `bundles` (added via the safe
+`ALTER TABLE ... ADD COLUMN` pattern, since this table already exists
+on your live database — the schema comment explains why). Genuinely
+optional: upload one if you want a polished, purpose-shot image for a
+bundle; leave it blank and the website falls back to the auto-tiled
+grid of each component's own product photo exactly as before. Nothing
+extra required unless you want the polish for a specific bundle.
 
-### Public read endpoints, added to `server/routes/shop.js`
-
-- `GET /api/shop/bundles?need=dental` — active bundles for one need
-- `GET /api/shop/bundles/:id` — single bundle detail
-
-**This is the core of Stage 1, worth understanding clearly:** every
-price shown is the **live sum of each real component's current
-effective price**, computed fresh on every request — never a stored or
-cached bundle price. If a component's price changes anywhere else in
-the system (a discount starts, a price update, anything), the bundle's
-total reflects it automatically, with nothing to keep in sync by hand.
-A bundle is only marked `in_stock: true` if **every** component has
-enough stock for the quantity the bundle needs — same stock threshold
-already used everywhere else in the app, just checked once per
-component and combined.
-
-Because of this, **checkout.js needs zero changes** — it already
-independently re-validates every cart line's price and stock straight
-from the products table, ignoring anything the client sends. A bundle
-is just a shortcut that adds several real products to the cart; nothing
-about checkout needs to know bundles exist.
-
-### Admin UI — new "Problem-Based Bundles" section in Marketing.jsx
-
-Same placement reasoning as Testimonials — lives under Marketing rather
-than a new top-level sidebar item. "+ Add Bundle" opens a form: name,
-description, an optional Need dropdown, and a dynamic product picker —
-add/remove rows, each with a product dropdown and a quantity, minimum 2
-products required to save.
+Upload/replace/remove all follow the exact same pattern already used
+for Testimonials' photo field — same bucket helpers, same cleanup of
+the old image when you replace or remove one.
 
 ## Verification performed
 
-**11 real backend tests** against a real Express server + real seeded
-database: created a valid bundle; confirmed a single-product bundle is
-rejected; confirmed an invalid need tag is rejected; confirmed the
-admin list correctly includes a bundle's full product breakdown;
-**confirmed the public endpoint's computed total exactly matches the
-real sum of component prices** (the core correctness check for the
-whole "no stored price" design); confirmed need-filtering works and an
-unrelated need returns an empty list, not an error; **confirmed a
-bundle with one out-of-stock component is correctly marked
-`in_stock: false`** even though its other component has stock (the
-core correctness check for the stock-aggregation design); confirmed
-updating a bundle's product list fully replaces the old one; confirmed
-deleting a bundle removes it from both the admin list and the public
-endpoint (404 afterward); confirmed an unknown bundle ID returns 404,
-not a crash.
+**5 real backend tests** against a real Express server + real seeded
+database (bucket upload calls mocked, same as prior deliveries — no
+real network path to your bucket from this sandbox): confirmed
+creating a bundle without a need tag is now rejected; confirmed
+creating one with a real uploaded image succeeds and the public
+endpoint correctly returns the `image_url`; confirmed removing the
+image via `remove_image: true` correctly nulls it out; confirmed
+*updating* an existing bundle to try clearing its need tag is also
+rejected (not just blocked at creation); confirmed the need-filtered
+public list still works correctly end to end.
 
-`client` builds clean via `npm run build`. All 6 changed/new files
+`client` builds clean via `npm run build`. All 4 changed files
 byte-diffed against what was actually tested — identical.
 
 ## How to apply
@@ -86,19 +62,19 @@ byte-diffed against what was actually tested — identical.
 git checkout staging
 git pull origin staging
 
-# copy/overwrite these files, preserving the same paths:
-#   client/src/api.js
+# copy/overwrite these files:
 #   client/src/pages/Marketing.jsx
 #   server/database.js
-#   server/index.js
+#   server/routes/bundles.js
 #   server/routes/shop.js
-#   server/routes/bundles.js   <-- NEW FILE
 
 git add .
-git commit -m "Problem-based bundles (Stage 1): schema, admin CRUD, public read endpoints with live-computed pricing and stock"
+git commit -m "Bundles: require a Need (was silently invisible without one), add optional single hero image with tiled-photo fallback"
 git push origin staging
 ```
 
-Once live on S-App, go to **Marketing**, scroll down to "Problem-Based
-Bundles," and try creating one — pick 2+ real products, set a Need if
-you want it to show on that Shop-by-Need page.
+Once live on S-App, any bundle you already created should still work
+fine (need tag was already required in practice for it to be useful,
+even though the field allowed blank before). Try uploading a hero photo
+to one bundle and leaving another without — both should render
+correctly on the website once the paired website patch is applied.

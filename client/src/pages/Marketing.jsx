@@ -1128,6 +1128,7 @@ function BundlesSection() {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({
     name: '', description: '', need_tag: '',
+    image_data: '', image_url: '',
     products: [{ product_id: '', qty: 1 }, { product_id: '', qty: 1 }],
     sort_order: 0, is_active: true,
   });
@@ -1148,6 +1149,7 @@ function BundlesSection() {
     const maxOrder = bundles.reduce((m, r) => Math.max(m, r.sort_order), 0);
     setForm({
       name: '', description: '', need_tag: '',
+      image_data: '', image_url: '',
       products: [{ product_id: '', qty: 1 }, { product_id: '', qty: 1 }],
       sort_order: maxOrder + 1, is_active: true,
     });
@@ -1158,10 +1160,30 @@ function BundlesSection() {
     setError('');
     setForm({
       name: row.name, description: row.description || '', need_tag: row.need_tag || '',
+      image_data: '', image_url: row.image_url || '',
       products: row.products.map(p => ({ product_id: p.product_id, qty: p.qty })),
       sort_order: row.sort_order, is_active: !!row.is_active,
     });
     setModal(true);
+  }
+
+  function handleImageFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { setError('Image must be under 2MB. Please resize and try again.'); return; }
+    setError('');
+    const reader = new FileReader();
+    reader.onload = ev => sf('image_data', ev.target.result);
+    reader.readAsDataURL(file);
+  }
+  async function removeImage() {
+    sf('image_url', '');
+    sf('image_data', '');
+    if (editing) {
+      setSaving(true);
+      try { await bundlesApi.update(editing.id, { remove_image: true }); load(); }
+      finally { setSaving(false); }
+    }
   }
 
   function updateProductRow(i, key, value) {
@@ -1180,6 +1202,7 @@ function BundlesSection() {
 
   async function save() {
     if (!form.name.trim()) { setError('Please enter a bundle name.'); return; }
+    if (!form.need_tag) { setError('Please choose a Need — a bundle needs one so it has somewhere to actually show on the website.'); return; }
     const validProducts = form.products.filter(p => p.product_id);
     if (validProducts.length < 2) { setError('A bundle needs at least 2 products picked.'); return; }
     setSaving(true);
@@ -1188,7 +1211,8 @@ function BundlesSection() {
       const body = {
         name: form.name,
         description: form.description || null,
-        need_tag: form.need_tag || null,
+        need_tag: form.need_tag,
+        image_data: form.image_data || undefined,
         products: validProducts.map(p => ({ product_id: p.product_id, qty: parseInt(p.qty) || 1 })),
         sort_order: form.sort_order,
         is_active: form.is_active,
@@ -1273,7 +1297,7 @@ function BundlesSection() {
           <Input label="Bundle name" value={form.name} onChange={e => sf('name', e.target.value)} placeholder="e.g. Joint Care Starter Pack" />
 
           <div>
-            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--cream-30)', marginBottom: 6 }}>Description (optional)</div>
+            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--cream-30)', marginBottom: 6 }}>Description (optional — shown on the bundle's card and page if filled in)</div>
             <textarea
               value={form.description}
               onChange={e => sf('description', e.target.value)}
@@ -1283,10 +1307,35 @@ function BundlesSection() {
             />
           </div>
 
-          <Select label="Need (optional — shows this bundle on that Shop-by-Need page)" value={form.need_tag} onChange={e => sf('need_tag', e.target.value)}>
-            <option value="">None</option>
+          <Select label="Need — required, this is the Shop-by-Need page the bundle shows on" value={form.need_tag} onChange={e => sf('need_tag', e.target.value)}>
+            <option value="">Select a need…</option>
             {NEED_TAG_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
           </Select>
+
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--cream-30)', marginBottom: 4 }}>Bundle photo (optional)</div>
+            <div style={{ fontSize: 10, color: 'var(--cream-30)', marginBottom: 10, textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}>
+              If uploaded, shown instead of the automatic tiled grid of each product's own photo — a real photographed/composed shot reads as more curated. Leave blank to just use the tiled fallback (no extra work needed).
+            </div>
+            <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+              {(form.image_data || form.image_url) ? (
+                <img src={form.image_data || form.image_url} alt="" style={{ width: 90, height: 90, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)' }} />
+              ) : (
+                <div style={{ width: 90, height: 90, borderRadius: 8, border: '2px dashed var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--cream-30)', fontSize: 22 }}>📷</div>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRadius: 7, border: '1px solid var(--border)', cursor: 'pointer', fontSize: 12, color: 'var(--cream-60)' }}>
+                  <span>📁</span>{(form.image_data || form.image_url) ? 'Replace' : 'Upload'}
+                  <input type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} onChange={handleImageFile} />
+                </label>
+                {(form.image_data || form.image_url) && (
+                  <button onClick={removeImage} style={{ padding: '7px 12px', borderRadius: 7, border: '1px solid rgba(248,113,113,.3)', cursor: 'pointer', fontSize: 12, color: '#f87171', background: 'transparent', textAlign: 'left' }}>
+                    🗑 Remove (use tiled photos instead)
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
 
           <div>
             <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--cream-30)', marginBottom: 10 }}>Products (at least 2)</div>

@@ -358,6 +358,7 @@ function buildBundleResponse(db, bundle) {
     name: bundle.name,
     description: bundle.description,
     need_tag: bundle.need_tag,
+    image_url: bundle.image_url,
     total_price: Math.round(total * 100) / 100,
     in_stock: allInStock,
     products,

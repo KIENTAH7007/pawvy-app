@@ -1133,6 +1133,16 @@ function createSchema() {
   try { db.run("ALTER TABLE products ADD COLUMN best_for TEXT"); } catch(e) {}
   try { db.run("ALTER TABLE products ADD COLUMN is_pawvy_pick INTEGER NOT NULL DEFAULT 0"); } catch(e) {}
 
+  // Optional single bundle hero image (Aug 2026, per KT) — a bundle
+  // shows this instead of the auto-tiled grid of its component product
+  // photos when one's been uploaded, since a real photographed/composed
+  // shot reads as more professional than several individual product
+  // shots stitched together automatically. Genuinely optional — a
+  // bundle with no image just keeps using the tiled fallback, so there's
+  // no extra work required unless KT specifically wants the polish for
+  // a given bundle.
+  try { db.run("ALTER TABLE bundles ADD COLUMN image_url TEXT"); } catch(e) {}
+
   console.log('✅ Schema ready');
 }
 

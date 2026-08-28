@@ -1,4 +1,5 @@
 const { Router } = require('express');
+const { uploadBuffer, decodeDataUrl, buildImageKey, deleteObject } = require('../lib/bucket');
 const { NEED_TAGS } = require('../lib/needTags');
 
 // Problem-based bundles — staff-only CRUD (PIN-gated in server/index.js,
@@ -17,6 +18,13 @@ const { NEED_TAGS } = require('../lib/needTags');
 // deliberate, separate piece of future work (needs checkout.js to
 // verify a claimed discount against a real bundle definition rather than
 // trusting anything the client sends) — not something to bolt on here.
+//
+// need_tag is REQUIRED (Aug 2026, per KT) — a bundle with no need has
+// nowhere on the website it would ever actually show, since the only
+// place bundles currently render is a specific Shop-by-Need page. Was
+// briefly optional in the first version of this file; tightened once
+// that gap was flagged, rather than silently leaving a way to create an
+// invisible bundle.
 module.exports = function(db) {
   const router = Router();
 
@@ -39,14 +47,17 @@ module.exports = function(db) {
     res.json({ bundles: withProducts });
   });
 
-  router.post('/', (req, res) => {
-    const { name, description, need_tag, products, sort_order, is_active } = req.body;
+  router.post('/', async (req, res) => {
+    const { name, description, need_tag, image_data, products, sort_order, is_active } = req.body;
 
     if (!name || !name.trim()) {
       return res.status(400).json({ error: 'A bundle name is required.' });
     }
-    if (need_tag && !NEED_TAGS.includes(need_tag)) {
-      return res.status(400).json({ error: `need_tag must be one of: ${NEED_TAGS.join(', ')}.` });
+    if (!need_tag || !NEED_TAGS.includes(need_tag)) {
+      return res.status(400).json({ error: `A need is required so this bundle has somewhere to show — must be one of: ${NEED_TAGS.join(', ')}.` });
+    }
+    if (image_data && !image_data.startsWith('data:image/')) {
+      return res.status(400).json({ error: 'Image must be a base64 image data URI.' });
     }
     if (!Array.isArray(products) || products.length < 2) {
       return res.status(400).json({ error: 'A bundle needs at least 2 products.' });
@@ -62,27 +73,41 @@ module.exports = function(db) {
     const result = db.run(`
       INSERT INTO bundles (name, description, need_tag, sort_order, is_active)
       VALUES (?, ?, ?, ?, ?)
-    `, [name.trim(), description || null, need_tag || null, sort_order || 0, is_active === false ? 0 : 1]);
+    `, [name.trim(), description || null, need_tag, sort_order || 0, is_active === false ? 0 : 1]);
 
     products.forEach((p, i) => {
       db.run('INSERT INTO bundle_products (bundle_id, product_id, qty, sort_order) VALUES (?, ?, ?, ?)',
         [result.lastID, p.product_id, p.qty, i]);
     });
 
+    if (image_data) {
+      try {
+        const { buffer, contentType, extension } = decodeDataUrl(image_data);
+        const { key, url } = buildImageKey('bundles', result.lastID, extension);
+        await uploadBuffer(key, buffer, contentType);
+        db.run('UPDATE bundles SET image_url = ? WHERE id = ?', [url, result.lastID]);
+      } catch (err) {
+        return res.status(502).json({ error: 'Image upload to storage failed: ' + err.message });
+      }
+    }
+
     res.status(201).json({ ok: true, id: result.lastID });
   });
 
-  router.patch('/:id', (req, res) => {
-    const bundle = db.queryOne('SELECT id FROM bundles WHERE id = ?', [req.params.id]);
+  router.patch('/:id', async (req, res) => {
+    const bundle = db.queryOne('SELECT id, image_url FROM bundles WHERE id = ?', [req.params.id]);
     if (!bundle) return res.status(404).json({ error: 'Bundle not found.' });
 
-    const { name, description, need_tag, products, sort_order, is_active } = req.body;
+    const { name, description, need_tag, image_data, remove_image, products, sort_order, is_active } = req.body;
 
     if (name !== undefined && !name.trim()) {
       return res.status(400).json({ error: 'Bundle name cannot be blank.' });
     }
-    if (need_tag !== undefined && need_tag !== null && !NEED_TAGS.includes(need_tag)) {
-      return res.status(400).json({ error: `need_tag must be one of: ${NEED_TAGS.join(', ')}.` });
+    if (need_tag !== undefined && (!need_tag || !NEED_TAGS.includes(need_tag))) {
+      return res.status(400).json({ error: `A need is required so this bundle has somewhere to show — must be one of: ${NEED_TAGS.join(', ')}.` });
+    }
+    if (image_data && !image_data.startsWith('data:image/')) {
+      return res.status(400).json({ error: 'Image must be a base64 image data URI.' });
     }
     if (products !== undefined) {
       if (!Array.isArray(products) || products.length < 2) {
@@ -97,11 +122,35 @@ module.exports = function(db) {
       }
     }
 
+    let newImageUrl = null;
+    try {
+      if (image_data) {
+        const { buffer, contentType, extension } = decodeDataUrl(image_data);
+        const { key, url } = buildImageKey('bundles', req.params.id, extension);
+        await uploadBuffer(key, buffer, contentType);
+        newImageUrl = url;
+        if (bundle.image_url) {
+          deleteObject(bundle.image_url.replace(/^\/api\/uploads\//, '')).catch(() => {});
+        }
+      }
+    } catch (err) {
+      return res.status(502).json({ error: 'Image upload to storage failed: ' + err.message });
+    }
+
+    // Explicit removal (go back to the tiled-component fallback), distinct
+    // from simply not sending image_data — the latter leaves whatever's
+    // already there untouched.
+    if (remove_image && bundle.image_url && !newImageUrl) {
+      deleteObject(bundle.image_url.replace(/^\/api\/uploads\//, '')).catch(() => {});
+      db.run('UPDATE bundles SET image_url = NULL WHERE id = ?', [req.params.id]);
+    }
+
     db.run(`
       UPDATE bundles SET
         name = COALESCE(?, name),
         description = ?,
-        need_tag = ?,
+        need_tag = COALESCE(?, need_tag),
+        image_url = COALESCE(?, image_url),
         sort_order = COALESCE(?, sort_order),
         is_active = COALESCE(?, is_active),
         updated_at = CURRENT_TIMESTAMP
@@ -109,7 +158,8 @@ module.exports = function(db) {
     `, [
       name?.trim() || null,
       description !== undefined ? (description || null) : db.queryOne('SELECT description FROM bundles WHERE id = ?', [req.params.id]).description,
-      need_tag !== undefined ? (need_tag || null) : db.queryOne('SELECT need_tag FROM bundles WHERE id = ?', [req.params.id]).need_tag,
+      need_tag || null,
+      newImageUrl,
       sort_order ?? null,
       typeof is_active === 'boolean' ? (is_active ? 1 : 0) : null,
       req.params.id,
@@ -132,10 +182,11 @@ module.exports = function(db) {
   });
 
   router.delete('/:id', (req, res) => {
-    const bundle = db.queryOne('SELECT id FROM bundles WHERE id = ?', [req.params.id]);
+    const bundle = db.queryOne('SELECT id, image_url FROM bundles WHERE id = ?', [req.params.id]);
     if (!bundle) return res.status(404).json({ error: 'Bundle not found.' });
     db.run('DELETE FROM bundle_products WHERE bundle_id = ?', [req.params.id]);
     db.run('DELETE FROM bundles WHERE id = ?', [req.params.id]);
+    if (bundle.image_url) deleteObject(bundle.image_url.replace(/^\/api\/uploads\//, '')).catch(() => {});
     res.json({ ok: true });
   });
 
