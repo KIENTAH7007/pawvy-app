@@ -110,6 +110,7 @@ async function startServer() {
   app.use('/api/instagram-posts', require('./routes/instagramPosts')(db));
   app.use('/api/homepage-banners', require('./routes/homepageBanners')(db));
   app.use('/api/testimonials',     require('./routes/testimonials')(db));
+  app.use('/api/bundles',          require('./routes/bundles')(db));
   app.use('/api/waitlist',         require('./routes/waitlist')(db));
   app.use('/api/admin-waitlist',   require('./routes/waitlistAdmin')(db));
   app.use('/api/public-content', require('./routes/publicContent')(db));

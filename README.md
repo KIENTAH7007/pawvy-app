@@ -1,55 +1,84 @@
-# Pawvy App — Availability-First Sort: Website, POS, and Order Portal
+# Pawvy App — Problem-Based Bundles (Stage 1)
 
 Target branch: **staging**
 Repo: `pawvy-app`
 
-This replaces the earlier "Website Sort Availability First" zip — same
-fix, now applied to all three systems for consistency, per your
-confirmation.
+**Apply this one first** — the website delivery calls these new endpoints.
 
-## What changed
+Note: staging was one commit behind `main` (the availability-first sort
+fix you applied directly). This was merged in locally first before
+building on top of it — a clean fast-forward, no conflicts, but worth
+doing the same on your end before applying this if you haven't already:
+`git checkout staging && git pull origin staging && git merge main && git push origin staging`
 
-All three product listing endpoints now sort by **stock status first,
-brand second**, instead of the previous brand-first ordering:
+## What's in this patch
 
-**Before:** Available BetterBone → OOS BetterBone → Available Lillidale
-→ OOS Lillidale → ...
+### New tables (`server/database.js`)
 
-**Now:** Available BetterBone → Available Lillidale → Available GiGwi
-→ ... → OOS BetterBone → OOS Lillidale → OOS GiGwi → ...
+- **`bundles`** — name, description, an optional single need tag
+  (same convention as testimonials), active toggle. **Deliberately no
+  price field at all** — Stage 1 bundles don't have their own price;
+  see below.
+- **`bundle_products`** — which real products make up a bundle, and how
+  many of each. A bundle can span any number of products across any
+  number of brands.
 
-Applied identically to:
-- **`server/routes/shop.js`** — `GET /api/shop/products` (the website's
-  Shop page and every Shop-by-Need page)
-- **`server/routes/pos.js`** — `GET /api/pos/catalogue`
-- **`server/routes/portal.js`** — `GET /api/portal/catalogue`
+### Admin CRUD (`server/routes/bundles.js`, new file)
 
-Within each tier (available / out-of-stock), brand order and your
-existing sort priority (`portal_sort_order`, then item name) are
-unchanged — only the availability/brand priority swapped, identically
-in all three places.
+Staff-only, PIN-gated like everything else. Validates: a bundle needs
+at least 2 products, every product ID must be real, need tag (if set)
+must be one of the canonical 8.
+
+### Public read endpoints, added to `server/routes/shop.js`
+
+- `GET /api/shop/bundles?need=dental` — active bundles for one need
+- `GET /api/shop/bundles/:id` — single bundle detail
+
+**This is the core of Stage 1, worth understanding clearly:** every
+price shown is the **live sum of each real component's current
+effective price**, computed fresh on every request — never a stored or
+cached bundle price. If a component's price changes anywhere else in
+the system (a discount starts, a price update, anything), the bundle's
+total reflects it automatically, with nothing to keep in sync by hand.
+A bundle is only marked `in_stock: true` if **every** component has
+enough stock for the quantity the bundle needs — same stock threshold
+already used everywhere else in the app, just checked once per
+component and combined.
+
+Because of this, **checkout.js needs zero changes** — it already
+independently re-validates every cart line's price and stock straight
+from the products table, ignoring anything the client sends. A bundle
+is just a shortcut that adds several real products to the cart; nothing
+about checkout needs to know bundles exist.
+
+### Admin UI — new "Problem-Based Bundles" section in Marketing.jsx
+
+Same placement reasoning as Testimonials — lives under Marketing rather
+than a new top-level sidebar item. "+ Add Bundle" opens a form: name,
+description, an optional Need dropdown, and a dynamic product picker —
+add/remove rows, each with a product dropdown and a quantity, minimum 2
+products required to save.
 
 ## Verification performed
 
-**Real backend tests** against a real seeded database with genuine
-mixed inventory inserted across multiple brands (the seed DB ships with
-zero stock rows by default, so this needed real data to actually
-exercise the available/OOS boundary):
+**11 real backend tests** against a real Express server + real seeded
+database: created a valid bundle; confirmed a single-product bundle is
+rejected; confirmed an invalid need tag is rejected; confirmed the
+admin list correctly includes a bundle's full product breakdown;
+**confirmed the public endpoint's computed total exactly matches the
+real sum of component prices** (the core correctness check for the
+whole "no stored price" design); confirmed need-filtering works and an
+unrelated need returns an empty list, not an error; **confirmed a
+bundle with one out-of-stock component is correctly marked
+`in_stock: false`** even though its other component has stock (the
+core correctness check for the stock-aggregation design); confirmed
+updating a bundle's product list fully replaces the old one; confirmed
+deleting a bundle removes it from both the admin list and the public
+endpoint (404 afterward); confirmed an unknown bundle ID returns 404,
+not a crash.
 
-- Confirmed all **three** endpoints independently return every
-  available product before every out-of-stock product, with real mixed
-  data (215-217 products each, a real split between available and OOS
-  found in each result set — not a trivial all-one-state test).
-- Confirmed brand order is correctly preserved as the secondary sort
-  within each tier, on all three.
-- Checked the POS and Portal frontend code for any client-side
-  re-sorting that might override the backend order — found only
-  `.sort()` calls building a brand-name filter dropdown list, not
-  re-ordering the product catalogue itself, so the backend order is
-  what actually reaches the screen in both.
-- Confirmed all three files load with no syntax errors.
-- All 3 changed files byte-diffed against what was actually tested —
-  identical.
+`client` builds clean via `npm run build`. All 6 changed/new files
+byte-diffed against what was actually tested — identical.
 
 ## How to apply
 
@@ -57,18 +86,19 @@ exercise the available/OOS boundary):
 git checkout staging
 git pull origin staging
 
-# copy/overwrite these files:
+# copy/overwrite these files, preserving the same paths:
+#   client/src/api.js
+#   client/src/pages/Marketing.jsx
+#   server/database.js
+#   server/index.js
 #   server/routes/shop.js
-#   server/routes/pos.js
-#   server/routes/portal.js
+#   server/routes/bundles.js   <-- NEW FILE
 
 git add .
-git commit -m "Sort product listings by availability first, then brand — consistently across Website, POS, and Order Portal"
+git commit -m "Problem-based bundles (Stage 1): schema, admin CRUD, public read endpoints with live-computed pricing and stock"
 git push origin staging
 ```
 
-Worth checking on S-App: a product list in each of the three tools
-(Shop-by-Need on the website, the POS catalogue, and the Order Portal
-catalogue) with a mix of in-stock and OOS items across a few brands —
-confirm every available product now shows before any OOS one, in all
-three.
+Once live on S-App, go to **Marketing**, scroll down to "Problem-Based
+Bundles," and try creating one — pick 2+ real products, set a Need if
+you want it to show on that Shop-by-Need page.

@@ -162,6 +162,13 @@ export const testimonialsApi = {
   delete: (id) => api.delete(`/testimonials/${id}`),
 };
 
+export const bundlesApi = {
+  getAll: () => api.get('/bundles'),
+  create: (p) => api.post('/bundles', p),
+  update: (id, p) => api.patch(`/bundles/${id}`, p),
+  delete: (id) => api.delete(`/bundles/${id}`),
+};
+
 export const waitlistAdminApi = {
   getCounts: () => api.get('/admin-waitlist/counts'),
   getForProduct: (productId) => api.get(`/admin-waitlist/${productId}`),

@@ -563,6 +563,44 @@ function createSchema() {
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`,
 
+    // Problem-based bundles (Aug 2026, per KT) — Stage 1: a curated
+    // cross-brand product set with no bundle-specific pricing. The
+    // "price" shown for a bundle is always just the live sum of its
+    // real component prices, computed at read time (see shop.js) — a
+    // bundle is genuinely just a shortcut that adds several real
+    // products to the cart at once, so checkout.js's existing
+    // per-product price/stock validation never needs to know bundles
+    // exist at all. If a real bundle discount is wanted later (Stage
+    // 2), that's a deliberate separate piece of work — see the comment
+    // in shop.js's bundle endpoints for why.
+    //
+    // need_tag is nullable and singular, same convention as
+    // testimonials — a bundle shows on at most one Shop-by-Need page.
+    `CREATE TABLE IF NOT EXISTS bundles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      description TEXT,
+      need_tag TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+
+    // Which real products make up a bundle, and how many of each — a
+    // bundle can span any number of products across any number of
+    // brands (that's the whole point). ON DELETE isn't declared
+    // (sql.js/SQLite default is fine here) — bundle deletion explicitly
+    // cleans up its rows in the route handler instead, same pattern as
+    // testimonials' image cleanup on delete.
+    `CREATE TABLE IF NOT EXISTS bundle_products (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      bundle_id INTEGER NOT NULL REFERENCES bundles(id),
+      product_id INTEGER NOT NULL REFERENCES products(id),
+      qty INTEGER NOT NULL DEFAULT 1,
+      sort_order INTEGER NOT NULL DEFAULT 0
+    )`,
+
     // Out-of-stock "Notify me" waitlist (Aug 2026, per KT) — mainly for
     // demand visibility ("how many people actually want this restocked"),
     // not (yet) wired to an automatic restock email — that's a distinct,

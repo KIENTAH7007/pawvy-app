@@ -279,5 +279,87 @@ module.exports = function(db) {
     res.json({ testimonials });
   });
 
+  // GET /api/shop/bundles?need=dental — active bundles for one need
+  // (or all active bundles if ?need= is omitted). Stage 1: every price
+  // shown is the LIVE sum of each real component's current
+  // effective price — never a stored/cached bundle price — so a
+  // component's price or discount changing anywhere else in the system
+  // is reflected here automatically, with nothing to keep in sync by
+  // hand. A bundle is only "in stock" if every one of its components has
+  // enough stock for the quantity the bundle needs — same threshold
+  // (stockStatus) used everywhere else, just checked once per component
+  // and combined.
+  router.get('/bundles', (req, res) => {
+    const { need } = req.query;
+    if (need && !NEED_TAGS.includes(need)) {
+      return res.status(400).json({ error: `Unknown need "${need}". Valid: ${NEED_TAGS.join(', ')}.` });
+    }
+
+    let sql = 'SELECT * FROM bundles WHERE is_active = 1';
+    const params = [];
+    if (need) { sql += ' AND need_tag = ?'; params.push(need); }
+    sql += ' ORDER BY sort_order ASC, id ASC';
+
+    const bundles = db.query(sql, params);
+    const result = bundles.map(b => buildBundleResponse(db, b)).filter(Boolean);
+    res.json({ bundles: result });
+  });
+
+  // GET /api/shop/bundles/:id — single bundle, same shape, for the
+  // bundle detail page.
+  router.get('/bundles/:id', (req, res) => {
+    const bundle = db.queryOne('SELECT * FROM bundles WHERE id = ? AND is_active = 1', [req.params.id]);
+    if (!bundle) return res.status(404).json({ error: 'Bundle not found.' });
+    const built = buildBundleResponse(db, bundle);
+    if (!built) return res.status(404).json({ error: 'Bundle not found.' });
+    res.json({ bundle: built });
+  });
+
   return router;
 };
+
+// Shared by both bundle endpoints above. Returns null if a bundle's
+// products were removed/deactivated out from under it (e.g. a linked
+// product got archived) rather than returning a broken bundle with
+// fewer components than it claims to have — safer to just hide it than
+// show something misleading.
+function buildBundleResponse(db, bundle) {
+  const rows = db.query(`
+    SELECT bp.qty,
+      p.id, p.item_series, p.variation, p.image_url,
+      p.price_rrp_sg, p.discount_pct, p.discount_start, p.discount_end,
+      b.name AS brand_name, b.color AS brand_color,
+      COALESCE(home.qty, 0)    AS home_qty,
+      COALESCE(storhub.qty, 0) AS storhub_qty
+    FROM bundle_products bp
+    JOIN products p ON p.id = bp.product_id AND p.is_active = 1
+    JOIN brands b ON b.id = p.brand_id
+    LEFT JOIN inventory_levels home    ON home.product_id = p.id    AND home.location    = 'Home'
+    LEFT JOIN inventory_levels storhub ON storhub.product_id = p.id AND storhub.location = 'Storhub'
+    WHERE bp.bundle_id = ?
+    ORDER BY bp.sort_order ASC, bp.id ASC
+  `, [bundle.id]);
+
+  if (rows.length === 0) return null;
+
+  let total = 0;
+  let allInStock = true;
+  const products = rows.map(r => {
+    const { home_qty, storhub_qty, qty, ...rest } = withEffectivePrice(r);
+    const availableQty = home_qty + storhub_qty;
+    const inStockForQty = availableQty >= qty;
+    if (!inStockForQty) allInStock = false;
+    total += rest.effective_price_rrp_sg * qty;
+    return { ...rest, qty, stock_status: stockStatus(availableQty) };
+  });
+
+  return {
+    id: bundle.id,
+    name: bundle.name,
+    description: bundle.description,
+    need_tag: bundle.need_tag,
+    total_price: Math.round(total * 100) / 100,
+    in_stock: allInStock,
+    products,
+  };
+}
