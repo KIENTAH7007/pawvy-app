@@ -41,12 +41,14 @@ function parseNeedTags(product) {
 //   customers, just not browsable/orderable on the public website.
 const WEBSITE_HIDDEN_BARCODES = ['5060518442339'];
 
-// Internal-only brand entries (e.g. "Pawvy" — used for internal supplies/
-// packaging SKUs, not something a customer shops for) that should never
-// appear in the public Shop filter dropdown. Same exclusion pattern as
-// WEBSITE_HIDDEN_BARCODES above: hide from the public website only, not
-// from is_active or any other route — Pawvy App/POS/Portal are untouched.
-const WEBSITE_HIDDEN_BRAND_NAMES = ['Pawvy'];
+// Brand-level website visibility (Aug 2026, per KT/Janice) now lives on
+// brands.hidden_on_website — a real DB column KT can flip per-brand from
+// the Products page's brand modal, rather than a hardcoded array that
+// needed a code change to update. Used consistently below everywhere
+// WEBSITE_HIDDEN_BARCODES already is (products list, single product,
+// top-sellers, pawvy-picks) plus the /brands filter list. POS and the
+// Order Portal are completely untouched — this only affects
+// customer-facing website routes in this file.
 
 module.exports = function(db) {
   const router = Router();
@@ -67,7 +69,7 @@ module.exports = function(db) {
       JOIN brands b ON b.id = p.brand_id
       LEFT JOIN inventory_levels home    ON home.product_id = p.id    AND home.location    = 'Home'
       LEFT JOIN inventory_levels storhub ON storhub.product_id = p.id AND storhub.location = 'Storhub'
-      WHERE p.is_active = 1
+      WHERE p.is_active = 1 AND b.hidden_on_website = 0
         AND p.barcode NOT IN (${WEBSITE_HIDDEN_BARCODES.map(() => '?').join(',')})
     `;
     const params = [...WEBSITE_HIDDEN_BARCODES];
@@ -159,7 +161,7 @@ module.exports = function(db) {
       JOIN brands b ON b.id = p.brand_id
       LEFT JOIN inventory_levels home    ON home.product_id = p.id    AND home.location    = 'Home'
       LEFT JOIN inventory_levels storhub ON storhub.product_id = p.id AND storhub.location = 'Storhub'
-      WHERE p.id = ? AND p.is_active = 1
+      WHERE p.id = ? AND p.is_active = 1 AND b.hidden_on_website = 0
         AND p.barcode NOT IN (${WEBSITE_HIDDEN_BARCODES.map(() => '?').join(',')})
     `, [req.params.id, ...WEBSITE_HIDDEN_BARCODES]);
 
@@ -170,8 +172,7 @@ module.exports = function(db) {
 
   // GET /api/shop/brands — for a brand filter on the shop page.
   router.get('/brands', (req, res) => {
-    const brands = db.query('SELECT id, name, color FROM brands ORDER BY name')
-      .filter(b => !WEBSITE_HIDDEN_BRAND_NAMES.includes(b.name));
+    const brands = db.query('SELECT id, name, color FROM brands WHERE hidden_on_website = 0 ORDER BY name');
     res.json({ brands });
   });
 
@@ -196,7 +197,7 @@ module.exports = function(db) {
       JOIN brands b ON b.id = p.brand_id
       LEFT JOIN inventory_levels home    ON home.product_id = p.id    AND home.location    = 'Home'
       LEFT JOIN inventory_levels storhub ON storhub.product_id = p.id AND storhub.location = 'Storhub'
-      WHERE p.is_active = 1 AND s.date >= date('now', '-90 days') AND COALESCE(s.voided,0) = 0
+      WHERE p.is_active = 1 AND b.hidden_on_website = 0 AND s.date >= date('now', '-90 days') AND COALESCE(s.voided,0) = 0
         AND p.barcode NOT IN (${WEBSITE_HIDDEN_BARCODES.map(() => '?').join(',')})
       GROUP BY p.id
       ORDER BY units_sold DESC
@@ -230,7 +231,7 @@ module.exports = function(db) {
       JOIN brands b ON b.id = p.brand_id
       LEFT JOIN inventory_levels home    ON home.product_id = p.id    AND home.location    = 'Home'
       LEFT JOIN inventory_levels storhub ON storhub.product_id = p.id AND storhub.location = 'Storhub'
-      WHERE p.is_active = 1 AND p.is_pawvy_pick = 1
+      WHERE p.is_active = 1 AND p.is_pawvy_pick = 1 AND b.hidden_on_website = 0
         AND p.barcode NOT IN (${WEBSITE_HIDDEN_BARCODES.map(() => '?').join(',')})
       ORDER BY b.name, p.item_series, p.variation
     `, [...WEBSITE_HIDDEN_BARCODES]);

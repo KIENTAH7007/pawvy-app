@@ -11,12 +11,12 @@ module.exports = function(db) {
 
   // POST create brand
   router.post('/', (req, res) => {
-    const { name, color, notes } = req.body;
+    const { name, color, notes, hidden_on_website } = req.body;
     if (!name) return res.status(400).json({ error: 'Brand name is required' });
     try {
       const result = db.run(
-        'INSERT INTO brands (name, color, notes) VALUES (?, ?, ?)',
-        [name, color || '#888888', notes || null]
+        'INSERT INTO brands (name, color, notes, hidden_on_website) VALUES (?, ?, ?, ?)',
+        [name, color || '#888888', notes || null, hidden_on_website ? 1 : 0]
       );
       const brand = db.queryOne('SELECT * FROM brands WHERE id = ?', [result.lastID]);
       res.status(201).json(brand);
@@ -27,10 +27,10 @@ module.exports = function(db) {
 
   // PUT update brand
   router.put('/:id', (req, res) => {
-    const { name, color, notes } = req.body;
+    const { name, color, notes, hidden_on_website } = req.body;
     db.run(
-      'UPDATE brands SET name = ?, color = ?, notes = ? WHERE id = ?',
-      [name, color, notes, req.params.id]
+      'UPDATE brands SET name = ?, color = ?, notes = ?, hidden_on_website = ? WHERE id = ?',
+      [name, color, notes, hidden_on_website ? 1 : 0, req.params.id]
     );
     const brand = db.queryOne('SELECT * FROM brands WHERE id = ?', [req.params.id]);
     res.json(brand);

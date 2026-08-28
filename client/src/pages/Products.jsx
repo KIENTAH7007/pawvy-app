@@ -819,6 +819,20 @@ export default function Products() {
             <div style={{width:24,height:24,borderRadius:'50%',background:brandForm.color||'#888'}}/>
             <span style={{color:brandForm.color||'#888',fontWeight:700,fontSize:14}}>{brandForm.name||'Brand Preview'}</span>
           </div>
+          <label style={{display:'flex',alignItems:'flex-start',gap:10,cursor:'pointer',padding:'2px 0'}}>
+            <input
+              type="checkbox"
+              checked={!!brandForm.hidden_on_website}
+              onChange={e=>setBrandForm(f=>({...f,hidden_on_website:e.target.checked}))}
+              style={{width:16,height:16,accentColor:'var(--orange)',cursor:'pointer',marginTop:2}}
+            />
+            <span style={{fontSize:13,color:'var(--cream)'}}>
+              Hide from the customer website
+              <span style={{display:'block',fontSize:11,color:'var(--cream-30)',marginTop:2}}>
+                For a brand you're prepping ahead of its public launch — its products stay fully visible in POS and the Order Portal, only the customer-facing website hides them. Uncheck once you're ready to announce.
+              </span>
+            </span>
+          </label>
           <Btn onClick={saveBrand} disabled={saving||!brandForm.name} size="lg" style={{justifyContent:'center'}}>
             {saving ? 'Saving…' : modal==='editBrand' ? 'Update Brand' : 'Add Brand'}
           </Btn>

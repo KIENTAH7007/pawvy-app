@@ -1315,7 +1315,7 @@ function BundlesSection() {
           <div>
             <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--cream-30)', marginBottom: 4 }}>Bundle photo (optional)</div>
             <div style={{ fontSize: 10, color: 'var(--cream-30)', marginBottom: 10, textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}>
-              If uploaded, shown instead of the automatic tiled grid of each product's own photo — a real photographed/composed shot reads as more curated. Leave blank to just use the tiled fallback (no extra work needed).
+              If uploaded, shown instead of the automatic tiled grid of each product's own photo — a real photographed/composed shot reads as more curated. Leave blank to just use the tiled fallback (no extra work needed). Recommended size: <strong>427 × 260px</strong> — matches the image box on the website, so a photo at this size fills it edge to edge with no empty space around it.
             </div>
             <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', flexWrap: 'wrap' }}>
               {(form.image_data || form.image_url) ? (

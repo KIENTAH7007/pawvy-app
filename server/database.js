@@ -1143,6 +1143,35 @@ function createSchema() {
   // a given bundle.
   try { db.run("ALTER TABLE bundles ADD COLUMN image_url TEXT"); } catch(e) {}
 
+  // Website visibility per brand (Aug 2026, per KT/Janice) — a brand
+  // whose real products already exist (so staff can prep POS/Order
+  // Portal ahead of launch) but hasn't been publicly announced yet.
+  // Genuinely just hides it from the customer-facing website's product
+  // listings, single product pages, brand filter, and sitemap — POS and
+  // the Order Portal are completely unaffected (staff/retailers seeing
+  // it ahead of launch is the point, not a leak). Defaults to 0 (visible)
+  // for every existing brand, so nothing already-launched is affected —
+  // this only ever needs to be flipped ON for a brand deliberately being
+  // held back, and flipped back off whenever KT is ready to announce it.
+  try { db.run("ALTER TABLE brands ADD COLUMN hidden_on_website INTEGER NOT NULL DEFAULT 0"); } catch(e) {}
+
+  // Found via testing the above (Aug 2026): server/routes/brands.js has
+  // referenced a `notes` column since before this change, but it was
+  // never actually added to the live table via a safety migration —
+  // only present in the CREATE TABLE IF NOT EXISTS definition, which
+  // doesn't retroactively add columns to a table that already exists.
+  // This meant editing an existing brand has been silently throwing a
+  // "no such column: notes" error in production this whole time.
+  try { db.run("ALTER TABLE brands ADD COLUMN notes TEXT"); } catch(e) {}
+
+  // One-time carry-over: the internal-only "Pawvy" brand (packaging/
+  // supplies SKUs, not something a customer shops for) used to be
+  // excluded from the website via a hardcoded array in shop.js — now
+  // that hiding is data-driven via the column above, flip it on here so
+  // removing that hardcoded array doesn't silently un-hide it. Safe to
+  // run every startup — WHERE clause means it's a no-op once already set.
+  try { db.run("UPDATE brands SET hidden_on_website = 1 WHERE name = 'Pawvy' AND hidden_on_website = 0"); } catch(e) {}
+
   console.log('✅ Schema ready');
 }
 
