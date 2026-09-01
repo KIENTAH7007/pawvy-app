@@ -1,4 +1,5 @@
 const { computeSuggestions } = require('../utils/restockSuggestions');
+const { localDateStr } = require('../utils/dates');
 
 // Auto-populates a Restock Checklist with current suggestions, instead of
 // pushing a repeating Telegram/email nag for the same low-stock items
@@ -34,7 +35,7 @@ async function runAutoRestock(db) {
     return;
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateStr();
   const label = `${CHECKLIST_LABEL_PREFIX} — ${today}`;
 
   const result = db.run(

@@ -1,4 +1,5 @@
 const { Router } = require('express');
+const { localDateStr } = require('../utils/dates');
 
 // Shipments (Phase 7).
 // Step 1: skeleton (tables + placeholder tab).
@@ -323,7 +324,7 @@ module.exports = function(db, inventoryRouter) {
 
     const synced = [];
     if (inventoryRouter?._recordMovement) {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = localDateStr();
       lines.forEach(l => {
         inventoryRouter._recordMovement({
           date: today,
@@ -450,7 +451,7 @@ module.exports = function(db, inventoryRouter) {
       return res.status(400).json({ error: e.message });
     }
     const { gstAmount, totalLandedCost, costedLines } = calc;
-    const costedDate = req.body.costed_date || new Date().toISOString().slice(0, 10);
+    const costedDate = req.body.costed_date || localDateStr();
 
     // Persist: line items, shipment totals, variance ledger (replace old rows for this shipment)
     costedLines.forEach(l => {

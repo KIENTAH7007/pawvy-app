@@ -1,4 +1,5 @@
 const { Router } = require('express');
+const { localDateStr } = require('../utils/dates');
 
 const TRAILING_DAYS    = 60;   // velocity window
 const LEAD_TIME_DAYS    = 45;  // ~1.5 month supplier lead time — reorder trigger point
@@ -11,7 +12,7 @@ module.exports = function(db) {
     const { brand_id } = req.query;
     const since = new Date();
     since.setDate(since.getDate() - TRAILING_DAYS);
-    const sinceStr = since.toISOString().slice(0,10);
+    const sinceStr = localDateStr(since);
 
     let sql = `
       SELECT p.id AS product_id, p.item_series, p.variation, p.unit_cost,

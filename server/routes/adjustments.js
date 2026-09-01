@@ -1,4 +1,5 @@
 const { Router } = require('express');
+const { localDateStr } = require('../utils/dates');
 
 // Inventory adjustments (write-offs, corrections, purchases)
 function adjustmentsRouter(db) {
@@ -65,7 +66,7 @@ function invoicesRouter(db) {
 
   const generateInvoiceNumber = (type) => {
     const prefix = type === 'Invoice' ? 'INV' : type === 'Delivery Order' ? 'DO' : type === 'SOA' ? 'SOA' : 'BS';
-    const date   = new Date().toISOString().slice(0,10).replace(/-/g,'');
+    const date   = localDateStr().replace(/-/g,'');
     const last   = db.queryOne(`SELECT invoice_number FROM invoices WHERE type=? ORDER BY created_at DESC LIMIT 1`, [type]);
     const seq    = last ? (parseInt(last.invoice_number.slice(-4)) + 1) : 1;
     return `${prefix}-${date}-${String(seq).padStart(4,'0')}`;

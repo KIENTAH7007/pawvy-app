@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const { notifyNewPortalOrder } = require('../utils/notify');
 const { withEffectivePrice } = require('../lib/pricing');
+const { localDateStr } = require('../utils/dates');
 
 // Live stock bucket, per the agreed Order Portal design:
 // Available (>5) / Low Stock (1–5) / Out of Stock (0, blocked from ordering)
@@ -66,7 +67,7 @@ module.exports = function(db) {
   router.get('/top-sellers', (req, res) => {
     const since = new Date();
     since.setMonth(since.getMonth() - 3);
-    const sinceStr = since.toISOString().slice(0, 10);
+    const sinceStr = localDateStr(since);
 
     // Pull more candidates than the 8 we need, since some near the top may
     // turn out to be out of stock and get filtered out below.

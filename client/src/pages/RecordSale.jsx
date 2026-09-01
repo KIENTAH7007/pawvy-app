@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { CheckCircle, Plus, Trash2, Eye, EyeOff } from 'lucide-react';
 import { brandsApi, productsApi, partnersApi, salesApi } from '../api';
 import { Page, Card, Input, Select, Btn, Divider, fmt } from '../components/ui';
+import { localDateStr } from '../utils/dates';
 
 const B2C_CHANNELS = ['Shopee', 'Lazada', 'Amazon', 'TikTok Shop'];
 const B2B_CHANNELS = ['Wholesale Order', 'Consignment Sale'];
@@ -84,7 +85,7 @@ const EMPTY_LINE = { brand_id: '', product_id: '', qty: '', unit_cost: '', unit_
 export default function RecordSale() {
   const nav = useNavigate();
   const isMobile = useIsMobile();
-  const [date,      setDate]      = useState(new Date().toISOString().slice(0, 10));
+  const [date,      setDate]      = useState(localDateStr());
   const [market,    setMarket]    = useState('SG');
   const [channel,   setChannel]   = useState('');
   const [partnerId, setPartnerId] = useState('');

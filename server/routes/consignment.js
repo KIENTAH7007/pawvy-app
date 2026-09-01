@@ -1,4 +1,5 @@
 const { Router } = require('express');
+const { localDateStr } = require('../utils/dates');
 
 module.exports = function(db) {
   const router = Router();
@@ -211,7 +212,7 @@ module.exports = function(db) {
   router.delete('/placements/:id', (req, res) => {
     const placement = db.queryOne('SELECT * FROM consignment_placements WHERE id = ?', [req.params.id]);
     if (placement && recordMovement) {
-      recordMovement({ date: new Date().toISOString().slice(0,10), product_id: placement.product_id, location: 'Home', type: 'Placement Reversal', qty_change: placement.qty, reference: `placement_${placement.id}_void` });
+      recordMovement({ date: localDateStr(), product_id: placement.product_id, location: 'Home', type: 'Placement Reversal', qty_change: placement.qty, reference: `placement_${placement.id}_void` });
     }
     db.run('DELETE FROM consignment_placements WHERE id = ?', [req.params.id]);
     res.json({ ok: true });
@@ -233,7 +234,7 @@ module.exports = function(db) {
   router.delete('/returns/:id', (req, res) => {
     const ret = db.queryOne('SELECT * FROM consignment_returns WHERE id = ?', [req.params.id]);
     if (ret && recordMovement) {
-      recordMovement({ date: new Date().toISOString().slice(0,10), product_id: ret.product_id, location: 'Home', type: 'Return Reversal', qty_change: -ret.qty, reference: `return_${ret.id}_void` });
+      recordMovement({ date: localDateStr(), product_id: ret.product_id, location: 'Home', type: 'Return Reversal', qty_change: -ret.qty, reference: `return_${ret.id}_void` });
     }
     db.run('DELETE FROM consignment_returns WHERE id = ?', [req.params.id]);
     res.json({ ok: true });

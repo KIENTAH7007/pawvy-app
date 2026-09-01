@@ -1,4 +1,5 @@
 const { Router } = require('express');
+const { localDateStr } = require('../utils/dates');
 
 module.exports = function(db) {
   const router = Router();
@@ -6,7 +7,7 @@ module.exports = function(db) {
   // ── Document number generator (server-side sequence per type+day) ──
   function generateDocNumber(type) {
     const prefix = type === 'Invoice' ? 'INV' : type === 'Delivery Order' ? 'DO' : type === 'SOA' ? 'SOA' : 'DOC';
-    const today = new Date().toISOString().slice(0,10).replace(/-/g,'');
+    const today = localDateStr().replace(/-/g,'');
     const last  = db.queryOne(
       `SELECT invoice_number FROM invoices WHERE type=? AND invoice_number LIKE ? ORDER BY id DESC LIMIT 1`,
       [type, `${prefix}-${today}-%`]
@@ -158,7 +159,7 @@ module.exports = function(db) {
 
     // Defaults to today (standard practice: invoice date = when issued), but can be
     // explicitly back-dated by the user to match the underlying order date if preferred.
-    const issueDate = invoice_date || new Date().toISOString().slice(0,10);
+    const issueDate = invoice_date || localDateStr();
     const due_date  = addDays(issueDate, partner?.credit_term_days || 7);
     const invoice_number = generateDocNumber('Invoice');
 
@@ -194,7 +195,7 @@ module.exports = function(db) {
 
     if (sales.length === 0) return res.status(400).json({ error: 'No eligible sales found (already on a DO or mismatched partner)' });
 
-    const issueDate = do_date || new Date().toISOString().slice(0,10);
+    const issueDate = do_date || localDateStr();
     const do_number = generateDocNumber('Delivery Order');
 
     const result = db.run(`
@@ -279,7 +280,7 @@ module.exports = function(db) {
     const subtotal = parseFloat(invoicesInPeriod.reduce((s,i) => s + (i.total||0), 0).toFixed(2));
     const total = parseFloat((subtotal - cn.amount).toFixed(2));
 
-    const issueDate = new Date().toISOString().slice(0,10);
+    const issueDate = localDateStr();
     const due_date  = addDays(issueDate, partner?.credit_term_days || 7);
     const soa_number = generateDocNumber('SOA');
 

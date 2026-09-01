@@ -6,6 +6,8 @@
 // implementation of this logic rather than three slightly-different copies
 // accumulating across features that all care about "what's low at Home".
 
+const { localDateStr } = require('./dates');
+
 const TRAILING_DAYS = 60;            // velocity window, same as Restock Forecasting
 const LOW_HOME_DAYS = 14;            // trigger: Home has less than this many days of cover left
 const TARGET_HOME_COVER_DAYS = 30;   // suggested transfer brings Home up to this many days of cover
@@ -18,7 +20,7 @@ function getLevel(db, product_id, location) {
 function computeSuggestions(db) {
   const since = new Date();
   since.setDate(since.getDate() - TRAILING_DAYS);
-  const sinceStr = since.toISOString().slice(0, 10);
+  const sinceStr = localDateStr(since);
 
   const products = db.query(`
     SELECT p.id AS product_id, p.item_series, p.variation, b.name AS brand_name

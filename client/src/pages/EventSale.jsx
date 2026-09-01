@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { CheckCircle, Plus, Trash2 } from 'lucide-react';
 import { brandsApi, productsApi, salesApi } from '../api';
 import { Page, Card, Input, Select, Btn } from '../components/ui';
+import { localDateStr } from '../utils/dates';
 
 // ─── PayNow QR (base64) ──────────────────────────────────────────
 // Trimmed placeholder — your actual QR is huge; we keep the original value from the file.
@@ -30,7 +31,7 @@ function useIsMobile() {
 }
 
 export default function EventSale() {
-  const [date,   setDate]  = useState(new Date().toISOString().slice(0,10));
+  const [date,   setDate]  = useState(localDateStr());
   const [channel, setChannel] = useState('Event Sale');
   const [lines,  setLines] = useState([{ ...EMPTY }]);
   const [notes,  setNotes] = useState('');

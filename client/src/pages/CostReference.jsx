@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, History, Trash2 } from 'lucide-react';
 import { shipmentsApi, brandsApi } from '../api';
 import { Page, Table, Btn, Modal, FormRow, Input, Select, Badge, fmt } from '../components/ui';
+import { localDateStr } from '../utils/dates';
 
 const CURRENCIES = ['USD', 'GBP', 'EUR', 'KRW', 'CNY', 'SGD'];
 
@@ -13,7 +14,7 @@ export default function CostReference() {
   const [addModal, setAddModal] = useState(null);   // row being added-to
   const [historyModal, setHistoryModal] = useState(null); // row being viewed
   const [history, setHistory] = useState([]);
-  const [form, setForm] = useState({ effective_date: new Date().toISOString().slice(0, 10), currency: 'USD' });
+  const [form, setForm] = useState({ effective_date: localDateStr(), currency: 'USD' });
   const [saving, setSaving] = useState(false);
 
   const load = () => shipmentsApi.costReference(brandFilter ? { brand_id: brandFilter } : {}).then(r => { setRows(r); setLoading(false); });
@@ -22,7 +23,7 @@ export default function CostReference() {
 
   function openAdd(row) {
     setForm({
-      effective_date: new Date().toISOString().slice(0, 10),
+      effective_date: localDateStr(),
       currency: row.currency || 'USD',
       weight_per_unit: row.weight_per_unit ?? '',
     });

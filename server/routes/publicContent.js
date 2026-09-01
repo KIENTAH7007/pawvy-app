@@ -1,4 +1,5 @@
 const { Router } = require('express');
+const { localDateStr } = require('../utils/dates');
 const { getActiveMultiplierDetail } = require('../lib/buttons');
 
 // Read-only content the public website needs, mounted at /api/public-content
@@ -64,7 +65,7 @@ module.exports = function(db) {
   // set, falls back to the brand gallery so a click never dead-ends —
   // same reasoning as the Instagram fallback just above.
   router.get('/banners', (req, res) => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localDateStr();
     const rows = db.query(`
       SELECT image_url, image_url_mobile, image_url_tablet, headline, link_url, show_caption FROM homepage_banners
       WHERE is_active = 1

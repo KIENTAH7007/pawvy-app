@@ -4,6 +4,7 @@ import { PlusCircle, TrendingUp, Package, ChevronRight } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LineChart, Line, CartesianGrid, Legend } from 'recharts';
 import { salesApi, reportsApi, partnerReportApi, brandsApi, brandSkuApi } from '../api';
 import { KpiCard, Btn, Badge, Modal, Input, fmt } from '../components/ui';
+import { localDateStr } from '../utils/dates';
 
 const MONTH_LABELS = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const ALL_CHANNELS = ['Event Sale', 'Direct Online Sale', 'Direct Offline Sale', 'Shopee', 'Lazada', 'Amazon', 'TikTok Shop', 'Wholesale Order', 'Consignment Sale'];
@@ -149,8 +150,8 @@ export default function Dashboard() {
   const [upsell,      setUpsell]      = useState(null);
   const [upsellDetailModal, setUpsellDetailModal] = useState(null); // { source, rows, loading }
   const [perfChannel, setPerfChannel] = useState('Event Sale');
-  const [perfFrom,    setPerfFrom]    = useState(new Date().toISOString().slice(0,10));
-  const [perfTo,      setPerfTo]      = useState(new Date().toISOString().slice(0,10));
+  const [perfFrom,    setPerfFrom]    = useState(localDateStr());
+  const [perfTo,      setPerfTo]      = useState(localDateStr());
   const [perfResult,  setPerfResult]  = useState(null);
   const [perfLoading, setPerfLoading] = useState(false);
   const [perfError,   setPerfError]   = useState('');

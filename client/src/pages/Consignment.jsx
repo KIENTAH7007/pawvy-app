@@ -3,8 +3,9 @@ import { Plus, RotateCcw, Search, Trash2, CheckCircle, AlertCircle, FileText, Ar
 import { consignmentApi, productsApi, brandsApi } from '../api';
 import { Page, Card, Select, Input, Btn, Badge, Modal } from '../components/ui';
 import { sgd, pawvyHeaderHtml, pawvyAddressBlockHtml, pawvyFooterHtml, openPdfWindow } from '../utils/pawvyPdf';
+import { localDateStr } from '../utils/dates';
 
-const today = () => new Date().toISOString().slice(0,10);
+const today = () => localDateStr();
 
 function useIsMobile() {
   const [m, setM] = useState(window.innerWidth < 768);

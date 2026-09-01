@@ -3,16 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { salesApi, brandsApi, partnersApi } from '../api';
 import { Page, Select, Input, Badge, Btn, Modal, fmt } from '../components/ui';
 import { Ban, Mail, Pencil } from 'lucide-react';
+import { currentMonthRange } from '../utils/dates';
 
 const MARKETPLACE = ['Shopee','Lazada','Amazon','TikTok Shop'];
-
-function currentMonthRange() {
-  const now = new Date();
-  const from = new Date(now.getFullYear(), now.getMonth(), 1);
-  const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  const fmt = d => d.toISOString().slice(0, 10);
-  return { from: fmt(from), to: fmt(to) };
-}
 
 export default function Sales() {
   const nav = useNavigate();

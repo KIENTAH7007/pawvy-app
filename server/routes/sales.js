@@ -1,4 +1,5 @@
 const { Router } = require('express');
+const { localDateStr } = require('../utils/dates');
 const { voidPendingButtons } = require('../lib/buttons');
 
 const MARKETPLACE_CHANNELS = ['Shopee', 'Lazada', 'Amazon', 'TikTok Shop'];
@@ -286,7 +287,7 @@ module.exports = function(db, inventoryRouter) {
     // Inventory: reverse the original deduction (stock effectively never left)
     if (inventoryRouter?._recordMovement && sale.channel !== 'Consignment Sale') {
       inventoryRouter._recordMovement({
-        date: new Date().toISOString().slice(0,10), product_id: sale.product_id, location: 'Home',
+        date: localDateStr(), product_id: sale.product_id, location: 'Home',
         type: 'Sale Reversal', qty_change: sale.qty, reference: `sale_${sale.id}_void`,
       });
     }

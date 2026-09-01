@@ -1,4 +1,5 @@
 const { Router } = require('express');
+const { localDateStr } = require('../utils/dates');
 const { upsertCustomerFromSignup } = require('../lib/customers');
 const { recordPosCheckoutButtons, getActiveMultiplierDetail } = require('../lib/buttons');
 const { withEffectivePrice } = require('../lib/pricing');
@@ -122,7 +123,7 @@ module.exports = function(db, inventoryRouter) {
       }
     }
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localDateStr();
     const shipCharged = parseFloat(shipping_charged) || 0;
     const shipCost = parseFloat(shipping_cost) || 0;
     const hasMailing = !!(mailing_name || mailing_address || mailing_phone);

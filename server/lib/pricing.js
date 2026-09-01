@@ -4,8 +4,10 @@
 // logic) into whether a discount is active today and what the resulting
 // price is. Extracted here specifically so the public shop route can reuse
 // this without duplicating the date-window math.
+const { localDateStr } = require('../utils/dates');
+
 function withEffectivePrice(product) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateStr();
   const hasDiscount = product.discount_pct > 0
     && (!product.discount_start || product.discount_start <= today)
     && (!product.discount_end || product.discount_end >= today);

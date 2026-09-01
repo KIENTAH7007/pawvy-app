@@ -4,6 +4,7 @@ import { Download, Trash2 } from 'lucide-react';
 import { productsApi, brandsApi, waitlistAdminApi } from '../api';
 import { Page, Select, Input, Badge, Btn, Modal, FormRow, Divider } from '../components/ui';
 import { NEED_TAG_OPTIONS } from '../constants';
+import { localDateStr } from '../utils/dates';
 
 const MARKET_FIELDS = {
   SG: [
@@ -196,7 +197,7 @@ export default function Products() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `pawvy-products-${new Date().toISOString().slice(0,10)}.csv`;
+    a.download = `pawvy-products-${localDateStr()}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

@@ -1,4 +1,5 @@
 const { Router } = require('express');
+const { localDateStr } = require('../utils/dates');
 
 module.exports = function(db, inventoryRouter) {
   const router = Router();
@@ -114,7 +115,7 @@ module.exports = function(db, inventoryRouter) {
       return res.status(400).json({ error: 'At least one item is required to approve this order.' });
     }
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localDateStr();
     const saleIds = [];
     const shipCharged = parseFloat(shipping_charged) || 0;
     const shipCost    = parseFloat(shipping_cost)    || 0;

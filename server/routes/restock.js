@@ -1,4 +1,5 @@
 const { Router } = require('express');
+const { localDateStr } = require('../utils/dates');
 const { computeSuggestions } = require('../utils/restockSuggestions');
 
 // Restock Checklist — staged Storhub <-> Home transfer prep.
@@ -150,7 +151,7 @@ module.exports = function(db, inventoryRouter) {
 
     const fromLoc = checklist.direction === 'home_to_storhub' ? 'Home' : 'Storhub';
     const toLoc   = checklist.direction === 'home_to_storhub' ? 'Storhub' : 'Home';
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localDateStr();
     const reference = checklist.label || `Checklist #${checklist.id}`;
     const transferred = [];
 

@@ -8,6 +8,7 @@ const { getActiveMultiplierDetail, recordPosCheckoutButtons } = require('../lib/
 const { sendCustomerEmail } = require('../utils/notify');
 const { baseUrl, htmlPage, buildVerifyEmail, buildLoginEmail } = require('../lib/customerEmails');
 const { checkAndAwardProfileBonus } = require('../lib/profileCompletion');
+const { localDateStr } = require('../utils/dates');
 
 // Customer-facing account endpoints for pawvy.co. Mounted publicly —
 // excluded from the internal staff PIN gate in server/index.js, same as
@@ -346,8 +347,11 @@ module.exports = function(db) {
       if (daysSinceChange < BIRTHDAY_COOLDOWN_DAYS) {
         birthdayBlocked = true;
         birthdayToSave = existing.birthday; // keep the current value — requested change is rejected
-        cooldownEndsOn = new Date(new Date(existing.birthday_updated_at).getTime() + BIRTHDAY_COOLDOWN_DAYS * 86400000)
-          .toISOString().slice(0, 10);
+        // Was .toISOString().slice(0,10) — truncates via UTC, so the
+        // shown "cooldown ends on" date could be a day off depending on
+        // what time of day birthday_updated_at was originally recorded.
+        // localDateStr() reads the date's own local components instead.
+        cooldownEndsOn = localDateStr(new Date(new Date(existing.birthday_updated_at).getTime() + BIRTHDAY_COOLDOWN_DAYS * 86400000));
       }
     }
     const birthdayIsChanging = !birthdayBlocked && birthday && (!existing || birthday !== existing.birthday);

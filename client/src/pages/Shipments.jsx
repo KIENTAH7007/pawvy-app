@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, ChevronDown, ChevronUp, Trash2, Upload, FileText, Truck, Ban, Calculator } from 'lucide-react';
 import { shipmentsApi, brandsApi, productsApi } from '../api';
 import { Page, Card, KpiCard, Input, Select, Btn, Badge, Table, Divider, fmt } from '../components/ui';
+import { localMonthStr, currentMonthRange } from '../utils/dates';
 
 const CURRENCIES = ['USD', 'GBP', 'EUR', 'KRW', 'CNY', 'SGD'];
 const STATUS_COLOR = { ordered: '#888', shipped: '#378ADD', received: '#BA7517', costed: '#639922', voided: '#555' };
@@ -32,8 +33,12 @@ export default function Shipments() {
   useEffect(() => { load(); }, [filters.brand_id, filters.from, filters.to]);
   useEffect(() => {
     brandsApi.getAll().then(setBrands);
-    const thisMonth = new Date().toISOString().slice(0, 7);
-    shipmentsApi.variance({ from: `${thisMonth}-01`, to: `${thisMonth}-31` }).then(rows => {
+    // Found while fixing the timezone bug above: this used to hardcode
+    // "-31" as the end of the month, which is wrong for any month with
+    // fewer than 31 days (Feb, Apr, Jun, Sep, Nov) — currentMonthRange
+    // computes the real last day instead.
+    const range = currentMonthRange();
+    shipmentsApi.variance({ from: range.from, to: range.to }).then(rows => {
       setMonthVariance(rows.reduce((sum, r) => sum + (r.variance_total || 0), 0));
     });
   }, []);
@@ -173,7 +178,7 @@ export default function Shipments() {
 
   // ── Summary metrics ────────────────────────────────────────────
   const active = shipments.filter(s => s.status !== 'voided');
-  const thisMonth = new Date().toISOString().slice(0, 7);
+  const thisMonth = localMonthStr();
   const inMonth = active.filter(s => (s.arrival_date || s.created_at || '').startsWith(thisMonth));
   const costedCount = active.filter(s => s.status === 'costed').length;
 

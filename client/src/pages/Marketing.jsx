@@ -3,11 +3,12 @@ import { Trash2, Edit2 } from 'lucide-react';
 import { campaignsApi, tickerMessagesApi, instagramPostsApi, homepageBannersApi, testimonialsApi, bundlesApi, productsApi } from '../api';
 import { Page, Table, Badge, Btn, Modal, FormRow, Input, Select, fmt } from '../components/ui';
 import { NEED_TAG_OPTIONS } from '../constants';
+import { localDateStr } from '../utils/dates';
 
-const CAMPAIGN_EMPTY = { name: '', multiplier: '2', applies_to: 'both', start_date: new Date().toISOString().slice(0, 10), end_date: '', is_active: true, email_frequency_days: '' };
+const CAMPAIGN_EMPTY = { name: '', multiplier: '2', applies_to: 'both', start_date: localDateStr(), end_date: '', is_active: true, email_frequency_days: '' };
 const MESSAGE_EMPTY = { text: '', sort_order: 0, is_active: true };
 
-function todayStr() { return new Date().toISOString().slice(0, 10); }
+function todayStr() { return localDateStr(); }
 
 // A campaign is "live" right now if it's marked active AND today falls
 // inside its date range — this is exactly the same condition
@@ -548,7 +549,7 @@ function HomepageBannerSection() {
 
   const sf = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  function todayStr() { return new Date().toISOString().slice(0, 10); }
+  function todayStr() { return localDateStr(); }
 
   function openNew() {
     setEditing(null);

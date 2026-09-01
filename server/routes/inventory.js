@@ -1,4 +1,5 @@
 const { Router } = require('express');
+const { localDateStr } = require('../utils/dates');
 const fs = require('fs');
 const path = require('path');
 
@@ -91,7 +92,7 @@ module.exports = function(db, consignmentRouter) {
   router.post('/restock', (req, res) => {
     const { product_id, qty, unit_cost, date, notes } = req.body;
     if (!product_id || !qty || qty <= 0) return res.status(400).json({ error: 'product_id and qty (>0) required' });
-    const d = date || new Date().toISOString().slice(0,10);
+    const d = date || localDateStr();
     recordMovement({ date: d, product_id, location: 'Storhub', type: 'Restock In', qty_change: parseInt(qty), notes });
     if (unit_cost !== undefined && unit_cost !== '') {
       db.run('UPDATE products SET unit_cost = ? WHERE id = ?', [parseFloat(unit_cost), product_id]);
@@ -103,7 +104,7 @@ module.exports = function(db, consignmentRouter) {
   router.post('/transfer', (req, res) => {
     const { product_id, qty, direction, date, notes } = req.body;
     if (!product_id || !qty || qty <= 0 || !direction) return res.status(400).json({ error: 'product_id, qty (>0), direction required' });
-    const d = date || new Date().toISOString().slice(0,10);
+    const d = date || localDateStr();
     const q = parseInt(qty);
     if (direction === 'storhub_to_home') {
       recordMovement({ date: d, product_id, location: 'Storhub', type: 'Transfer Out', qty_change: -q, notes });
@@ -121,7 +122,7 @@ module.exports = function(db, consignmentRouter) {
   router.post('/writeoff', (req, res) => {
     const { product_id, location, qty, reason, date, notes } = req.body;
     if (!product_id || !location || !qty || qty <= 0) return res.status(400).json({ error: 'product_id, location, qty (>0) required' });
-    const d = date || new Date().toISOString().slice(0,10);
+    const d = date || localDateStr();
     const q = parseInt(qty);
     const product = db.queryOne('SELECT unit_cost FROM products WHERE id = ?', [product_id]);
     const cost_impact = parseFloat(((product?.unit_cost || 0) * q).toFixed(2));
@@ -144,7 +145,7 @@ module.exports = function(db, consignmentRouter) {
     const target  = parseInt(actual_qty);
     const delta   = target - current;
     if (delta !== 0) {
-      const d = new Date().toISOString().slice(0,10);
+      const d = localDateStr();
       recordMovement({ date: d, product_id, location, type: 'Adjustment', qty_change: delta, notes: notes || `Corrected from ${current} to ${target}` });
     }
     res.status(201).json({ ok: true, qty: getLevel(product_id, location), delta });
@@ -156,7 +157,7 @@ module.exports = function(db, consignmentRouter) {
     if (!fs.existsSync(dataPath)) return res.status(404).json({ error: 'Opening stock dataset not found' });
     const rows = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
 
-    const today = new Date().toISOString().slice(0,10);
+    const today = localDateStr();
     const matched = [];
     const unmatched = [];
     const skipped = [];

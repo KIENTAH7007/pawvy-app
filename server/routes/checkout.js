@@ -1,4 +1,5 @@
 const { Router } = require('express');
+const { localDateStr } = require('../utils/dates');
 const { withEffectivePrice } = require('../lib/pricing');
 const { previewRedemption, redeemButtons, recordPurchaseButtons } = require('../lib/buttons');
 const { upsertCustomerFromSignup } = require('../lib/customers');
@@ -279,7 +280,7 @@ module.exports = function(db, inventoryRouter, stripeClient) {
     if (order.status === 'paid') return; // already fulfilled — duplicate event, no-op
 
     const items = db.query('SELECT * FROM website_order_items WHERE website_order_id = ?', [order.id]);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localDateStr();
     const saleIds = [];
     const fetchedFee = await fetchStripeFeeAtWebhookTime(session.payment_intent, order.id);
     const stripeFee = fetchedFee ?? 0;

@@ -3,8 +3,9 @@ import { Plus, ArrowLeftRight, Trash2, AlertTriangle, CheckCircle, Upload, Clock
 import { inventoryApi, forecastApi, brandsApi, productsApi } from '../api';
 import { Page, Card, Select, Input, Btn, Badge, Modal } from '../components/ui';
 import { pawvyHeaderHtml, pawvyAddressBlockHtml, pawvyFooterHtml, openPdfWindow } from '../utils/pawvyPdf';
+import { localDateStr } from '../utils/dates';
 
-const today = () => new Date().toISOString().slice(0,10);
+const today = () => localDateStr();
 const sgd = v => `SGD ${parseFloat(v||0).toFixed(2)}`;
 
 // ── PDF: Restock Order Sheet (consolidated per-brand order list) ────

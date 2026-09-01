@@ -3,17 +3,10 @@ import { Trash2 } from 'lucide-react';
 import { costsApi } from '../api';
 import { Page, Table, Badge, Btn, Modal, FormRow, Input, Select, KpiCard, fmt } from '../components/ui';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, CartesianGrid } from 'recharts';
+import { currentMonthRange, localDateStr } from '../utils/dates';
 
 const CATS = ['Marketing','Storage','Delivery','Event','Platform Fee','Packaging','Other'];
 const CAT_C = { Marketing:'#f36f4a',Storage:'#378ADD',Delivery:'#1D9E75',Event:'#7F77DD','Platform Fee':'#BA7517',Packaging:'#639922',Other:'#888' };
-
-function currentMonthRange() {
-  const now = new Date();
-  const from = new Date(now.getFullYear(), now.getMonth(), 1);
-  const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  const f = d => d.toISOString().slice(0, 10);
-  return { from: f(from), to: f(to) };
-}
 
 const TrendTip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
@@ -29,7 +22,7 @@ export default function Costs() {
   const [costs,setCosts]=useState([]);const [sum,setSum]=useState(null);
   const [trend, setTrend] = useState([]);
   const [modal,setModal]=useState(false);
-  const [form,setForm]=useState({date:new Date().toISOString().slice(0,10),market:'SG'});
+  const [form,setForm]=useState({date:localDateStr(),market:'SG'});
   const [saving,setSaving]=useState(false);
   const defaultRange = currentMonthRange();
   const [dateFrom, setDateFrom] = useState(defaultRange.from);
@@ -50,7 +43,7 @@ export default function Costs() {
   async function save(){
     if(!form.date||!form.category||!form.description||!form.amount)return;
     setSaving(true);
-    try{await costsApi.create(form);load();setModal(false);setForm({date:new Date().toISOString().slice(0,10),market:'SG'});}
+    try{await costsApi.create(form);load();setModal(false);setForm({date:localDateStr(),market:'SG'});}
     finally{setSaving(false);}
   }
   async function remove(id){

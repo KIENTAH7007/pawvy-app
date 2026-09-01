@@ -1,4 +1,5 @@
 const { notifyBackupEmail } = require('../utils/notify');
+const { localDateStr } = require('../utils/dates');
 
 // Daily backup — emails the raw SQLite file as an attachment to a
 // dedicated backup inbox (BACKUP_EMAIL_TO), separate from the main
@@ -14,7 +15,7 @@ async function runDailyBackup(backupNow, getDbPath) {
   backupNow();
 
   const dbPath = getDbPath();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateStr();
 
   const sent = await notifyBackupEmail(
     `Pawvy DB Backup — ${today}`,

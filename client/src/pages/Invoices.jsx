@@ -3,8 +3,9 @@ import { FileText, Truck, FileSpreadsheet, AlertCircle, CheckCircle, Clock, Tras
 import { invoicesApi, consignmentApi, partnersApi, partnerAddressesApi } from '../api';
 import { Page, Card, Select, Input, Btn, Badge, Modal } from '../components/ui';
 import { sgd, pawvyHeaderHtml, pawvyAddressBlockHtml, pawvyFooterHtml, pawvyPaymentInstructionsHtml, openPdfWindow } from '../utils/pawvyPdf';
+import { localDateStr, localMonthStr } from '../utils/dates';
 
-const today = () => new Date().toISOString().slice(0,10);
+const today = () => localDateStr();
 
 function useIsMobile() {
   const [m, setM] = useState(window.innerWidth < 768);
@@ -555,7 +556,7 @@ function GenerateDOModal({ open, onClose, partners, onGenerated }) {
 // ════════════════════════════════════════════════════════════════
 function GenerateSOAModal({ open, onClose, partners, onGenerated }) {
   const [partnerId, setPartnerId] = useState('');
-  const [month, setMonth]         = useState(() => new Date().toISOString().slice(0,7));
+  const [month, setMonth]         = useState(() => localMonthStr());
   const [manualCn, setManualCn]   = useState(''); // one-off override — see server/routes/invoices.js
   const [preview, setPreview]     = useState(null);
   const [loading, setLoading]     = useState(false);
@@ -566,7 +567,7 @@ function GenerateSOAModal({ open, onClose, partners, onGenerated }) {
   const soaPartners = partners.filter(p => p.billing_cycle === 'soa');
 
   useEffect(() => {
-    if (open) { setPartnerId(''); setPreview(null); setError(''); setResult(null); setManualCn(''); setMonth(new Date().toISOString().slice(0,7)); }
+    if (open) { setPartnerId(''); setPreview(null); setError(''); setResult(null); setManualCn(''); setMonth(localMonthStr()); }
   }, [open]);
 
   function periodRange(monthStr) {

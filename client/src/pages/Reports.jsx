@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { reportsApi } from '../api';
 import { Page, KpiCard, Input, Select, Btn, Badge, fmt } from '../components/ui';
+import { localDateStr } from '../utils/dates';
 export default function Reports() {
   const [pnl,setPnl]=useState(null);const [loading,setL]=useState(false);
   const [expanded,setExpanded]=useState({}); // { opex: bool, writeoffs: bool } — toggled breakdown rows
   const [from,setFrom]=useState(`${new Date().getFullYear()}-01-01`);
-  const [to,setTo]=useState(new Date().toISOString().slice(0,10));
+  const [to,setTo]=useState(localDateStr());
   const [market,setMkt]=useState('');
   function run(){setL(true);const q={date_from:from,date_to:to};if(market)q.market=market;reportsApi.pnl(q).then(d=>{setPnl(d);setL(false);}).catch(()=>setL(false));}
   return(
