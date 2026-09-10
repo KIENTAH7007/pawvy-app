@@ -315,12 +315,38 @@ module.exports = function(db) {
   });
 
   // ── PATCH mark paid / unpaid ─────────────────────────────────────
+  // Marking an SOA paid/unpaid also cascades to every invoice it
+  // includes (Aug 2026, per KT) — an SOA already tracks exactly which
+  // invoices belong to it via included_in_soa_id, so this doesn't need
+  // any new schema, just reading that existing link. Only fires when
+  // the document being toggled is actually type='SOA' — toggling a
+  // regular Invoice or Delivery Order individually works exactly as it
+  // did before, completely unchanged.
+  //
+  // The two directions are handled slightly differently on purpose:
+  // - Paid: only cascades to invoices that are currently Unpaid, so an
+  //   invoice that was already correctly paid earlier (its own real
+  //   paid_date) doesn't get silently overwritten with today's date.
+  // - Unpaid (undoing an accidental "mark SOA paid" click): cascades
+  //   unconditionally to every included invoice. KT confirmed this
+  //   edge case (an invoice paid independently before its SOA was ever
+  //   touched, then getting reverted anyway) is rare enough — one
+  //   occurrence ever — to not need the extra complexity of tracking
+  //   which invoices the cascade itself touched.
   router.patch('/:id/pay', (req, res) => {
+    const doc = db.queryOne('SELECT type FROM invoices WHERE id = ?', [req.params.id]);
     db.run("UPDATE invoices SET status='Paid', paid_date=date('now') WHERE id=?", [req.params.id]);
+    if (doc && doc.type === 'SOA') {
+      db.run("UPDATE invoices SET status='Paid', paid_date=date('now') WHERE included_in_soa_id=? AND status='Unpaid'", [req.params.id]);
+    }
     res.json({ ok: true });
   });
   router.patch('/:id/unpay', (req, res) => {
+    const doc = db.queryOne('SELECT type FROM invoices WHERE id = ?', [req.params.id]);
     db.run("UPDATE invoices SET status='Unpaid', paid_date=NULL WHERE id=?", [req.params.id]);
+    if (doc && doc.type === 'SOA') {
+      db.run("UPDATE invoices SET status='Unpaid', paid_date=NULL WHERE included_in_soa_id=?", [req.params.id]);
+    }
     res.json({ ok: true });
   });
 
