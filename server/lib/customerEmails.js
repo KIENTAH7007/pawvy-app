@@ -88,7 +88,13 @@ const BRAND_CREAM = '#F5F2EB';
 // image previews before the domain was pointed).
 const LOGO_URL = `${process.env.BACKEND_URL || 'https://pawvy-app-production.up.railway.app'}/brand-assets/pawvy-logo-email.png`;
 
-function emailShell({ statusBand, bodyHtml }) {
+// Unsubscribe links point at the backend directly (same reasoning as
+// verify-link/login-link above) — no website page needed for this.
+function unsubscribeUrlFor(token) {
+  return `${process.env.BACKEND_URL || 'https://pawvy-app-production.up.railway.app'}/api/customers/unsubscribe-link?token=${token}`;
+}
+
+function emailShell({ statusBand, bodyHtml, unsubscribeUrl = null }) {
   // No border-radius/overflow:hidden on the outer table (Aug 2026 fix) —
   // that combination isn't reliably supported across email clients
   // (particularly Gmail/Outlook), and was the actual cause of the thin
@@ -155,6 +161,7 @@ function emailShell({ statusBand, bodyHtml }) {
       <td class="pv-navy" style="background:${BRAND_NAVY};padding:24px 32px;text-align:center;">
         <p style="margin:0 0 6px;font-family:Arial,sans-serif;font-size:12px;color:#B9C2D6;">Pawvy Limited Partnership &middot; Singapore</p>
         <p style="margin:0;font-family:Arial,sans-serif;font-size:11px;color:#8A96AF;">You're receiving this because you have a Pawvy account.</p>
+        ${unsubscribeUrl ? `<p style="margin:10px 0 0;font-family:Arial,sans-serif;font-size:11px;"><a href="${unsubscribeUrl}" style="color:#8A96AF;text-decoration:underline;">Unsubscribe from these reminder emails</a></p>` : ''}
       </td>
     </tr>
 
@@ -266,7 +273,7 @@ function buildEnquiryEmail(name) {
 // ascending by expires_at and already limited to 3 by the caller — this
 // function is pure rendering, same division of responsibility as
 // buildReceiptEmail (job/route does the query, this just formats it).
-function buildButtonsExpiryEmail(customer, batches) {
+function buildButtonsExpiryEmail(customer, batches, unsubscribeUrl) {
   const rowsText = batches.map(b =>
     `  ${new Date(b.expires_at).toLocaleDateString('en-SG', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Singapore' })} — ${b.amount} BUTTONS`
   ).join('\n');
@@ -298,7 +305,7 @@ function buildButtonsExpiryEmail(customer, batches) {
     </p>
     ${ctaButtonHtml('Shop now and use your BUTTONS', shopUrl())}
   `;
-  const html = emailShell({ statusBand: 'BUTTONS EXPIRING SOON', bodyHtml });
+  const html = emailShell({ statusBand: 'BUTTONS EXPIRING SOON', bodyHtml, unsubscribeUrl });
   return { subject: 'Your BUTTONS are expiring soon', text, html };
 }
 
@@ -307,7 +314,7 @@ function buildButtonsExpiryEmail(customer, batches) {
 // (see getActiveMultiplierDetail in lib/buttons.js for the same
 // birthday-month check used at earn time — this email is purely
 // informational and never itself grants the bonus).
-function buildBirthdayEmail(customer, pet) {
+function buildBirthdayEmail(customer, pet, unsubscribeUrl) {
   const petName = pet?.name || 'your pet';
   const monthLabel = new Date(`${pet.birthday}T00:00:00`).toLocaleDateString('en-SG', { month: 'long', timeZone: 'Asia/Singapore' });
   const text = `Hi ${customer.name || 'there'},\n\nIt's ${petName}'s birthday month! You'll earn 1.5x BUTTONS on every order this month (unless a bigger campaign is running, in which case you get whichever is higher).\n\nShop now: ${shopUrl()}`;
@@ -327,7 +334,7 @@ function buildBirthdayEmail(customer, pet) {
     </p>
     ${ctaButtonHtml(`Shop ${petName}'s birthday picks`, shopUrl())}
   `;
-  const html = emailShell({ statusBand: 'BIRTHDAY BONUS', bodyHtml });
+  const html = emailShell({ statusBand: 'BIRTHDAY BONUS', bodyHtml, unsubscribeUrl });
   return { subject: `It's ${petName}'s birthday month! 🎂`, text, html };
 }
 
@@ -343,7 +350,7 @@ function campaignChannelLabel(campaign) {
   return campaign.scope_value === 'pos' ? 'at our POS / event sales' : 'on our website';
 }
 
-function buildCampaignEmail(customer, campaign) {
+function buildCampaignEmail(customer, campaign, unsubscribeUrl) {
   const channelLabel = campaignChannelLabel(campaign);
   const endDateStr = new Date(`${campaign.end_date}T00:00:00`).toLocaleDateString('en-SG', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Singapore' });
   const text = `Hi ${customer.name || 'there'},\n\n"${campaign.name}" is live — earn ${campaign.multiplier}x BUTTONS ${channelLabel} until ${endDateStr}.\n\nShop now: ${shopUrl()}`;
@@ -363,7 +370,7 @@ function buildCampaignEmail(customer, campaign) {
     </p>
     ${ctaButtonHtml('Shop the campaign', shopUrl())}
   `;
-  const html = emailShell({ statusBand: campaign.name.toUpperCase(), bodyHtml });
+  const html = emailShell({ statusBand: campaign.name.toUpperCase(), bodyHtml, unsubscribeUrl });
   return { subject: `${campaign.name} is live — earn ${campaign.multiplier}× BUTTONS`, text, html };
 }
 
@@ -371,5 +378,5 @@ module.exports = {
   baseUrl, htmlPage,
   buildVerifyEmail, buildLoginEmail, buildReceiptEmail, buildEnquiryEmail,
   buildButtonsExpiryEmail, buildBirthdayEmail, buildCampaignEmail,
-  shopUrl, campaignChannelLabel,
+  shopUrl, campaignChannelLabel, unsubscribeUrlFor,
 };

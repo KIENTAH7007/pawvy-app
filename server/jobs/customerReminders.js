@@ -1,5 +1,6 @@
 const { getBestActiveCampaign, singaporeDateStr, singaporeMonth } = require('../lib/buttons');
-const { buildButtonsExpiryEmail, buildBirthdayEmail, buildCampaignEmail } = require('../lib/customerEmails');
+const { buildButtonsExpiryEmail, buildBirthdayEmail, buildCampaignEmail, unsubscribeUrlFor } = require('../lib/customerEmails');
+const { getOrCreateUnsubscribeToken } = require('../lib/customers');
 const { sendCustomerEmail } = require('../utils/notify');
 
 // Daily trigger for the two new automated reminder emails, agreed in the
@@ -49,6 +50,7 @@ async function runButtonsExpiryReminder(db) {
       AND bb.expires_at <= ?
       AND c.account_status = 'verified'
       AND c.is_active = 1
+      AND c.marketing_opt_out = 0
       AND bb.id NOT IN (
         SELECT reference_id FROM automated_email_log
         WHERE email_type = 'buttons_expiry' AND reference_id IS NOT NULL
@@ -68,7 +70,7 @@ async function runButtonsExpiryReminder(db) {
     const customer = db.queryOne('SELECT id, name, email FROM customers WHERE id = ?', [customerId]);
     if (!customer?.email) continue;
 
-    const { subject, text, html } = buildButtonsExpiryEmail(customer, topBatches);
+    const { subject, text, html } = buildButtonsExpiryEmail(customer, topBatches, unsubscribeUrlFor(getOrCreateUnsubscribeToken(db, customer.id)));
     const ok = await sendCustomerEmail(customer.email, subject, text, html);
     if (ok) {
       for (const b of topBatches) {
@@ -98,7 +100,7 @@ async function runCampaignBirthdayReminder(db) {
   const bestCampaign = getBestActiveCampaign(db, now);
   const campaignMultiplier = bestCampaign ? bestCampaign.multiplier : 1;
 
-  const verifiedCustomers = db.query(`SELECT id, name, email FROM customers WHERE account_status = 'verified' AND is_active = 1`);
+  const verifiedCustomers = db.query(`SELECT id, name, email FROM customers WHERE account_status = 'verified' AND is_active = 1 AND marketing_opt_out = 0`);
 
   let sentBirthday = 0;
   let sentCampaign = 0;
@@ -130,7 +132,7 @@ async function runCampaignBirthdayReminder(db) {
         : Infinity;
 
       if (daysSinceLast >= bestCampaign.email_frequency_days) {
-        const { subject, text, html } = buildCampaignEmail(customer, bestCampaign);
+        const { subject, text, html } = buildCampaignEmail(customer, bestCampaign, unsubscribeUrlFor(getOrCreateUnsubscribeToken(db, customer.id)));
         const ok = await sendCustomerEmail(customer.email, subject, text, html);
         if (ok) {
           db.run(`INSERT INTO automated_email_log (customer_id, email_type, reference_id) VALUES (?, 'campaign', ?)`, [customer.id, bestCampaign.id]);
@@ -146,7 +148,7 @@ async function runCampaignBirthdayReminder(db) {
       `, [customer.id, currentYear]);
       if (alreadySentThisYear) continue;
 
-      const { subject, text, html } = buildBirthdayEmail(customer, primaryPet);
+      const { subject, text, html } = buildBirthdayEmail(customer, primaryPet, unsubscribeUrlFor(getOrCreateUnsubscribeToken(db, customer.id)));
       const ok = await sendCustomerEmail(customer.email, subject, text, html);
       if (ok) {
         db.run(`INSERT INTO automated_email_log (customer_id, email_type, reference_id) VALUES (?, 'birthday', NULL)`, [customer.id]);

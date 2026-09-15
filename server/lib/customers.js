@@ -13,9 +13,32 @@ const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
 const VERIFY_TOKEN_TTL_MS = 14 * 24 * 60 * 60 * 1000; // 14-day link window, per the agreed event-signup flow
 const LOGIN_TOKEN_TTL_MS = 15 * 60 * 1000;             // short-lived, single-use
 const SESSION_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30-day logged-in session
+const UNSUBSCRIBE_TOKEN_TTL_MS = ONE_YEAR_MS;          // long-lived and reusable, not single-use — see below
 
 function generateToken() {
   return crypto.randomBytes(32).toString('hex');
+}
+
+// Unlike verify/login tokens, an unsubscribe link is meant to stay valid
+// for as long as a customer keeps receiving these emails, and clicking it
+// twice should just re-confirm, not error with "link already used." So
+// this reuses one existing token per customer rather than minting a new
+// one on every single email (which would work too, just leave a growing
+// trail of valid-but-unused tokens in auth_tokens for no real benefit).
+function getOrCreateUnsubscribeToken(db, customerId) {
+  const existing = db.queryOne(`
+    SELECT token FROM auth_tokens
+    WHERE customer_id = ? AND purpose = 'unsubscribe' AND expires_at > CURRENT_TIMESTAMP
+    ORDER BY created_at DESC LIMIT 1
+  `, [customerId]);
+  if (existing) return existing.token;
+
+  const token = generateToken();
+  db.run(`
+    INSERT INTO auth_tokens (customer_id, token, purpose, expires_at)
+    VALUES (?, ?, 'unsubscribe', ?)
+  `, [customerId, token, new Date(Date.now() + UNSUBSCRIBE_TOKEN_TTL_MS).toISOString()]);
+  return token;
 }
 
 function generateReferralCode(db) {
@@ -118,5 +141,6 @@ function customerButtonsBalance(db, customerId) {
 
 module.exports = {
   generateToken, generateReferralCode, creditButtons, upsertCustomerFromSignup, customerButtonsBalance,
-  SIGNUP_BONUS_B, VERIFY_TOKEN_TTL_MS, LOGIN_TOKEN_TTL_MS, SESSION_TOKEN_TTL_MS,
+  getOrCreateUnsubscribeToken,
+  SIGNUP_BONUS_B, VERIFY_TOKEN_TTL_MS, LOGIN_TOKEN_TTL_MS, SESSION_TOKEN_TTL_MS, UNSUBSCRIBE_TOKEN_TTL_MS,
 };

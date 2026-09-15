@@ -183,19 +183,29 @@ module.exports = function(db) {
     res.json({ ok: true, session_token: result.session_token, customer: customerPublicView(result.customer) });
   });
 
-  // GET /api/customers/verify-link — the actual link clicked from the
-  // emailed message. Renders a standalone confirmation page directly,
-  // since there's no website yet to hand off to.
-  router.get('/verify-link', (req, res) => {
-    const result = completeToken(req.query.token, 'verify');
-    if (!result.ok) {
-      return res.status(400).send(htmlPage({ title: 'Pawvy — Link invalid', heading: 'Link invalid or expired', body: result.error, ok: false }));
+  // GET /api/customers/unsubscribe-link — clicked from the footer of the
+  // automated reminder emails (BUTTONS expiry / campaign / birthday —
+  // see jobs/customerReminders.js). Deliberately NOT single-use like
+  // verify/login tokens above — the token stays valid for its full
+  // lifetime (see UNSUBSCRIBE_TOKEN_TTL_MS in lib/customers.js), so
+  // clicking it twice (e.g. from an old email still sitting in an inbox)
+  // just re-confirms rather than showing a confusing "link already used"
+  // error. Only affects these three reminder types — never blocks
+  // transactional emails (order confirmations, account verification),
+  // and the customer's account keeps working completely normally.
+  router.get('/unsubscribe-link', (req, res) => {
+    const record = db.queryOne(`
+      SELECT * FROM auth_tokens
+      WHERE token = ? AND purpose = 'unsubscribe' AND expires_at > CURRENT_TIMESTAMP
+    `, [req.query.token]);
+    if (!record) {
+      return res.status(400).send(htmlPage({ title: 'Pawvy — Link invalid', heading: 'Link invalid or expired', body: 'This unsubscribe link is invalid or has expired. Please contact us if you\'d like to stop receiving these emails.', ok: false }));
     }
-    const balance = customerButtonsBalance(db, result.customer.id);
+    db.run(`UPDATE customers SET marketing_opt_out = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [record.customer_id]);
     res.send(htmlPage({
-      title: 'Pawvy — Account verified',
-      heading: "You're verified! 🐾",
-      body: `Welcome to Pawvy, ${result.customer.name || ''}. Your account is active with <strong>${balance} BUTTONS</strong> ready to use once pawvy.co launches.`,
+      title: 'Pawvy — Unsubscribed',
+      heading: "You're unsubscribed",
+      body: "You won't receive BUTTONS expiry, birthday, or campaign reminder emails from Pawvy anymore. You'll still get emails needed to service your account, like order confirmations. Changed your mind? Just contact us and we'll turn reminders back on.",
       ok: true,
     }));
   });

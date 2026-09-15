@@ -1061,6 +1061,15 @@ function createSchema() {
   // — see jobs/customerReminders.js) consider them at all.
   try { db.run("ALTER TABLE customers ADD COLUMN is_active INTEGER DEFAULT 1"); } catch(e) {}
 
+  // Unsubscribe flag for the automated reminder emails (BUTTONS expiry /
+  // campaign / birthday — jobs/customerReminders.js), per KT (Sep 2026,
+  // PDPA/Spam Control Act compliance work). Doesn't affect transactional
+  // emails (order confirmations, account verification) — only the three
+  // reminder types, which carry a promotional element. A customer who
+  // opts out can still use their account, place orders, and earn/redeem
+  // BUTTONS completely normally.
+  try { db.run("ALTER TABLE customers ADD COLUMN marketing_opt_out INTEGER NOT NULL DEFAULT 0"); } catch(e) {}
+
   // Tracks whether stripe_fee_amt reflects a real value confirmed from
   // Stripe (1) or is still an unverified placeholder — either the $0
   // written at webhook time when the fee wasn't available yet, or a
