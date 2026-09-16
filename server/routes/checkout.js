@@ -66,11 +66,11 @@ module.exports = function(db, inventoryRouter, stripeClient) {
         SELECT p.id, p.is_active, p.item_series, p.variation, p.unit_cost,
           p.price_rrp_sg, p.discount_pct, p.discount_start, p.discount_end,
           b.name AS brand_name,
-          COALESCE(home.qty, 0) + COALESCE(storhub.qty, 0) AS total_qty
+          COALESCE(mega.qty, 0) + COALESCE(hougang.qty, 0) AS total_qty
         FROM products p
         JOIN brands b ON b.id = p.brand_id
-        LEFT JOIN inventory_levels home    ON home.product_id = p.id    AND home.location    = 'Home'
-        LEFT JOIN inventory_levels storhub ON storhub.product_id = p.id AND storhub.location = 'Storhub'
+        LEFT JOIN inventory_levels mega    ON mega.product_id = p.id    AND mega.location    = 'Mega'
+        LEFT JOIN inventory_levels hougang ON hougang.product_id = p.id AND hougang.location = 'Hougang'
         WHERE p.id = ?
       `, [line.product_id]);
 
@@ -327,12 +327,12 @@ module.exports = function(db, inventoryRouter, stripeClient) {
         // checkout flow in this app). If stock moved in the meantime this
         // can go negative — logged below, not blocked, since the payment
         // has already been captured and reversing it is the harder problem.
-        const level = db.queryOne(`SELECT qty FROM inventory_levels WHERE product_id = ? AND location = 'Home'`, [line.product_id]);
+        const level = db.queryOne(`SELECT qty FROM inventory_levels WHERE product_id = ? AND location = 'Mega'`, [line.product_id]);
         if ((level?.qty || 0) < line.qty) {
-          console.warn(`⚠️  Website order #${order.id}: fulfilling ${line.qty}x product ${line.product_id} with only ${level?.qty || 0} in Home stock.`);
+          console.warn(`⚠️  Website order #${order.id}: fulfilling ${line.qty}x product ${line.product_id} with only ${level?.qty || 0} in Mega stock.`);
         }
         inventoryRouter._recordMovement({
-          date: today, product_id: line.product_id, location: 'Home',
+          date: today, product_id: line.product_id, location: 'Mega',
           type: 'Sale', qty_change: -line.qty, reference: `website_${result.lastID}`,
         });
       }

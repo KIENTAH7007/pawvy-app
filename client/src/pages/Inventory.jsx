@@ -149,7 +149,7 @@ function RestockModal({ open, onClose, onSaved }) {
     <Modal open={open} title="RESTOCK IN" onClose={onClose} width={700}>
       <div style={{display:'flex',flexDirection:'column',gap:14}}>
         <div style={{fontSize:11,color:'var(--cream-30)',background:'rgba(245,242,235,.04)',borderRadius:6,padding:'8px 12px'}}>
-          New stock always lands at <strong style={{color:'var(--orange)'}}>Storhub</strong>. Transfer to Home when ready to fulfil orders.
+          New stock always lands at <strong style={{color:'var(--orange)'}}>Hougang</strong>. Transfer to Mega when ready to fulfil orders.
         </div>
         <Input label="Date" type="date" value={date} onChange={e=>setDate(e.target.value)} style={{width:180}}/>
 
@@ -189,14 +189,14 @@ function RestockModal({ open, onClose, onSaved }) {
 // ── Transfer Modal (multi-line) ──────────────────────────────────────
 function TransferModal({ open, onClose, onSaved }) {
   const { products, brands } = useProductCatalog();
-  const [direction, setDirection] = useState('storhub_to_home');
+  const [direction, setDirection] = useState('hougang_to_mega');
   const [lines, setLines]   = useState([{ brand_id:'', product_id:'', qty:'' }]);
   const [date, setDate]     = useState(today());
   const [notes, setNotes]   = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
 
-  useEffect(() => { if (open) { setLines([{ brand_id:'', product_id:'', qty:'' }]); setDirection('storhub_to_home'); setDate(today()); setNotes(''); setError(''); } }, [open]);
+  useEffect(() => { if (open) { setLines([{ brand_id:'', product_id:'', qty:'' }]); setDirection('hougang_to_mega'); setDate(today()); setNotes(''); setError(''); } }, [open]);
 
   function updateLine(idx, key, val) {
     setLines(prev => prev.map((l,i)=> i===idx ? { ...l, [key]: val } : l));
@@ -223,7 +223,7 @@ function TransferModal({ open, onClose, onSaved }) {
         <div>
           <div style={{fontSize:11,fontWeight:600,color:'var(--cream-60)',letterSpacing:.5,textTransform:'uppercase',marginBottom:6}}>Direction</div>
           <div style={{display:'flex',gap:8}}>
-            {[['storhub_to_home','Storhub → Home'],['home_to_storhub','Home → Storhub']].map(([val,label])=>(
+            {[['hougang_to_mega','Hougang → Mega'],['mega_to_hougang','Mega → Hougang']].map(([val,label])=>(
               <button key={val} onClick={()=>setDirection(val)}
                 style={{flex:1,padding:'10px 12px',borderRadius:8,cursor:'pointer',fontSize:12,fontWeight:700,
                   border:`1px solid ${direction===val?'var(--orange)':'var(--border)'}`,
@@ -270,18 +270,18 @@ function TransferModal({ open, onClose, onSaved }) {
 // ── Write-off Modal (multi-line) ──────────────────────────────────────
 function WriteoffModal({ open, onClose, onSaved }) {
   const { products, brands } = useProductCatalog();
-  const [lines, setLines]   = useState([{ brand_id:'', product_id:'', location:'Home', qty:'', reason:'Damaged' }]);
+  const [lines, setLines]   = useState([{ brand_id:'', product_id:'', location:'Mega', qty:'', reason:'Damaged' }]);
   const [date, setDate]     = useState(today());
   const [notes, setNotes]   = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
 
-  useEffect(() => { if (open) { setLines([{ brand_id:'', product_id:'', location:'Home', qty:'', reason:'Damaged' }]); setDate(today()); setNotes(''); setError(''); } }, [open]);
+  useEffect(() => { if (open) { setLines([{ brand_id:'', product_id:'', location:'Mega', qty:'', reason:'Damaged' }]); setDate(today()); setNotes(''); setError(''); } }, [open]);
 
   function updateLine(idx, key, val) {
     setLines(prev => prev.map((l,i)=> i===idx ? { ...l, [key]: val } : l));
   }
-  const addLine    = () => setLines(p=>[...p,{ brand_id:'', product_id:'', location:'Home', qty:'', reason:'Damaged' }]);
+  const addLine    = () => setLines(p=>[...p,{ brand_id:'', product_id:'', location:'Mega', qty:'', reason:'Damaged' }]);
   const removeLine = (idx) => setLines(p=>p.filter((_,i)=>i!==idx));
 
   async function save() {
@@ -316,8 +316,8 @@ function WriteoffModal({ open, onClose, onSaved }) {
               brandId={line.brand_id} productId={line.product_id}
               onBrandChange={v=>updateLine(idx,'brand_id',v)} onProductChange={v=>updateLine(idx,'product_id',v)}/>
             <Select value={line.location} onChange={e=>updateLine(idx,'location',e.target.value)}>
-              <option value="Home">Home</option>
-              <option value="Storhub">Storhub</option>
+              <option value="Mega">Mega</option>
+              <option value="Hougang">Hougang</option>
             </Select>
             <Input type="number" min="1" value={line.qty} onChange={e=>updateLine(idx,'qty',e.target.value)} placeholder="0"/>
             <Select value={line.reason} onChange={e=>updateLine(idx,'reason',e.target.value)}>
@@ -348,23 +348,23 @@ function WriteoffModal({ open, onClose, onSaved }) {
 function AdjustmentModal({ open, onClose, onSaved }) {
   const { products, brands } = useProductCatalog();
   const [levels, setLevels] = useState([]);
-  const [lines, setLines]   = useState([{ brand_id:'', product_id:'', location:'Home', actual_qty:'' }]);
+  const [lines, setLines]   = useState([{ brand_id:'', product_id:'', location:'Mega', actual_qty:'' }]);
   const [notes, setNotes]   = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
 
-  useEffect(() => { if (open) { setLines([{ brand_id:'', product_id:'', location:'Home', actual_qty:'' }]); setNotes(''); setError(''); inventoryApi.levels().then(setLevels); } }, [open]);
+  useEffect(() => { if (open) { setLines([{ brand_id:'', product_id:'', location:'Mega', actual_qty:'' }]); setNotes(''); setError(''); inventoryApi.levels().then(setLevels); } }, [open]);
 
   function updateLine(idx, key, val) {
     setLines(prev => prev.map((l,i)=> i===idx ? { ...l, [key]: val } : l));
   }
-  const addLine    = () => setLines(p=>[...p,{ brand_id:'', product_id:'', location:'Home', actual_qty:'' }]);
+  const addLine    = () => setLines(p=>[...p,{ brand_id:'', product_id:'', location:'Mega', actual_qty:'' }]);
   const removeLine = (idx) => setLines(p=>p.filter((_,i)=>i!==idx));
 
   function currentQty(productId, location) {
     const row = levels.find(l => String(l.product_id)===String(productId));
     if (!row) return null;
-    return location==='Home' ? row.home_qty : row.storhub_qty;
+    return location==='Mega' ? row.mega_qty : row.hougang_qty;
   }
 
   async function save() {
@@ -400,8 +400,8 @@ function AdjustmentModal({ open, onClose, onSaved }) {
                 brandId={line.brand_id} productId={line.product_id}
                 onBrandChange={v=>updateLine(idx,'brand_id',v)} onProductChange={v=>updateLine(idx,'product_id',v)}/>
               <Select value={line.location} onChange={e=>updateLine(idx,'location',e.target.value)}>
-                <option value="Home">Home</option>
-                <option value="Storhub">Storhub</option>
+                <option value="Mega">Mega</option>
+                <option value="Hougang">Hougang</option>
               </Select>
               <div style={{padding:'9px 0',fontSize:13,color:'var(--cream-30)',textAlign:'center'}}>{sysQty===null?'—':sysQty}</div>
               <Input type="number" min="0" value={line.actual_qty} onChange={e=>updateLine(idx,'actual_qty',e.target.value)} placeholder="0"/>
@@ -626,8 +626,8 @@ export default function Inventory() {
             : <div style={{overflowX:'auto'}}>
                 <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:760}}>
                   <thead><tr>
-                    {['Brand','Product','Storhub','Home','Qty On Hand','Consignment','Total Stock'].map(h=>(
-                      <th key={h} style={{padding:'9px 12px',textAlign:['Storhub','Home','Qty On Hand','Consignment','Total Stock'].includes(h)?'right':'left',fontSize:9.5,fontWeight:700,letterSpacing:.7,textTransform:'uppercase',color:'var(--cream-30)',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap'}}>{h}</th>
+                    {['Brand','Product','Hougang','Mega','Qty On Hand','Consignment','Total Stock'].map(h=>(
+                      <th key={h} style={{padding:'9px 12px',textAlign:['Hougang','Mega','Qty On Hand','Consignment','Total Stock'].includes(h)?'right':'left',fontSize:9.5,fontWeight:700,letterSpacing:.7,textTransform:'uppercase',color:'var(--cream-30)',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap'}}>{h}</th>
                     ))}
                   </tr></thead>
                   <tbody>
@@ -638,8 +638,8 @@ export default function Inventory() {
                         onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
                         <td style={{padding:'9px 12px'}}><Badge color={l.brand_color}>{l.brand_name}</Badge></td>
                         <td style={{padding:'9px 12px',color:'var(--cream)'}}>{l.item_series}{l.variation?' · '+l.variation:''}</td>
-                        <td style={{padding:'9px 12px',textAlign:'right',color:'var(--cream-60)'}}>{l.storhub_qty}</td>
-                        <td style={{padding:'9px 12px',textAlign:'right',color:'var(--cream-60)'}}>{l.home_qty}</td>
+                        <td style={{padding:'9px 12px',textAlign:'right',color:'var(--cream-60)'}}>{l.hougang_qty}</td>
+                        <td style={{padding:'9px 12px',textAlign:'right',color:'var(--cream-60)'}}>{l.mega_qty}</td>
                         <td style={{padding:'9px 12px',textAlign:'right',fontWeight:700,color:'var(--cream)'}}>{l.warehouse_total}</td>
                         <td style={{padding:'9px 12px',textAlign:'right',color:'#378ADD'}}>{l.consignment_qty}</td>
                         <td style={{padding:'9px 12px',textAlign:'right'}}>

@@ -17,7 +17,7 @@ export default function Reconciliation() {
 
   async function applyFix(m) {
     const correction = m.return_diff - m.placement_diff;
-    const msg = `Apply correction to ${m.item_series}${m.variation ? ' — ' + m.variation : ''}?\n\nThis will adjust Home stock by ${correction >= 0 ? '+' : ''}${correction} unit${Math.abs(correction) !== 1 ? 's' : ''}, bringing it in line with the consignment ledger. This writes a real Adjustment to Inventory — cannot be auto-undone.`;
+    const msg = `Apply correction to ${m.item_series}${m.variation ? ' — ' + m.variation : ''}?\n\nThis will adjust Mega stock by ${correction >= 0 ? '+' : ''}${correction} unit${Math.abs(correction) !== 1 ? 's' : ''}, bringing it in line with the consignment ledger. This writes a real Adjustment to Inventory — cannot be auto-undone.`;
     if (!window.confirm(msg)) return;
     setBusyId(m.product_id); setError('');
     try {

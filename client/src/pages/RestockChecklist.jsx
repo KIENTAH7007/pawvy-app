@@ -3,7 +3,7 @@ import { Plus, ArrowLeft, Trash2, Truck, Sparkles, Check, Search } from 'lucide-
 import { restockApi, productsApi } from '../api';
 import { Page, Card, Input, Select, Btn, Badge, Divider } from '../components/ui';
 
-const DIRECTION_LABEL = { storhub_to_home: 'Storhub → Home', home_to_storhub: 'Home → Storhub' };
+const DIRECTION_LABEL = { hougang_to_mega: 'Hougang → Mega', mega_to_hougang: 'Mega → Hougang' };
 const STATUS_COLOR = { draft: '#888', in_progress: '#378ADD', completed: '#639922' };
 
 export default function RestockChecklist() {
@@ -16,7 +16,7 @@ export default function RestockChecklist() {
   useEffect(() => { load(); }, []);
 
   async function newChecklist() {
-    const c = await restockApi.create({ direction: 'storhub_to_home' });
+    const c = await restockApi.create({ direction: 'hougang_to_mega' });
     await load();
     setOpenId(c.id);
   }
@@ -36,7 +36,7 @@ export default function RestockChecklist() {
   return (
     <Page
       title="Restock Checklist"
-      subtitle="Prep a Storhub ↔ Home transfer, check items off as you collect them, then commit in one go"
+      subtitle="Prep a Hougang ↔ Mega transfer, check items off as you collect them, then commit in one go"
       action={<Btn onClick={newChecklist}><Plus size={14} /> New checklist</Btn>}
     >
       <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
@@ -183,15 +183,15 @@ function ChecklistDetail({ id, onBack }) {
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
-        <Input label="Label" value={data.label || ''} placeholder="e.g. Storhub run — 6 Jul"
+        <Input label="Label" value={data.label || ''} placeholder="e.g. Hougang run — 6 Jul"
           onChange={e => setData(d => ({ ...d, label: e.target.value }))}
           onBlur={e => restockApi.update(id, { label: e.target.value })}
           disabled={!isDraftOrProgress} />
         <Select label="Direction" value={data.direction}
           onChange={e => { restockApi.update(id, { direction: e.target.value }); setData(d => ({ ...d, direction: e.target.value })); }}
           disabled={!isDraftOrProgress}>
-          <option value="storhub_to_home">Storhub → Home (common)</option>
-          <option value="home_to_storhub">Home → Storhub (rare)</option>
+          <option value="hougang_to_mega">Hougang → Mega (common)</option>
+          <option value="mega_to_hougang">Mega → Hougang (rare)</option>
         </Select>
       </div>
 
@@ -199,7 +199,7 @@ function ChecklistDetail({ id, onBack }) {
         <>
           <Divider label="Add items" />
 
-          {data.direction === 'storhub_to_home' && (
+          {data.direction === 'hougang_to_mega' && (
             <div style={{ marginBottom: 14 }}>
               {suggestions === null ? (
                 <Btn size="sm" variant="secondary" onClick={loadSuggestions} disabled={busy}>
@@ -209,10 +209,10 @@ function ChecklistDetail({ id, onBack }) {
                 <Card>
                   <div style={{ padding: 14 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--cream)', marginBottom: 10 }}>
-                      Suggested — running low at Home ({suggestions.length})
+                      Suggested — running low at Mega ({suggestions.length})
                     </div>
                     {suggestions.length === 0 ? (
-                      <div style={{ fontSize: 12, color: 'var(--cream-30)' }}>Nothing looks low right now — Home stock looks healthy.</div>
+                      <div style={{ fontSize: 12, color: 'var(--cream-30)' }}>Nothing looks low right now — Mega stock looks healthy.</div>
                     ) : (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                         {suggestions.map(s => (
@@ -223,8 +223,8 @@ function ChecklistDetail({ id, onBack }) {
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ fontSize: 13, color: 'var(--cream)', fontWeight: 600 }}>{s.item_series}{s.variation ? ` — ${s.variation}` : ''}</div>
                               <div style={{ fontSize: 11, color: 'var(--cream-30)' }}>
-                                {s.brand_name} · Home: {s.home_qty} · Storhub: {s.storhub_qty}
-                                {s.reason === 'out_of_stock' ? ' · Out of stock at Home' : ` · ~${s.days_remaining}d left at Home`}
+                                {s.brand_name} · Mega: {s.mega_qty} · Hougang: {s.hougang_qty}
+                                {s.reason === 'out_of_stock' ? ' · Out of stock at Mega' : ` · ~${s.days_remaining}d left at Mega`}
                               </div>
                             </div>
                             <Input type="number" value={suggestionsPicked[s.product_id] || ''} style={{ width: 64 }}

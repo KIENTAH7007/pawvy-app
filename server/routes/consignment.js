@@ -204,15 +204,15 @@ module.exports = function(db) {
       'INSERT INTO consignment_placements (partner_id,product_id,date,qty,unit_cost,consignment_price,notes) VALUES (?,?,?,?,?,?,?)',
       [partner_id, product_id, date, parseInt(qty), parseFloat(cost||0), parseFloat(price||0), notes||null]
     );
-    // Inventory: stock physically left Home warehouse for the partner
-    if (recordMovement) recordMovement({ date, product_id, location: 'Home', type: 'Consignment Placement', qty_change: -parseInt(qty), reference: `placement_${result.lastID}` });
+    // Inventory: stock physically left Mega warehouse for the partner
+    if (recordMovement) recordMovement({ date, product_id, location: 'Mega', type: 'Consignment Placement', qty_change: -parseInt(qty), reference: `placement_${result.lastID}` });
     res.status(201).json({ id: result.lastID, ok: true });
   });
 
   router.delete('/placements/:id', (req, res) => {
     const placement = db.queryOne('SELECT * FROM consignment_placements WHERE id = ?', [req.params.id]);
     if (placement && recordMovement) {
-      recordMovement({ date: localDateStr(), product_id: placement.product_id, location: 'Home', type: 'Placement Reversal', qty_change: placement.qty, reference: `placement_${placement.id}_void` });
+      recordMovement({ date: localDateStr(), product_id: placement.product_id, location: 'Mega', type: 'Placement Reversal', qty_change: placement.qty, reference: `placement_${placement.id}_void` });
     }
     db.run('DELETE FROM consignment_placements WHERE id = ?', [req.params.id]);
     res.json({ ok: true });
@@ -226,15 +226,15 @@ module.exports = function(db) {
       'INSERT INTO consignment_returns (partner_id,product_id,date,qty,notes) VALUES (?,?,?,?,?)',
       [partner_id, product_id, date, parseInt(qty), notes||null]
     );
-    // Inventory: stock physically came back to Home warehouse
-    if (recordMovement) recordMovement({ date, product_id, location: 'Home', type: 'Consignment Return', qty_change: parseInt(qty), reference: `return_${result.lastID}` });
+    // Inventory: stock physically came back to Mega warehouse
+    if (recordMovement) recordMovement({ date, product_id, location: 'Mega', type: 'Consignment Return', qty_change: parseInt(qty), reference: `return_${result.lastID}` });
     res.status(201).json({ id: result.lastID, ok: true });
   });
 
   router.delete('/returns/:id', (req, res) => {
     const ret = db.queryOne('SELECT * FROM consignment_returns WHERE id = ?', [req.params.id]);
     if (ret && recordMovement) {
-      recordMovement({ date: localDateStr(), product_id: ret.product_id, location: 'Home', type: 'Return Reversal', qty_change: -ret.qty, reference: `return_${ret.id}_void` });
+      recordMovement({ date: localDateStr(), product_id: ret.product_id, location: 'Mega', type: 'Return Reversal', qty_change: -ret.qty, reference: `return_${ret.id}_void` });
     }
     db.run('DELETE FROM consignment_returns WHERE id = ?', [req.params.id]);
     res.json({ ok: true });
@@ -371,7 +371,7 @@ module.exports = function(db) {
     // Recalculate inventory_levels for affected products
     if (productIds.length) {
       productIds.forEach(pid2 => {
-        ['Home','Storhub'].forEach(loc => {
+        ['Mega','Hougang'].forEach(loc => {
           const net = db.queryOne(`SELECT COALESCE(SUM(qty_change),0) AS n FROM inventory_movements WHERE product_id=? AND location=?`, [pid2, loc])?.n || 0;
           const existing = db.queryOne('SELECT id FROM inventory_levels WHERE product_id=? AND location=?', [pid2, loc]);
           if (existing) db.run('UPDATE inventory_levels SET qty=?, updated_at=CURRENT_TIMESTAMP WHERE id=?', [net, existing.id]);

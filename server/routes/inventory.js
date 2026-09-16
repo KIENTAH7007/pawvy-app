@@ -59,14 +59,14 @@ module.exports = function(db, consignmentRouter) {
     const consignmentMap = getGlobalConsignmentOnHand();
 
     const result = products.map(p => {
-      const storhub = getLevel(p.product_id, 'Storhub');
-      const home    = getLevel(p.product_id, 'Home');
-      const warehouse_total = storhub + home;
+      const hougang = getLevel(p.product_id, 'Hougang');
+      const mega    = getLevel(p.product_id, 'Mega');
+      const warehouse_total = hougang + mega;
       const consignment_qty = consignmentMap[p.product_id] || 0;
       return {
         ...p,
-        storhub_qty: storhub,
-        home_qty: home,
+        hougang_qty: hougang,
+        mega_qty: mega,
         warehouse_total,
         consignment_qty,
         total_stock: warehouse_total + consignment_qty,
@@ -88,34 +88,34 @@ module.exports = function(db, consignmentRouter) {
     res.json(combined);
   });
 
-  // ── POST restock (always lands at Storhub) ──────────────────────
+  // ── POST restock (always lands at Hougang) ──────────────────────
   router.post('/restock', (req, res) => {
     const { product_id, qty, unit_cost, date, notes } = req.body;
     if (!product_id || !qty || qty <= 0) return res.status(400).json({ error: 'product_id and qty (>0) required' });
     const d = date || localDateStr();
-    recordMovement({ date: d, product_id, location: 'Storhub', type: 'Restock In', qty_change: parseInt(qty), notes });
+    recordMovement({ date: d, product_id, location: 'Hougang', type: 'Restock In', qty_change: parseInt(qty), notes });
     if (unit_cost !== undefined && unit_cost !== '') {
       db.run('UPDATE products SET unit_cost = ? WHERE id = ?', [parseFloat(unit_cost), product_id]);
     }
-    res.status(201).json({ ok: true, storhub_qty: getLevel(product_id, 'Storhub') });
+    res.status(201).json({ ok: true, hougang_qty: getLevel(product_id, 'Hougang') });
   });
 
-  // ── POST transfer between Storhub <-> Home ──────────────────────
+  // ── POST transfer between Hougang <-> Mega ──────────────────────
   router.post('/transfer', (req, res) => {
     const { product_id, qty, direction, date, notes } = req.body;
     if (!product_id || !qty || qty <= 0 || !direction) return res.status(400).json({ error: 'product_id, qty (>0), direction required' });
     const d = date || localDateStr();
     const q = parseInt(qty);
-    if (direction === 'storhub_to_home') {
-      recordMovement({ date: d, product_id, location: 'Storhub', type: 'Transfer Out', qty_change: -q, notes });
-      recordMovement({ date: d, product_id, location: 'Home', type: 'Transfer In', qty_change: q, notes });
-    } else if (direction === 'home_to_storhub') {
-      recordMovement({ date: d, product_id, location: 'Home', type: 'Transfer Out', qty_change: -q, notes });
-      recordMovement({ date: d, product_id, location: 'Storhub', type: 'Transfer In', qty_change: q, notes });
+    if (direction === 'hougang_to_mega') {
+      recordMovement({ date: d, product_id, location: 'Hougang', type: 'Transfer Out', qty_change: -q, notes });
+      recordMovement({ date: d, product_id, location: 'Mega', type: 'Transfer In', qty_change: q, notes });
+    } else if (direction === 'mega_to_hougang') {
+      recordMovement({ date: d, product_id, location: 'Mega', type: 'Transfer Out', qty_change: -q, notes });
+      recordMovement({ date: d, product_id, location: 'Hougang', type: 'Transfer In', qty_change: q, notes });
     } else {
-      return res.status(400).json({ error: 'direction must be storhub_to_home or home_to_storhub' });
+      return res.status(400).json({ error: 'direction must be hougang_to_mega or mega_to_hougang' });
     }
-    res.status(201).json({ ok: true, storhub_qty: getLevel(product_id, 'Storhub'), home_qty: getLevel(product_id, 'Home') });
+    res.status(201).json({ ok: true, hougang_qty: getLevel(product_id, 'Hougang'), mega_qty: getLevel(product_id, 'Mega') });
   });
 
   // ── POST write-off ───────────────────────────────────────────────

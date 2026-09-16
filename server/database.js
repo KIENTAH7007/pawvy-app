@@ -338,7 +338,7 @@ function createSchema() {
       arrival_date DATE,
       costed_date DATE,
       status TEXT NOT NULL DEFAULT 'ordered',
-      received_warehouse TEXT DEFAULT 'Storhub',
+      received_warehouse TEXT DEFAULT 'Mega',
       fx_rate_actual REAL,
       fx_processing_charge REAL DEFAULT 0,
       cashback REAL DEFAULT 0,
@@ -400,7 +400,7 @@ function createSchema() {
     `CREATE TABLE IF NOT EXISTS restock_checklists (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       label TEXT,
-      direction TEXT NOT NULL DEFAULT 'storhub_to_home',
+      direction TEXT NOT NULL DEFAULT 'hougang_to_mega',
       status TEXT NOT NULL DEFAULT 'draft',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       completed_at DATETIME
@@ -795,7 +795,7 @@ function createSchema() {
   db.run("UPDATE partners SET tier = 'Active' WHERE tier IS NULL");
 
   // Phase 4: Inventory write-off location tracking
-  try { db.run("ALTER TABLE inventory_adjustments ADD COLUMN location TEXT DEFAULT 'Home'"); } catch(e) {}
+  try { db.run("ALTER TABLE inventory_adjustments ADD COLUMN location TEXT DEFAULT 'Mega'"); } catch(e) {}
 
   // Phase 3: Invoice / Delivery Order / SOA support columns
   [
@@ -1061,15 +1061,6 @@ function createSchema() {
   // — see jobs/customerReminders.js) consider them at all.
   try { db.run("ALTER TABLE customers ADD COLUMN is_active INTEGER DEFAULT 1"); } catch(e) {}
 
-  // Unsubscribe flag for the automated reminder emails (BUTTONS expiry /
-  // campaign / birthday — jobs/customerReminders.js), per KT (Sep 2026,
-  // PDPA/Spam Control Act compliance work). Doesn't affect transactional
-  // emails (order confirmations, account verification) — only the three
-  // reminder types, which carry a promotional element. A customer who
-  // opts out can still use their account, place orders, and earn/redeem
-  // BUTTONS completely normally.
-  try { db.run("ALTER TABLE customers ADD COLUMN marketing_opt_out INTEGER NOT NULL DEFAULT 0"); } catch(e) {}
-
   // Tracks whether stripe_fee_amt reflects a real value confirmed from
   // Stripe (1) or is still an unverified placeholder — either the $0
   // written at webhook time when the fee wasn't available yet, or a
@@ -1180,6 +1171,31 @@ function createSchema() {
   // removing that hardcoded array doesn't silently un-hide it. Safe to
   // run every startup — WHERE clause means it's a no-op once already set.
   try { db.run("UPDATE brands SET hidden_on_website = 1 WHERE name = 'Pawvy' AND hidden_on_website = 0"); } catch(e) {}
+
+  // Warehouse rename (Sep 2026, per KT) — Storhub (pure warehouse) moved
+  // and is now called Hougang; Home (operational hub — where sales, POS,
+  // and consignment placements deduct from) is now called Mega, since
+  // Mega is taking over that operational-hub role going forward. This
+  // updates every existing row so historical records read correctly
+  // under the new names — WHERE clauses make each line a no-op once
+  // already migrated, safe to run on every startup.
+  //
+  // The restock_checklists.direction rename preserves each row's real,
+  // historical meaning: a checklist that actually moved stock from the
+  // warehouse to the ops hub (storhub_to_home) now reads as
+  // hougang_to_mega — the same real movement, correctly relabeled, not
+  // reinterpreted.
+  try { db.run("UPDATE inventory_levels SET location = 'Hougang' WHERE location = 'Storhub'"); } catch(e) {}
+  try { db.run("UPDATE inventory_levels SET location = 'Mega' WHERE location = 'Home'"); } catch(e) {}
+  try { db.run("UPDATE inventory_movements SET location = 'Hougang' WHERE location = 'Storhub'"); } catch(e) {}
+  try { db.run("UPDATE inventory_movements SET location = 'Mega' WHERE location = 'Home'"); } catch(e) {}
+  try { db.run("UPDATE inventory_adjustments SET location = 'Hougang' WHERE location = 'Storhub'"); } catch(e) {}
+  try { db.run("UPDATE inventory_adjustments SET location = 'Mega' WHERE location = 'Home'"); } catch(e) {}
+  try { db.run("UPDATE inventory SET location = 'Hougang' WHERE location = 'Storhub'"); } catch(e) {}
+  try { db.run("UPDATE inventory SET location = 'Mega' WHERE location = 'Home'"); } catch(e) {}
+  try { db.run("UPDATE restock_checklists SET direction = 'hougang_to_mega' WHERE direction = 'storhub_to_home'"); } catch(e) {}
+  try { db.run("UPDATE restock_checklists SET direction = 'mega_to_hougang' WHERE direction = 'home_to_storhub'"); } catch(e) {}
+  try { db.run("UPDATE shipments SET received_warehouse = 'Hougang' WHERE received_warehouse = 'Storhub'"); } catch(e) {}
 
   console.log('✅ Schema ready');
 }

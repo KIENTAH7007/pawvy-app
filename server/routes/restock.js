@@ -2,7 +2,7 @@ const { Router } = require('express');
 const { localDateStr } = require('../utils/dates');
 const { computeSuggestions } = require('../utils/restockSuggestions');
 
-// Restock Checklist — staged Storhub <-> Home transfer prep.
+// Restock Checklist — staged Hougang <-> Mega transfer prep.
 // The checklist itself is just a staging list; completing it calls the
 // exact same movement-recording function that the existing manual
 // Transfer function and Shipment inventory sync already use, tagged with
@@ -33,16 +33,16 @@ module.exports = function(db, inventoryRouter) {
     const { label, direction } = req.body;
     const result = db.run(
       `INSERT INTO restock_checklists (label, direction, status) VALUES (?, ?, 'draft')`,
-      [label || null, direction === 'home_to_storhub' ? 'home_to_storhub' : 'storhub_to_home']
+      [label || null, direction === 'mega_to_hougang' ? 'mega_to_hougang' : 'hougang_to_mega']
     );
     res.status(201).json(db.queryOne('SELECT * FROM restock_checklists WHERE id = ?', [result.lastID]));
   });
 
-  // ── Suggested transfers (Storhub -> Home only) ────────────────────
+  // ── Suggested transfers (Hougang -> Mega only) ────────────────────
   // Reuses the same trailing-60-day velocity concept as Restock
   // Forecasting, but asks a different question: not "when to reorder
-  // from the supplier" but "what's running low specifically at Home
-  // while Storhub still has stock to cover it". Registered before /:id
+  // from the supplier" but "what's running low specifically at Mega
+  // while Hougang still has stock to cover it". Registered before /:id
   // since it's a literal single-segment route.
   router.get('/suggestions', (req, res) => {
     res.json(computeSuggestions(db));
@@ -149,8 +149,8 @@ module.exports = function(db, inventoryRouter) {
     const items = db.query('SELECT * FROM restock_checklist_items WHERE checklist_id = ? AND checked = 1', [req.params.id]);
     if (!items.length) return res.status(400).json({ error: 'No checked items to transfer — check off what you took first' });
 
-    const fromLoc = checklist.direction === 'home_to_storhub' ? 'Home' : 'Storhub';
-    const toLoc   = checklist.direction === 'home_to_storhub' ? 'Storhub' : 'Home';
+    const fromLoc = checklist.direction === 'mega_to_hougang' ? 'Mega' : 'Hougang';
+    const toLoc   = checklist.direction === 'mega_to_hougang' ? 'Hougang' : 'Mega';
     const today = localDateStr();
     const reference = checklist.label || `Checklist #${checklist.id}`;
     const transferred = [];

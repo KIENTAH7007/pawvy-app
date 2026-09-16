@@ -45,7 +45,7 @@ function adjustmentsRouter(db) {
     if (type !== 'Recount') {
       db.run(`
         UPDATE inventory SET qty = MAX(0, qty + ?), updated_at = CURRENT_TIMESTAMP
-        WHERE product_id = ? AND location = 'Storhub'
+        WHERE product_id = ? AND location = 'Hougang'
       `, [qty_change, product_id]);
     }
 

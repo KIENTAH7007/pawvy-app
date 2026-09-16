@@ -68,9 +68,17 @@ module.exports = function(db, inventoryRouter) {
   router.post('/', (req, res) => {
     const { brand_id, supplier_name, currency, order_date, arrival_date } = req.body;
     const shipment_code = nextShipmentCode();
+    // received_warehouse is set explicitly here (Sep 2026, per KT/Janice —
+    // Mega has more capacity, so new shipments default there instead of
+    // Storhub/Hougang) rather than relying on the column's own DEFAULT.
+    // SQLite bakes a column's DEFAULT into the table definition at the
+    // moment it's first created — changing the CREATE TABLE statement in
+    // this file has no effect on a database where the table already
+    // exists (i.e. the real production database), so setting it
+    // explicitly here is what actually makes new shipments land in Mega.
     const result = db.run(
-      `INSERT INTO shipments (shipment_code, brand_id, supplier_name, currency, order_date, arrival_date, status)
-       VALUES (?, ?, ?, ?, ?, ?, 'ordered')`,
+      `INSERT INTO shipments (shipment_code, brand_id, supplier_name, currency, order_date, arrival_date, status, received_warehouse)
+       VALUES (?, ?, ?, ?, ?, ?, 'ordered', 'Mega')`,
       [shipment_code, brand_id || null, supplier_name || null, currency || 'USD', order_date || null, arrival_date || null]
     );
     const shipment = db.queryOne('SELECT * FROM shipments WHERE id = ?', [result.lastID]);
@@ -307,12 +315,20 @@ module.exports = function(db, inventoryRouter) {
 
   // ── Status: mark received (no inventory effect yet — Step 4) ─────
 
-  // ── Status: mark received — syncs Inventory (Storhub only) ──────────
+  // ── Status: mark received — syncs Inventory (Mega only) ──────────
   // Only line items with inventory_synced = 0 are processed, so calling
   // this more than once (or editing qty_received afterward) never adds
   // stock twice. Corrections after receiving go through the existing
   // Write-off/Adjust functions in Inventory, per the agreed design — this
   // endpoint does not auto-re-sync on edits.
+  //
+  // Deliberately Mega, not Hougang (Sep 2026, per KT/Janice) — this is
+  // NOT the general Storhub→Hougang warehouse rename applied here.
+  // Previously shipments always landed at Storhub (the pure warehouse)
+  // and got manually moved to Home as needed. Now that Mega has more
+  // capacity, new shipments default straight into Mega instead; moving
+  // any of that stock out to Hougang (the warehouse) is a deliberate,
+  // manual transfer via the Restock Checklist afterward, not automatic.
   router.post('/:id/receive', (req, res) => {
     const shipment = db.queryOne('SELECT * FROM shipments WHERE id = ?', [req.params.id]);
     if (!shipment) return res.status(404).json({ error: 'Shipment not found' });
@@ -329,7 +345,7 @@ module.exports = function(db, inventoryRouter) {
         inventoryRouter._recordMovement({
           date: today,
           product_id: l.product_id,
-          location: 'Storhub',
+          location: 'Mega',
           type: 'Shipment Received',
           qty_change: l.qty_received,
           reference: shipment.shipment_code,

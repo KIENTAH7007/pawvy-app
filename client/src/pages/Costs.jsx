@@ -145,7 +145,7 @@ export default function Costs() {
               {CATS.map(c=><option key={c} value={c}>{c}</option>)}
             </Select>
           </FormRow>
-          <Input label="Description *" value={form.description||''} onChange={e=>sf('description',e.target.value)} placeholder="e.g. Storhub July rental"/>
+          <Input label="Description *" value={form.description||''} onChange={e=>sf('description',e.target.value)} placeholder="e.g. Hougang July rental"/>
           <FormRow cols={3}>
             <Input label="Amount (SGD) *" type="number" step="0.01" value={form.amount||''} onChange={e=>sf('amount',e.target.value)}/>
             <Select label="Market" value={form.market||'SG'} onChange={e=>sf('market',e.target.value)}>

@@ -435,8 +435,8 @@ function ShipmentDetailPanel({
         <Select label="Currency" value={header.currency || 'USD'} onChange={e => hf('currency', e.target.value)} disabled={isVoided}>
           {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
         </Select>
-        <Select label="Warehouse (received into)" value={header.received_warehouse || 'Storhub'} disabled>
-          <option>Storhub</option>
+        <Select label="Warehouse (received into)" value={header.received_warehouse || 'Mega'} disabled>
+          <option>Mega</option>
         </Select>
         <Input label="Order date" type="date" value={header.order_date || ''} onChange={e => hf('order_date', e.target.value)} disabled={isVoided} />
         <Input label="Arrival date" type="date" value={header.arrival_date || ''} onChange={e => hf('arrival_date', e.target.value)} disabled={isVoided} />
@@ -578,7 +578,7 @@ function ShipmentDetailPanel({
       </div>
       {!isVoided && (
         <div style={{ fontSize: 11, color: 'var(--cream-30)' }}>
-          Marking "received" adds Qty Received for each line item to Storhub in Inventory, tagged with this shipment's code for audit trail. This only happens once per line — editing Qty Received afterward won't re-sync automatically; use Inventory's Write-off/Adjust functions for corrections. "Quick calculation" is a what-if preview only — it doesn't save anything, change status, or touch the variance ledger. It calculates using Qty Ordered (not Qty Received), since it's meant for planning before anything has arrived.
+          Marking "received" adds Qty Received for each line item to Mega in Inventory, tagged with this shipment's code for audit trail. This only happens once per line — editing Qty Received afterward won't re-sync automatically; use Inventory's Write-off/Adjust functions for corrections. "Quick calculation" is a what-if preview only — it doesn't save anything, change status, or touch the variance ledger. It calculates using Qty Ordered (not Qty Received), since it's meant for planning before anything has arrived.
         </div>
       )}
 

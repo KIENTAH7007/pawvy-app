@@ -158,7 +158,7 @@ module.exports = function(db, inventoryRouter) {
 
       if (inventoryRouter?._recordMovement) {
         inventoryRouter._recordMovement({
-          date: today, product_id: line.product_id, location: 'Home',
+          date: today, product_id: line.product_id, location: 'Mega',
           type: 'Sale', qty_change: -qty, reference: `sale_${result.lastID}`
         });
       }

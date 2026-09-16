@@ -47,19 +47,19 @@ module.exports = function(db, inventoryRouter) {
         p.id, p.item_series, p.variation, p.image_url, p.barcode,
         p.price_rrp_sg, p.is_new, p.new_until,
         b.id AS brand_id, b.name AS brand_name, b.color AS brand_color,
-        COALESCE(home.qty, 0)    AS home_qty,
-        COALESCE(storhub.qty, 0) AS storhub_qty
+        COALESCE(mega.qty, 0)    AS mega_qty,
+        COALESCE(hougang.qty, 0) AS hougang_qty
       FROM products p
       JOIN brands b ON b.id = p.brand_id
-      LEFT JOIN inventory_levels home    ON home.product_id = p.id    AND home.location    = 'Home'
-      LEFT JOIN inventory_levels storhub ON storhub.product_id = p.id AND storhub.location = 'Storhub'
+      LEFT JOIN inventory_levels mega    ON mega.product_id = p.id    AND mega.location    = 'Mega'
+      LEFT JOIN inventory_levels hougang ON hougang.product_id = p.id AND hougang.location = 'Hougang'
       WHERE p.is_active = 1
       -- Aug 2026 (per KT): stock status is now the TOP-level sort key
       -- (was brand-first) — matches routes/shop.js and routes/portal.js,
       -- kept consistent across Website, POS, and Order Portal per KT's
       -- explicit request.
       ORDER BY
-        CASE WHEN (COALESCE(home.qty,0) + COALESCE(storhub.qty,0)) <= 0 THEN 1 ELSE 0 END,
+        CASE WHEN (COALESCE(mega.qty,0) + COALESCE(hougang.qty,0)) <= 0 THEN 1 ELSE 0 END,
         b.name,
         COALESCE(p.portal_sort_order, 999999), p.item_series, p.variation
     `);
@@ -75,7 +75,7 @@ module.exports = function(db, inventoryRouter) {
       image_url: r.image_url || null,
       price_rrp_sg: r.price_rrp_sg,
       is_new_active: withEffectivePrice(r).is_new_active,
-      stock_status: stockStatus(r.home_qty + r.storhub_qty),
+      stock_status: stockStatus(r.mega_qty + r.hougang_qty),
     }));
 
     res.json(catalogue);
@@ -108,10 +108,10 @@ module.exports = function(db, inventoryRouter) {
       }
       const product = db.queryOne(`
         SELECT p.id, p.is_active, p.item_series, p.variation, p.unit_cost, p.price_rrp_sg,
-          COALESCE(home.qty, 0) + COALESCE(storhub.qty, 0) AS total_qty
+          COALESCE(mega.qty, 0) + COALESCE(hougang.qty, 0) AS total_qty
         FROM products p
-        LEFT JOIN inventory_levels home    ON home.product_id = p.id    AND home.location    = 'Home'
-        LEFT JOIN inventory_levels storhub ON storhub.product_id = p.id AND storhub.location = 'Storhub'
+        LEFT JOIN inventory_levels mega    ON mega.product_id = p.id    AND mega.location    = 'Mega'
+        LEFT JOIN inventory_levels hougang ON hougang.product_id = p.id AND hougang.location = 'Hougang'
         WHERE p.id = ?
       `, [line.product_id]);
       if (!product || !product.is_active) {
@@ -196,7 +196,7 @@ module.exports = function(db, inventoryRouter) {
 
       if (inventoryRouter?._recordMovement) {
         inventoryRouter._recordMovement({
-          date: today, product_id: line.product_id, location: 'Home',
+          date: today, product_id: line.product_id, location: 'Mega',
           type: 'Sale', qty_change: -qty, reference: `pos_${result.lastID}`,
         });
       }

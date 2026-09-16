@@ -39,7 +39,7 @@ async function runAutoRestock(db) {
   const label = `${CHECKLIST_LABEL_PREFIX} — ${today}`;
 
   const result = db.run(
-    `INSERT INTO restock_checklists (label, direction, status) VALUES (?, 'storhub_to_home', 'draft')`,
+    `INSERT INTO restock_checklists (label, direction, status) VALUES (?, 'hougang_to_mega', 'draft')`,
     [label]
   );
   const checklistId = result.lastID;

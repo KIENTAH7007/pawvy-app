@@ -26,12 +26,12 @@ module.exports = function(db) {
     const products = db.query(sql, params);
 
     const result = products.map(p => {
-      const storhub = db.queryOne('SELECT qty FROM inventory_levels WHERE product_id=? AND location=?', [p.product_id, 'Storhub'])?.qty || 0;
-      const home    = db.queryOne('SELECT qty FROM inventory_levels WHERE product_id=? AND location=?', [p.product_id, 'Home'])?.qty || 0;
-      const warehouse_total = storhub + home;
+      const hougang = db.queryOne('SELECT qty FROM inventory_levels WHERE product_id=? AND location=?', [p.product_id, 'Hougang'])?.qty || 0;
+      const mega    = db.queryOne('SELECT qty FROM inventory_levels WHERE product_id=? AND location=?', [p.product_id, 'Mega'])?.qty || 0;
+      const warehouse_total = hougang + mega;
 
       // Velocity: every depletion movement (Sale + Consignment Placement) in the trailing window.
-      // Unified because inventory_movements already records both as negative qty_change at Home.
+      // Unified because inventory_movements already records both as negative qty_change at Mega.
       const depleted = db.queryOne(`
         SELECT COALESCE(SUM(-qty_change), 0) AS total
         FROM inventory_movements
@@ -48,8 +48,8 @@ module.exports = function(db) {
 
       return {
         ...p,
-        storhub_qty: storhub,
-        home_qty: home,
+        hougang_qty: hougang,
+        mega_qty: mega,
         warehouse_total,
         daily_velocity,
         days_remaining,

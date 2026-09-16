@@ -191,10 +191,10 @@ module.exports = function(db, inventoryRouter) {
       WHERE s.id = ?
     `, [result.lastID]);
 
-    // Inventory: every sale fulfills from Home stock — EXCEPT 'Consignment Sale',
+    // Inventory: every sale fulfills from Mega stock — EXCEPT 'Consignment Sale',
     // which is just the invoicing event for stock already deducted at placement time.
     if (inventoryRouter?._recordMovement && channel !== 'Consignment Sale') {
-      inventoryRouter._recordMovement({ date, product_id, location: 'Home', type: 'Sale', qty_change: -parseInt(qty), reference: `sale_${result.lastID}` });
+      inventoryRouter._recordMovement({ date, product_id, location: 'Mega', type: 'Sale', qty_change: -parseInt(qty), reference: `sale_${result.lastID}` });
     }
 
     res.status(201).json(sale);
@@ -287,7 +287,7 @@ module.exports = function(db, inventoryRouter) {
     // Inventory: reverse the original deduction (stock effectively never left)
     if (inventoryRouter?._recordMovement && sale.channel !== 'Consignment Sale') {
       inventoryRouter._recordMovement({
-        date: localDateStr(), product_id: sale.product_id, location: 'Home',
+        date: localDateStr(), product_id: sale.product_id, location: 'Mega',
         type: 'Sale Reversal', qty_change: sale.qty, reference: `sale_${sale.id}_void`,
       });
     }

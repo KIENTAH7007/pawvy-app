@@ -63,12 +63,12 @@ module.exports = function(db) {
         p.id, p.item_series, p.variation, p.image_url, p.description, p.need_tags, p.best_for,
         p.price_rrp_sg, p.discount_pct, p.discount_start, p.discount_end, p.is_new, p.new_until,
         b.id AS brand_id, b.name AS brand_name, b.color AS brand_color,
-        COALESCE(home.qty, 0)    AS home_qty,
-        COALESCE(storhub.qty, 0) AS storhub_qty
+        COALESCE(mega.qty, 0)    AS mega_qty,
+        COALESCE(hougang.qty, 0) AS hougang_qty
       FROM products p
       JOIN brands b ON b.id = p.brand_id
-      LEFT JOIN inventory_levels home    ON home.product_id = p.id    AND home.location    = 'Home'
-      LEFT JOIN inventory_levels storhub ON storhub.product_id = p.id AND storhub.location = 'Storhub'
+      LEFT JOIN inventory_levels mega    ON mega.product_id = p.id    AND mega.location    = 'Mega'
+      LEFT JOIN inventory_levels hougang ON hougang.product_id = p.id AND hougang.location = 'Hougang'
       WHERE p.is_active = 1 AND b.hidden_on_website = 0
         AND p.barcode NOT IN (${WEBSITE_HIDDEN_BARCODES.map(() => '?').join(',')})
     `;
@@ -134,14 +134,14 @@ module.exports = function(db) {
     // — kept consistent across Website, POS, and Order Portal per KT's
     // explicit request.
     sql += ` ORDER BY
-      CASE WHEN (COALESCE(home.qty,0) + COALESCE(storhub.qty,0)) <= 0 THEN 1 ELSE 0 END,
+      CASE WHEN (COALESCE(mega.qty,0) + COALESCE(hougang.qty,0)) <= 0 THEN 1 ELSE 0 END,
       b.name,
       COALESCE(p.portal_sort_order, 999999), p.item_series, p.variation`;
 
     const rows = db.query(sql, params);
     const products = rows.map(r => {
-      const { home_qty, storhub_qty, ...rest } = withEffectivePrice(r);
-      return parseNeedTags({ ...rest, stock_status: stockStatus(home_qty + storhub_qty) });
+      const { mega_qty, hougang_qty, ...rest } = withEffectivePrice(r);
+      return parseNeedTags({ ...rest, stock_status: stockStatus(mega_qty + hougang_qty) });
     });
     res.json({ products });
   });
@@ -155,19 +155,19 @@ module.exports = function(db) {
         p.id, p.item_series, p.variation, p.image_url, p.description, p.need_tags, p.best_for,
         p.price_rrp_sg, p.discount_pct, p.discount_start, p.discount_end, p.is_new, p.new_until,
         b.id AS brand_id, b.name AS brand_name, b.color AS brand_color,
-        COALESCE(home.qty, 0)    AS home_qty,
-        COALESCE(storhub.qty, 0) AS storhub_qty
+        COALESCE(mega.qty, 0)    AS mega_qty,
+        COALESCE(hougang.qty, 0) AS hougang_qty
       FROM products p
       JOIN brands b ON b.id = p.brand_id
-      LEFT JOIN inventory_levels home    ON home.product_id = p.id    AND home.location    = 'Home'
-      LEFT JOIN inventory_levels storhub ON storhub.product_id = p.id AND storhub.location = 'Storhub'
+      LEFT JOIN inventory_levels mega    ON mega.product_id = p.id    AND mega.location    = 'Mega'
+      LEFT JOIN inventory_levels hougang ON hougang.product_id = p.id AND hougang.location = 'Hougang'
       WHERE p.id = ? AND p.is_active = 1 AND b.hidden_on_website = 0
         AND p.barcode NOT IN (${WEBSITE_HIDDEN_BARCODES.map(() => '?').join(',')})
     `, [req.params.id, ...WEBSITE_HIDDEN_BARCODES]);
 
     if (!row) return res.status(404).json({ error: 'Product not found.' });
-    const { home_qty, storhub_qty, ...rest } = withEffectivePrice(row);
-    res.json({ product: parseNeedTags({ ...rest, stock_status: stockStatus(home_qty + storhub_qty) }) });
+    const { mega_qty, hougang_qty, ...rest } = withEffectivePrice(row);
+    res.json({ product: parseNeedTags({ ...rest, stock_status: stockStatus(mega_qty + hougang_qty) }) });
   });
 
   // GET /api/shop/brands — for a brand filter on the shop page.
@@ -189,14 +189,14 @@ module.exports = function(db) {
         p.id, p.item_series, p.variation, p.image_url,
         p.price_rrp_sg, p.discount_pct, p.discount_start, p.discount_end, p.is_new, p.new_until,
         b.id AS brand_id, b.name AS brand_name, b.color AS brand_color,
-        COALESCE(home.qty, 0)    AS home_qty,
-        COALESCE(storhub.qty, 0) AS storhub_qty,
+        COALESCE(mega.qty, 0)    AS mega_qty,
+        COALESCE(hougang.qty, 0) AS hougang_qty,
         SUM(s.qty) AS units_sold
       FROM sales s
       JOIN products p ON p.id = s.product_id
       JOIN brands b ON b.id = p.brand_id
-      LEFT JOIN inventory_levels home    ON home.product_id = p.id    AND home.location    = 'Home'
-      LEFT JOIN inventory_levels storhub ON storhub.product_id = p.id AND storhub.location = 'Storhub'
+      LEFT JOIN inventory_levels mega    ON mega.product_id = p.id    AND mega.location    = 'Mega'
+      LEFT JOIN inventory_levels hougang ON hougang.product_id = p.id AND hougang.location = 'Hougang'
       WHERE p.is_active = 1 AND b.hidden_on_website = 0 AND s.date >= date('now', '-90 days') AND COALESCE(s.voided,0) = 0
         AND p.barcode NOT IN (${WEBSITE_HIDDEN_BARCODES.map(() => '?').join(',')})
       GROUP BY p.id
@@ -206,8 +206,8 @@ module.exports = function(db) {
 
     const products = rows
       .map(r => {
-        const { home_qty, storhub_qty, units_sold, ...rest } = withEffectivePrice(r);
-        return { ...rest, stock_status: stockStatus(home_qty + storhub_qty), units_sold };
+        const { mega_qty, hougang_qty, units_sold, ...rest } = withEffectivePrice(r);
+        return { ...rest, stock_status: stockStatus(mega_qty + hougang_qty), units_sold };
       })
       .filter(p => p.stock_status !== 'out_of_stock')
       .slice(0, limit);
@@ -225,20 +225,20 @@ module.exports = function(db) {
         p.id, p.item_series, p.variation, p.image_url, p.need_tags, p.best_for,
         p.price_rrp_sg, p.discount_pct, p.discount_start, p.discount_end, p.is_new, p.new_until,
         b.id AS brand_id, b.name AS brand_name, b.color AS brand_color,
-        COALESCE(home.qty, 0)    AS home_qty,
-        COALESCE(storhub.qty, 0) AS storhub_qty
+        COALESCE(mega.qty, 0)    AS mega_qty,
+        COALESCE(hougang.qty, 0) AS hougang_qty
       FROM products p
       JOIN brands b ON b.id = p.brand_id
-      LEFT JOIN inventory_levels home    ON home.product_id = p.id    AND home.location    = 'Home'
-      LEFT JOIN inventory_levels storhub ON storhub.product_id = p.id AND storhub.location = 'Storhub'
+      LEFT JOIN inventory_levels mega    ON mega.product_id = p.id    AND mega.location    = 'Mega'
+      LEFT JOIN inventory_levels hougang ON hougang.product_id = p.id AND hougang.location = 'Hougang'
       WHERE p.is_active = 1 AND p.is_pawvy_pick = 1 AND b.hidden_on_website = 0
         AND p.barcode NOT IN (${WEBSITE_HIDDEN_BARCODES.map(() => '?').join(',')})
       ORDER BY b.name, p.item_series, p.variation
     `, [...WEBSITE_HIDDEN_BARCODES]);
 
     const products = rows.map(r => {
-      const { home_qty, storhub_qty, ...rest } = withEffectivePrice(r);
-      return parseNeedTags({ ...rest, stock_status: stockStatus(home_qty + storhub_qty) });
+      const { mega_qty, hougang_qty, ...rest } = withEffectivePrice(r);
+      return parseNeedTags({ ...rest, stock_status: stockStatus(mega_qty + hougang_qty) });
     });
     res.json({ products });
   });
@@ -330,13 +330,13 @@ function buildBundleResponse(db, bundle) {
       p.id, p.item_series, p.variation, p.image_url,
       p.price_rrp_sg, p.discount_pct, p.discount_start, p.discount_end,
       b.name AS brand_name, b.color AS brand_color,
-      COALESCE(home.qty, 0)    AS home_qty,
-      COALESCE(storhub.qty, 0) AS storhub_qty
+      COALESCE(mega.qty, 0)    AS mega_qty,
+      COALESCE(hougang.qty, 0) AS hougang_qty
     FROM bundle_products bp
     JOIN products p ON p.id = bp.product_id AND p.is_active = 1
     JOIN brands b ON b.id = p.brand_id
-    LEFT JOIN inventory_levels home    ON home.product_id = p.id    AND home.location    = 'Home'
-    LEFT JOIN inventory_levels storhub ON storhub.product_id = p.id AND storhub.location = 'Storhub'
+    LEFT JOIN inventory_levels mega    ON mega.product_id = p.id    AND mega.location    = 'Mega'
+    LEFT JOIN inventory_levels hougang ON hougang.product_id = p.id AND hougang.location = 'Hougang'
     WHERE bp.bundle_id = ?
     ORDER BY bp.sort_order ASC, bp.id ASC
   `, [bundle.id]);
@@ -346,8 +346,8 @@ function buildBundleResponse(db, bundle) {
   let total = 0;
   let allInStock = true;
   const products = rows.map(r => {
-    const { home_qty, storhub_qty, qty, ...rest } = withEffectivePrice(r);
-    const availableQty = home_qty + storhub_qty;
+    const { mega_qty, hougang_qty, qty, ...rest } = withEffectivePrice(r);
+    const availableQty = mega_qty + hougang_qty;
     const inStockForQty = availableQty >= qty;
     if (!inStockForQty) allInStock = false;
     total += rest.effective_price_rrp_sg * qty;
