@@ -10,7 +10,7 @@ export const PAYNOW_QR_B64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAfQA
 export const PAWVY = {
   companyName: 'Pawvy Limited Partnership',
   uen: 'T23LP0163A',
-  address: '91, Defu Lane 10\nSingapore 539221',
+  address: '39 Woodlands Close\nMega@Woodlands, #05-58, Unit 1H\nSingapore 737856',
   contacts: ['+65 9689 4853 (Janice Lee)', '+65 9647 6576 (KT Goh)'],
   email: 'janicelee@pawvy.co',
   payNowUen: 'T23LP0163A',
