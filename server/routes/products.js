@@ -122,7 +122,7 @@ module.exports = function(db) {
   router.post('/', (req, res) => {
     const {
       brand_id, barcode, item_series, variation,
-      unit_cost,
+      unit_cost, pack_size,
       price_wholesale_sg, price_consignment_sg, price_rrp_sg,
       price_wholesale_my, price_rrp_my,
       price_wholesale_au, price_rrp_au,
@@ -136,15 +136,19 @@ module.exports = function(db) {
     try {
       // Sanitize barcode: "-", "N/A", "n/a", blank → null so UNIQUE constraint isn't violated by placeholder text
       const cleanBarcode = (barcode && barcode.trim() && !['−','-','—','n/a','na','none','nil'].includes(barcode.trim().toLowerCase())) ? barcode.trim() : null;
+      // pack_size is optional (units per box/case) — blank/0/invalid all mean
+      // "no box size set", same as never having touched the field.
+      const cleanPackSize = (pack_size !== undefined && pack_size !== null && pack_size !== '' && parseInt(pack_size) > 0)
+        ? parseInt(pack_size) : null;
       const result = db.run(`
         INSERT INTO products
           (brand_id, barcode, item_series, variation,
-           unit_cost, price_wholesale_sg, price_consignment_sg, price_rrp_sg,
+           unit_cost, pack_size, price_wholesale_sg, price_consignment_sg, price_rrp_sg,
            price_wholesale_my, price_rrp_my, price_wholesale_au, price_rrp_au, notes)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
       `, [
         brand_id, cleanBarcode, item_series, variation || null,
-        unit_cost || 0,
+        unit_cost || 0, cleanPackSize,
         price_wholesale_sg || 0, price_consignment_sg || 0, price_rrp_sg || 0,
         price_wholesale_my || 0, price_rrp_my || 0,
         price_wholesale_au || 0, price_rrp_au || 0,
@@ -162,17 +166,22 @@ module.exports = function(db) {
   router.put('/:id', (req, res) => {
     const {
       brand_id, barcode, item_series, variation,
-      unit_cost,
+      unit_cost, pack_size,
       price_wholesale_sg, price_consignment_sg, price_rrp_sg,
       price_wholesale_my, price_rrp_my,
       price_wholesale_au, price_rrp_au,
       is_active, notes, description
     } = req.body;
 
+    // pack_size is optional (units per box/case) — blank/0/invalid all mean
+    // "no box size set", same as never having touched the field.
+    const cleanPackSize = (pack_size !== undefined && pack_size !== null && pack_size !== '' && parseInt(pack_size) > 0)
+      ? parseInt(pack_size) : null;
+
     db.run(`
       UPDATE products SET
         brand_id = ?, barcode = ?, item_series = ?, variation = ?,
-        unit_cost = ?,
+        unit_cost = ?, pack_size = ?,
         price_wholesale_sg = ?, price_consignment_sg = ?, price_rrp_sg = ?,
         price_wholesale_my = ?, price_rrp_my = ?,
         price_wholesale_au = ?, price_rrp_au = ?,
@@ -181,7 +190,7 @@ module.exports = function(db) {
       WHERE id = ?
     `, [
       brand_id, barcode, item_series, variation,
-      unit_cost,
+      unit_cost, cleanPackSize,
       price_wholesale_sg, price_consignment_sg, price_rrp_sg,
       price_wholesale_my, price_rrp_my,
       price_wholesale_au, price_rrp_au,

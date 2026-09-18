@@ -413,9 +413,10 @@ export default function Products() {
             </Select>
             <Input label="Item Series *" value={form.item_series||''} onChange={e=>sf('item_series',e.target.value)} placeholder="e.g. 4108 GiGwi Plush Friendz"/>
           </FormRow>
-          <FormRow cols={2}>
+          <FormRow cols={3}>
             <Input label="Variation" value={form.variation||''} onChange={e=>sf('variation',e.target.value)} placeholder="e.g. Dinosaur Backpack, 100g"/>
             <Input label="Barcode" value={form.barcode||''} onChange={e=>sf('barcode',e.target.value)} placeholder="Optional"/>
+            <Input label="Pack Size (units/box)" type="number" min="1" step="1" value={form.pack_size||''} onChange={e=>sf('pack_size',e.target.value)} placeholder="Optional — e.g. 6"/>
           </FormRow>
 
           <Divider label="SG Pricing (SGD)"/>

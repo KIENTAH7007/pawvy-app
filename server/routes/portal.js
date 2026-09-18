@@ -5,8 +5,8 @@ const { localDateStr } = require('../utils/dates');
 
 // Live stock bucket, per the agreed Order Portal design:
 // Available (>5) / Low Stock (1–5) / Out of Stock (0, blocked from ordering)
-// Counts Mega + Hougang combined — Hougang stock is a same-day transfer away,
-// so it's genuinely available, not just Mega's current fulfillment-ready qty.
+// Counts Home + Storhub combined — Storhub stock is a same-day transfer away,
+// so it's genuinely available, not just Home's current fulfillment-ready qty.
 function stockStatus(totalQty) {
   if (totalQty <= 0) return 'out_of_stock';
   if (totalQty <= 5) return 'low_stock';
@@ -21,21 +21,21 @@ module.exports = function(db) {
     const rows = db.query(`
       SELECT
         p.id, p.item_series, p.variation, p.image_url,
-        p.price_wholesale_sg, p.price_rrp_sg, p.is_new, p.new_until,
+        p.price_wholesale_sg, p.price_rrp_sg, p.is_new, p.new_until, p.pack_size,
         b.id AS brand_id, b.name AS brand_name, b.color AS brand_color,
-        COALESCE(mega.qty, 0)    AS mega_qty,
-        COALESCE(hougang.qty, 0) AS hougang_qty
+        COALESCE(home.qty, 0)    AS home_qty,
+        COALESCE(storhub.qty, 0) AS storhub_qty
       FROM products p
       JOIN brands b ON b.id = p.brand_id
-      LEFT JOIN inventory_levels mega    ON mega.product_id = p.id    AND mega.location    = 'Mega'
-      LEFT JOIN inventory_levels hougang ON hougang.product_id = p.id AND hougang.location = 'Hougang'
+      LEFT JOIN inventory_levels home    ON home.product_id = p.id    AND home.location    = 'Home'
+      LEFT JOIN inventory_levels storhub ON storhub.product_id = p.id AND storhub.location = 'Storhub'
       WHERE p.is_active = 1
       -- Aug 2026 (per KT): stock status is now the TOP-level sort key
       -- (was brand-first) — matches routes/shop.js and routes/pos.js,
       -- kept consistent across Website, POS, and Order Portal per KT's
       -- explicit request.
       ORDER BY
-        CASE WHEN (COALESCE(mega.qty,0) + COALESCE(hougang.qty,0)) <= 0 THEN 1 ELSE 0 END,
+        CASE WHEN (COALESCE(home.qty,0) + COALESCE(storhub.qty,0)) <= 0 THEN 1 ELSE 0 END,
         b.name,
         COALESCE(p.portal_sort_order, 999999), p.item_series, p.variation
     `);
@@ -50,8 +50,9 @@ module.exports = function(db) {
       image_url: r.image_url || null,
       price_wholesale_sg: r.price_wholesale_sg,
       price_rrp_sg: r.price_rrp_sg,
+      pack_size: r.pack_size || null,
       is_new_active: withEffectivePrice(r).is_new_active,
-      stock_status: stockStatus(r.mega_qty + r.hougang_qty),
+      stock_status: stockStatus(r.home_qty + r.storhub_qty),
     }));
 
     res.json(catalogue);
@@ -88,12 +89,12 @@ module.exports = function(db) {
         p.id, p.item_series, p.variation, p.image_url, p.is_active,
         p.price_wholesale_sg, p.price_rrp_sg,
         b.id AS brand_id, b.name AS brand_name, b.color AS brand_color,
-        COALESCE(mega.qty, 0)    AS mega_qty,
-        COALESCE(hougang.qty, 0) AS hougang_qty
+        COALESCE(home.qty, 0)    AS home_qty,
+        COALESCE(storhub.qty, 0) AS storhub_qty
       FROM products p
       JOIN brands b ON b.id = p.brand_id
-      LEFT JOIN inventory_levels mega    ON mega.product_id = p.id    AND mega.location    = 'Mega'
-      LEFT JOIN inventory_levels hougang ON hougang.product_id = p.id AND hougang.location = 'Hougang'
+      LEFT JOIN inventory_levels home    ON home.product_id = p.id    AND home.location    = 'Home'
+      LEFT JOIN inventory_levels storhub ON storhub.product_id = p.id AND storhub.location = 'Storhub'
       WHERE p.id IN (${ids.map(() => '?').join(',')})
     `, ids);
 
@@ -116,7 +117,7 @@ module.exports = function(db) {
         image_url: r.image_url || null,
         price_wholesale_sg: r.price_wholesale_sg,
         price_rrp_sg: r.price_rrp_sg,
-        stock_status: stockStatus(r.mega_qty + r.hougang_qty),
+        stock_status: stockStatus(r.home_qty + r.storhub_qty),
       }))
       .filter(p => p.stock_status !== 'out_of_stock')
       .slice(0, 8)
@@ -145,10 +146,10 @@ module.exports = function(db) {
       }
       const product = db.queryOne(`
         SELECT p.id, p.is_active, p.item_series, p.variation,
-          COALESCE(mega.qty, 0) + COALESCE(hougang.qty, 0) AS total_qty
+          COALESCE(home.qty, 0) + COALESCE(storhub.qty, 0) AS total_qty
         FROM products p
-        LEFT JOIN inventory_levels mega    ON mega.product_id = p.id    AND mega.location    = 'Mega'
-        LEFT JOIN inventory_levels hougang ON hougang.product_id = p.id AND hougang.location = 'Hougang'
+        LEFT JOIN inventory_levels home    ON home.product_id = p.id    AND home.location    = 'Home'
+        LEFT JOIN inventory_levels storhub ON storhub.product_id = p.id AND storhub.location = 'Storhub'
         WHERE p.id = ?
       `, [line.product_id]);
       if (!product || !product.is_active) {
@@ -158,7 +159,7 @@ module.exports = function(db) {
         return res.status(400).json({ error: `One of the items in your order just went out of stock — please remove it and try again.` });
       }
       // Hard cap: never allow ordering more than what's actually in stock
-      // (Mega + Hougang combined). The available number IS disclosed here —
+      // (Home + Storhub combined). The available number IS disclosed here —
       // deliberately, so the partner can correct their order in one try
       // instead of guessing downward repeatedly. This is a considered
       // exception to "don't show exact stock" — it only surfaces once

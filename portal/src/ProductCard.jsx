@@ -10,6 +10,19 @@ const STOCK_LABEL = {
 
 const sgd = v => `SGD ${parseFloat(v || 0).toFixed(2)}`;
 
+// Box-quantity nudge (Sep 2026, per KT) — purely informational, never
+// blocks the order. Only shown when the product has a pack_size set AND
+// the entered qty is within 2 units of completing a box — e.g. pack_size
+// 6, qty 4 or 5 shows the hint; qty 1, 2, or 6 does not (not worth
+// nudging someone from 1 up to 6, and a clean multiple needs no nudge).
+function boxHint(qty, packSize) {
+  if (!packSize || packSize < 2 || !qty || qty <= 0) return null;
+  const remainder = packSize - (qty % packSize);
+  if (qty % packSize === 0) return null;
+  if (remainder > 2) return null;
+  return `Add ${remainder} more for full box`;
+}
+
 export default function ProductCard({ product, cartQty, onAdd, onUpdateQty, onRemove, compact, rank }) {
   const [pendingQty, setPendingQty] = useState(1);
   const stock = STOCK_LABEL[product.stock_status] || STOCK_LABEL.available;
@@ -118,6 +131,12 @@ export default function ProductCard({ product, cartQty, onAdd, onUpdateQty, onRe
             </>
           )}
         </div>
+        {!outOfStock && (() => {
+          const hint = boxHint(inCart ? cartQty : pendingQty, product.pack_size);
+          return hint ? (
+            <div style={{ fontSize: 10.5, color: '#F9DAD9', paddingTop: 2 }}>{hint}</div>
+          ) : null;
+        })()}
       </div>
     </div>
   );

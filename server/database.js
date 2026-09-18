@@ -338,7 +338,7 @@ function createSchema() {
       arrival_date DATE,
       costed_date DATE,
       status TEXT NOT NULL DEFAULT 'ordered',
-      received_warehouse TEXT DEFAULT 'Mega',
+      received_warehouse TEXT DEFAULT 'Storhub',
       fx_rate_actual REAL,
       fx_processing_charge REAL DEFAULT 0,
       cashback REAL DEFAULT 0,
@@ -400,7 +400,7 @@ function createSchema() {
     `CREATE TABLE IF NOT EXISTS restock_checklists (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       label TEXT,
-      direction TEXT NOT NULL DEFAULT 'hougang_to_mega',
+      direction TEXT NOT NULL DEFAULT 'storhub_to_home',
       status TEXT NOT NULL DEFAULT 'draft',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       completed_at DATETIME
@@ -795,7 +795,7 @@ function createSchema() {
   db.run("UPDATE partners SET tier = 'Active' WHERE tier IS NULL");
 
   // Phase 4: Inventory write-off location tracking
-  try { db.run("ALTER TABLE inventory_adjustments ADD COLUMN location TEXT DEFAULT 'Mega'"); } catch(e) {}
+  try { db.run("ALTER TABLE inventory_adjustments ADD COLUMN location TEXT DEFAULT 'Home'"); } catch(e) {}
 
   // Phase 3: Invoice / Delivery Order / SOA support columns
   [
@@ -1172,30 +1172,18 @@ function createSchema() {
   // run every startup — WHERE clause means it's a no-op once already set.
   try { db.run("UPDATE brands SET hidden_on_website = 1 WHERE name = 'Pawvy' AND hidden_on_website = 0"); } catch(e) {}
 
-  // Warehouse rename (Sep 2026, per KT) — Storhub (pure warehouse) moved
-  // and is now called Hougang; Home (operational hub — where sales, POS,
-  // and consignment placements deduct from) is now called Mega, since
-  // Mega is taking over that operational-hub role going forward. This
-  // updates every existing row so historical records read correctly
-  // under the new names — WHERE clauses make each line a no-op once
-  // already migrated, safe to run on every startup.
-  //
-  // The restock_checklists.direction rename preserves each row's real,
-  // historical meaning: a checklist that actually moved stock from the
-  // warehouse to the ops hub (storhub_to_home) now reads as
-  // hougang_to_mega — the same real movement, correctly relabeled, not
-  // reinterpreted.
-  try { db.run("UPDATE inventory_levels SET location = 'Hougang' WHERE location = 'Storhub'"); } catch(e) {}
-  try { db.run("UPDATE inventory_levels SET location = 'Mega' WHERE location = 'Home'"); } catch(e) {}
-  try { db.run("UPDATE inventory_movements SET location = 'Hougang' WHERE location = 'Storhub'"); } catch(e) {}
-  try { db.run("UPDATE inventory_movements SET location = 'Mega' WHERE location = 'Home'"); } catch(e) {}
-  try { db.run("UPDATE inventory_adjustments SET location = 'Hougang' WHERE location = 'Storhub'"); } catch(e) {}
-  try { db.run("UPDATE inventory_adjustments SET location = 'Mega' WHERE location = 'Home'"); } catch(e) {}
-  try { db.run("UPDATE inventory SET location = 'Hougang' WHERE location = 'Storhub'"); } catch(e) {}
-  try { db.run("UPDATE inventory SET location = 'Mega' WHERE location = 'Home'"); } catch(e) {}
-  try { db.run("UPDATE restock_checklists SET direction = 'hougang_to_mega' WHERE direction = 'storhub_to_home'"); } catch(e) {}
-  try { db.run("UPDATE restock_checklists SET direction = 'mega_to_hougang' WHERE direction = 'home_to_storhub'"); } catch(e) {}
-  try { db.run("UPDATE shipments SET received_warehouse = 'Hougang' WHERE received_warehouse = 'Storhub'"); } catch(e) {}
+  // Order Portal box-quantity nudge (Sep 2026, per KT) — units per
+  // case/box for a product (e.g. BetterBone Mini = 6). Purely optional:
+  // NULL means "no box size set", and the Order Portal simply shows no
+  // nudge for that product, exactly as before this column existed. When
+  // set, the Order Portal quantity stepper (portal/src/ProductCard.jsx)
+  // shows a one-line "Add X more for full box" hint whenever the entered
+  // quantity isn't a clean multiple of this number — purely informational,
+  // never blocks the order. Not tied to any discount or price change —
+  // KT was explicit he doesn't want partners incentivized with a
+  // box-price discount, just nudged toward ordering in the pack sizes
+  // he actually receives stock in (fewer opened boxes to repack by hand).
+  try { db.run("ALTER TABLE products ADD COLUMN pack_size INTEGER"); } catch(e) {}
 
   console.log('✅ Schema ready');
 }
