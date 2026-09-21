@@ -288,17 +288,18 @@ export default function Sales() {
                           </td>
                           <td style={{padding:'8px 10px'}}><Badge color={s.brand_color}>{s.brand_name}</Badge></td>
                           <td style={{padding:'8px 10px',color:'var(--cream)',maxWidth:140,display:'flex',alignItems:'center',gap:6}}>
-                            <span style={{maxWidth:130,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                            <span style={{
+                              maxWidth:130,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',
+                              color: s.mailing_required ? '#f87171' : 'inherit',
+                              fontWeight: s.mailing_required ? 600 : 'inherit',
+                            }}>
                               {s.item_series}{s.variation ? ` · ${s.variation}` : ''}
                             </span>
-                            {(s.mailing_name || s.mailing_address || s.mailing_phone || s.shipping_channel || s.customer_email || s.mailing_required) && (
+                            {Boolean(s.mailing_name || s.mailing_address || s.mailing_phone || s.shipping_channel || s.customer_email || s.mailing_required) && (
                               <button onClick={() => setMailingInfoModal(s)}
                                 title={s.mailing_required ? 'Mailing required — not yet sent' : 'View customer / mailing details'}
-                                style={{flexShrink:0,position:'relative',background:'none',border:'none',color:'var(--orange)',cursor:'pointer',padding:0,display:'flex',alignItems:'center'}}>
+                                style={{flexShrink:0,position:'relative',background:'none',border:'none',color: s.mailing_required ? '#f87171' : 'var(--orange)',cursor:'pointer',padding:0,display:'flex',alignItems:'center'}}>
                                 <Mail size={12} />
-                                {s.mailing_required && (
-                                  <span style={{position:'absolute',top:-2,right:-3,width:6,height:6,borderRadius:'50%',background:'#f87171',boxShadow:'0 0 0 1px var(--navy)'}} />
-                                )}
                               </button>
                             )}
                           </td>
