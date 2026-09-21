@@ -191,7 +191,7 @@ export default function Partners() {
               {['Inventory','Consignment','Commission','Pickup','None'].map(m=><option key={m} value={m}>{m}</option>)}
             </Select>
             <Select label="Market" value={form.market||'SG'} onChange={e=>sf('market',e.target.value)}>
-              {['SG','MY','AU'].map(m=><option key={m} value={m}>{m}</option>)}
+              {['SG','MY'].map(m=><option key={m} value={m}>{m}</option>)}
             </Select>
           </FormRow>
           <FormRow cols={2}>

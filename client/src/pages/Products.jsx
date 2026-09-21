@@ -12,16 +12,13 @@ const MARKET_FIELDS = {
     { key:'price_wholesale_sg',  label:'Wholesale (SGD)' },
     { key:'price_consignment_sg',label:'Consignment (SGD)' },
     { key:'price_rrp_sg',        label:'RRP (SGD)' },
+    { key:'price_rrp_online_sg', label:'RRP Online (SGD)' },
   ],
   MY: [
-    { key:'unit_cost',          label:'Unit Cost (SGD)' },
-    { key:'price_wholesale_my', label:'Wholesale (MYR)' },
-    { key:'price_rrp_my',       label:'RRP (MYR)' },
-  ],
-  AU: [
-    { key:'unit_cost',          label:'Unit Cost (SGD)' },
-    { key:'price_wholesale_au', label:'Wholesale (AUD)' },
-    { key:'price_rrp_au',       label:'RRP (AUD)' },
+    { key:'unit_cost',           label:'Unit Cost (SGD)' },
+    { key:'price_wholesale_my',  label:'Wholesale (MYR)' },
+    { key:'price_rrp_my',        label:'RRP (MYR)' },
+    { key:'price_rrp_online_my', label:'RRP Online (MYR)' },
   ],
 };
 
@@ -179,7 +176,7 @@ export default function Products() {
   // `products` already holds everything the export needs.
   function exportProductsCsv() {
     const headers = ['Brand','Item Series','Variation','Barcode','Unit Cost (SGD)',
-      'Wholesale SG','Consignment SG','RRP SG','Wholesale MY','RRP MY','Wholesale AU','RRP AU',
+      'Wholesale SG','Consignment SG','RRP SG','RRP Online SG','Wholesale MY','RRP MY','RRP Online MY',
       'Portal Order','Status','Notes'];
     const esc = (v) => {
       if (v === null || v === undefined) return '';
@@ -188,8 +185,8 @@ export default function Products() {
     };
     const rows = products.map(p => [
       p.brand_name, p.item_series, p.variation, p.barcode,
-      p.unit_cost, p.price_wholesale_sg, p.price_consignment_sg, p.price_rrp_sg,
-      p.price_wholesale_my, p.price_rrp_my, p.price_wholesale_au, p.price_rrp_au,
+      p.unit_cost, p.price_wholesale_sg, p.price_consignment_sg, p.price_rrp_sg, p.price_rrp_online_sg,
+      p.price_wholesale_my, p.price_rrp_my, p.price_rrp_online_my,
       p.portal_sort_order, p.is_active === 0 ? 'Archived' : 'Active', p.notes,
     ].map(esc).join(','));
     const csv = [headers.join(','), ...rows].join('\n');
@@ -224,7 +221,7 @@ export default function Products() {
       {/* Filters */}
       <div style={{display:'flex',gap:8,alignItems:'flex-end',flexWrap:'wrap'}}>
         <div style={{display:'flex',gap:4}}>
-          {['SG','MY','AU'].map(m => (
+          {['SG','MY'].map(m => (
             <button key={m} onClick={() => setFM(m)}
               style={{padding:'6px 14px',borderRadius:6,border:'1px solid var(--border)',cursor:'pointer',fontSize:12,fontWeight:700,
                 background: filterMkt===m ? 'var(--orange)' : 'var(--navy)',
@@ -420,23 +417,21 @@ export default function Products() {
           </FormRow>
 
           <Divider label="SG Pricing (SGD)"/>
-          <FormRow cols={4}>
+          <FormRow cols={3}>
             <Input label="Unit Cost"   type="number" step="0.01" value={form.unit_cost||''}            onChange={e=>sf('unit_cost',e.target.value)}            placeholder="0.00"/>
             <Input label="Wholesale"   type="number" step="0.01" value={form.price_wholesale_sg||''}   onChange={e=>sf('price_wholesale_sg',e.target.value)}   placeholder="0.00"/>
             <Input label="Consignment" type="number" step="0.01" value={form.price_consignment_sg||''} onChange={e=>sf('price_consignment_sg',e.target.value)} placeholder="0.00"/>
+          </FormRow>
+          <FormRow cols={2}>
             <Input label="RRP"         type="number" step="0.01" value={form.price_rrp_sg||''}         onChange={e=>sf('price_rrp_sg',e.target.value)}         placeholder="0.00"/>
+            <Input label="RRP Online (Shopee/Lazada)" type="number" step="0.01" value={form.price_rrp_online_sg||''} onChange={e=>sf('price_rrp_online_sg',e.target.value)} placeholder="0.00"/>
           </FormRow>
 
           <Divider label="MY Pricing (MYR)"/>
-          <FormRow cols={2}>
+          <FormRow cols={3}>
             <Input label="Wholesale MY" type="number" step="0.01" value={form.price_wholesale_my||''} onChange={e=>sf('price_wholesale_my',e.target.value)} placeholder="0.00"/>
             <Input label="RRP MY"       type="number" step="0.01" value={form.price_rrp_my||''}       onChange={e=>sf('price_rrp_my',e.target.value)}       placeholder="0.00"/>
-          </FormRow>
-
-          <Divider label="AU Pricing (AUD)"/>
-          <FormRow cols={2}>
-            <Input label="Wholesale AU" type="number" step="0.01" value={form.price_wholesale_au||''} onChange={e=>sf('price_wholesale_au',e.target.value)} placeholder="0.00"/>
-            <Input label="RRP AU"       type="number" step="0.01" value={form.price_rrp_au||''}       onChange={e=>sf('price_rrp_au',e.target.value)}       placeholder="0.00"/>
+            <Input label="RRP Online MY (Shopee/Lazada)" type="number" step="0.01" value={form.price_rrp_online_my||''} onChange={e=>sf('price_rrp_online_my',e.target.value)} placeholder="0.00"/>
           </FormRow>
 
           <Input label="Notes" value={form.notes||''} onChange={e=>sf('notes',e.target.value)} placeholder="Optional"/>

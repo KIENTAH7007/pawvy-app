@@ -123,9 +123,8 @@ module.exports = function(db) {
     const {
       brand_id, barcode, item_series, variation,
       unit_cost, pack_size,
-      price_wholesale_sg, price_consignment_sg, price_rrp_sg,
-      price_wholesale_my, price_rrp_my,
-      price_wholesale_au, price_rrp_au,
+      price_wholesale_sg, price_consignment_sg, price_rrp_sg, price_rrp_online_sg,
+      price_wholesale_my, price_rrp_my, price_rrp_online_my,
       notes
     } = req.body;
 
@@ -140,18 +139,22 @@ module.exports = function(db) {
       // "no box size set", same as never having touched the field.
       const cleanPackSize = (pack_size !== undefined && pack_size !== null && pack_size !== '' && parseInt(pack_size) > 0)
         ? parseInt(pack_size) : null;
+      // Online-platform RRP (Shopee/Lazada) — optional, freely editable,
+      // independent of price_rrp_sg/my. Blank means "not set", same
+      // convention as pack_size above.
+      const cleanRrpOnlineSg = (price_rrp_online_sg !== undefined && price_rrp_online_sg !== null && price_rrp_online_sg !== '') ? parseFloat(price_rrp_online_sg) : null;
+      const cleanRrpOnlineMy = (price_rrp_online_my !== undefined && price_rrp_online_my !== null && price_rrp_online_my !== '') ? parseFloat(price_rrp_online_my) : null;
       const result = db.run(`
         INSERT INTO products
           (brand_id, barcode, item_series, variation,
-           unit_cost, pack_size, price_wholesale_sg, price_consignment_sg, price_rrp_sg,
-           price_wholesale_my, price_rrp_my, price_wholesale_au, price_rrp_au, notes)
+           unit_cost, pack_size, price_wholesale_sg, price_consignment_sg, price_rrp_sg, price_rrp_online_sg,
+           price_wholesale_my, price_rrp_my, price_rrp_online_my, notes)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
       `, [
         brand_id, cleanBarcode, item_series, variation || null,
         unit_cost || 0, cleanPackSize,
-        price_wholesale_sg || 0, price_consignment_sg || 0, price_rrp_sg || 0,
-        price_wholesale_my || 0, price_rrp_my || 0,
-        price_wholesale_au || 0, price_rrp_au || 0,
+        price_wholesale_sg || 0, price_consignment_sg || 0, price_rrp_sg || 0, cleanRrpOnlineSg,
+        price_wholesale_my || 0, price_rrp_my || 0, cleanRrpOnlineMy,
         notes || null
       ]);
 
@@ -167,9 +170,8 @@ module.exports = function(db) {
     const {
       brand_id, barcode, item_series, variation,
       unit_cost, pack_size,
-      price_wholesale_sg, price_consignment_sg, price_rrp_sg,
-      price_wholesale_my, price_rrp_my,
-      price_wholesale_au, price_rrp_au,
+      price_wholesale_sg, price_consignment_sg, price_rrp_sg, price_rrp_online_sg,
+      price_wholesale_my, price_rrp_my, price_rrp_online_my,
       is_active, notes, description
     } = req.body;
 
@@ -177,23 +179,25 @@ module.exports = function(db) {
     // "no box size set", same as never having touched the field.
     const cleanPackSize = (pack_size !== undefined && pack_size !== null && pack_size !== '' && parseInt(pack_size) > 0)
       ? parseInt(pack_size) : null;
+    // Online-platform RRP (Shopee/Lazada) — optional, freely editable,
+    // independent of price_rrp_sg/my. Blank means "not set".
+    const cleanRrpOnlineSg = (price_rrp_online_sg !== undefined && price_rrp_online_sg !== null && price_rrp_online_sg !== '') ? parseFloat(price_rrp_online_sg) : null;
+    const cleanRrpOnlineMy = (price_rrp_online_my !== undefined && price_rrp_online_my !== null && price_rrp_online_my !== '') ? parseFloat(price_rrp_online_my) : null;
 
     db.run(`
       UPDATE products SET
         brand_id = ?, barcode = ?, item_series = ?, variation = ?,
         unit_cost = ?, pack_size = ?,
-        price_wholesale_sg = ?, price_consignment_sg = ?, price_rrp_sg = ?,
-        price_wholesale_my = ?, price_rrp_my = ?,
-        price_wholesale_au = ?, price_rrp_au = ?,
+        price_wholesale_sg = ?, price_consignment_sg = ?, price_rrp_sg = ?, price_rrp_online_sg = ?,
+        price_wholesale_my = ?, price_rrp_my = ?, price_rrp_online_my = ?,
         is_active = ?, notes = ?, description = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `, [
       brand_id, barcode, item_series, variation,
       unit_cost, cleanPackSize,
-      price_wholesale_sg, price_consignment_sg, price_rrp_sg,
-      price_wholesale_my, price_rrp_my,
-      price_wholesale_au, price_rrp_au,
+      price_wholesale_sg, price_consignment_sg, price_rrp_sg, cleanRrpOnlineSg,
+      price_wholesale_my, price_rrp_my, cleanRrpOnlineMy,
       is_active !== undefined ? is_active : 1, notes, description || null,
       req.params.id
     ]);

@@ -240,7 +240,7 @@ module.exports = function(db, inventoryRouter) {
   router.patch('/:id/details', (req, res) => {
     const sale = db.queryOne('SELECT id, stripe_fee_amt FROM sales WHERE id = ?', [req.params.id]);
     if (!sale) return res.status(404).json({ error: 'Sale not found' });
-    const { shipping_charged, shipping_cost, shipping_channel, mailing_name, mailing_address, mailing_phone, notes, customer_email, stripe_fee_amt } = req.body;
+    const { shipping_charged, shipping_cost, shipping_channel, mailing_name, mailing_address, mailing_phone, mailing_required, notes, customer_email, stripe_fee_amt } = req.body;
 
     // A manual stripe_fee_amt entry (Aug 2026 — see the Sales Ledger edit
     // modal) is a placeholder, not a confirmed value: mark it
@@ -255,13 +255,14 @@ module.exports = function(db, inventoryRouter) {
     db.run(`
       UPDATE sales SET
         shipping_charged=?, shipping_cost=?, shipping_channel=?,
-        mailing_name=?, mailing_address=?, mailing_phone=?, notes=?, customer_email=?,
+        mailing_name=?, mailing_address=?, mailing_phone=?, mailing_required=?, notes=?, customer_email=?,
         stripe_fee_amt=?, stripe_fee_confirmed=CASE WHEN ? THEN 0 ELSE stripe_fee_confirmed END,
         updated_at=CURRENT_TIMESTAMP
       WHERE id=?
     `, [
       parseFloat(shipping_charged) || 0, parseFloat(shipping_cost) || 0, shipping_channel?.trim() || null,
       mailing_name?.trim() || null, mailing_address?.trim() || null, mailing_phone?.trim() || null,
+      mailing_required ? 1 : 0,
       notes?.trim() || null, customer_email?.trim() || null,
       newFee, feeProvided ? 1 : 0,
       req.params.id,

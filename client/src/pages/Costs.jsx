@@ -149,7 +149,7 @@ export default function Costs() {
           <FormRow cols={3}>
             <Input label="Amount (SGD) *" type="number" step="0.01" value={form.amount||''} onChange={e=>sf('amount',e.target.value)}/>
             <Select label="Market" value={form.market||'SG'} onChange={e=>sf('market',e.target.value)}>
-              {['SG','MY','AU'].map(m=><option key={m} value={m}>{m}</option>)}
+              {['SG','MY'].map(m=><option key={m} value={m}>{m}</option>)}
             </Select>
             <Input label="Receipt Ref" value={form.receipt_ref||''} onChange={e=>sf('receipt_ref',e.target.value)} placeholder="Optional"/>
           </FormRow>

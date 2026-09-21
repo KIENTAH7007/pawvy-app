@@ -64,6 +64,7 @@ export default function Sales() {
       mailing_name: s.mailing_name || '',
       mailing_address: s.mailing_address || '',
       mailing_phone: s.mailing_phone || '',
+      mailing_required: !!s.mailing_required,
       customer_email: s.customer_email || '',
       notes: s.notes || '',
       stripe_fee_amt: s.stripe_fee_amt || '',
@@ -123,7 +124,7 @@ export default function Sales() {
         </Select>
         <Select label="Market" value={filters.market} onChange={e=>setF('market',e.target.value)} style={{width:100}}>
           <option value="">All</option>
-          {['SG','MY','AU'].map(m => <option key={m} value={m}>{m}</option>)}
+          {['SG','MY'].map(m => <option key={m} value={m}>{m}</option>)}
         </Select>
         <Input label="From" type="date" value={filters.date_from} onChange={e=>setF('date_from',e.target.value)} style={{width:150}}/>
         <Input label="To"   type="date" value={filters.date_to}   onChange={e=>setF('date_to',e.target.value)}   style={{width:150}}/>
@@ -184,6 +185,9 @@ export default function Sales() {
             <MailingRow label="Address" value={mailingInfoModal.mailing_address} />
             <MailingRow label="Phone" value={mailingInfoModal.mailing_phone} />
             <MailingRow label="Shipping Channel" value={mailingInfoModal.shipping_channel} />
+            <div style={{fontSize:10.5,fontWeight:600,color:mailingInfoModal.mailing_required ? '#f87171' : 'var(--cream-30)'}}>
+              {mailingInfoModal.mailing_required ? '● Mailing required — not yet sent' : 'Mailing not required for this item'}
+            </div>
           </div>
         )}
       </Modal>
@@ -234,6 +238,16 @@ export default function Sales() {
               onChange={e=>setEditForm(f=>({...f,mailing_address:e.target.value}))} />
             <Input label="Phone Number" value={editForm.mailing_phone}
               onChange={e=>setEditForm(f=>({...f,mailing_phone:e.target.value}))} />
+            <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer'}}>
+              <input type="checkbox" checked={!!editForm.mailing_required}
+                onChange={e=>setEditForm(f=>({...f,mailing_required:e.target.checked}))}
+                style={{width:15,height:15,cursor:'pointer'}} />
+              <span style={{fontSize:12,color:'var(--cream)'}}>Mailing required</span>
+            </label>
+            <div style={{fontSize:10,color:'var(--cream-30)',marginTop:-6}}>
+              Untick this once the item has actually been mailed out — it removes the red marker from this
+              row in the ledger.
+            </div>
             <Input label="Notes" value={editForm.notes}
               onChange={e=>setEditForm(f=>({...f,notes:e.target.value}))} />
             <div style={{display:'flex',gap:10,marginTop:4}}>
@@ -277,10 +291,14 @@ export default function Sales() {
                             <span style={{maxWidth:130,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
                               {s.item_series}{s.variation ? ` · ${s.variation}` : ''}
                             </span>
-                            {(s.mailing_name || s.mailing_address || s.mailing_phone || s.shipping_channel || s.customer_email) && (
-                              <button onClick={() => setMailingInfoModal(s)} title="View customer / mailing details"
-                                style={{flexShrink:0,background:'none',border:'none',color:'var(--orange)',cursor:'pointer',padding:0,display:'flex',alignItems:'center'}}>
+                            {(s.mailing_name || s.mailing_address || s.mailing_phone || s.shipping_channel || s.customer_email || s.mailing_required) && (
+                              <button onClick={() => setMailingInfoModal(s)}
+                                title={s.mailing_required ? 'Mailing required — not yet sent' : 'View customer / mailing details'}
+                                style={{flexShrink:0,position:'relative',background:'none',border:'none',color:'var(--orange)',cursor:'pointer',padding:0,display:'flex',alignItems:'center'}}>
                                 <Mail size={12} />
+                                {s.mailing_required && (
+                                  <span style={{position:'absolute',top:-2,right:-3,width:6,height:6,borderRadius:'50%',background:'#f87171',boxShadow:'0 0 0 1px var(--navy)'}} />
+                                )}
                               </button>
                             )}
                           </td>

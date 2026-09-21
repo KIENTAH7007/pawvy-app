@@ -46,6 +46,13 @@ export default function App() {
   const [itemDiscounts, setItemDiscounts] = useState({}); // { [product_id]: pct string }
   const [universalDiscountPct, setUniversalDiscountPct] = useState('');
   const [itemPrices, setItemPrices] = useState({}); // { [product_id]: price string } — manual_price mode
+  // Per-line "needs to be mailed" flag (Sep 2026, per KT) — for the case
+  // where a checkout has stock on hand for some items but not others (e.g.
+  // sold A, B, C but only A and B were on hand at the event; C has to be
+  // mailed from the operation hub later). Independent of the checkout-wide
+  // mailing_name/address/phone fields below, which still apply to every
+  // line — this only marks WHICH lines actually need to go in the mail.
+  const [mailingRequired, setMailingRequired] = useState({}); // { [product_id]: boolean }
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const searchRef = useRef(null);
@@ -187,6 +194,14 @@ export default function App() {
       setSubmitError('Please tick the consent checkbox to save this customer\'s email.');
       return;
     }
+    // If any line is flagged "Mailing required?", the checkout needs a real
+    // address to actually mail it to — same defense-in-depth spirit as the
+    // consent check above.
+    const anyMailingRequired = cartLines.some(l => mailingRequired[l.product.id]);
+    if (anyMailingRequired && (!mailingName.trim() || !mailingAddress.trim() || !mailingPhone.trim())) {
+      setSubmitError('At least one item is marked "Mailing required?" — please fill in the recipient name, address, and phone number below.');
+      return;
+    }
     setSubmitting(true); setSubmitError('');
     try {
       await posApi.checkout({
@@ -203,6 +218,7 @@ export default function App() {
             qty: l.qty,
             unit_price: calc.netPrice,
             line_note: lineNote,
+            mailing_required: !!mailingRequired[l.product.id],
           };
         }),
         shipping_charged: shipAmt,
@@ -229,6 +245,7 @@ export default function App() {
     setMailingName(''); setMailingAddress(''); setMailingPhone(''); setShippingChannel('');
     setCustomerEmail(''); setPdpaConsent(false);
     setDiscountMode('none'); setItemDiscounts({}); setUniversalDiscountPct(''); setItemPrices({});
+    setMailingRequired({});
     setView('catalogue'); setSearch('');
   }
 
@@ -288,7 +305,9 @@ export default function App() {
                 <div key={l.product.id} style={{
                   display: 'flex', alignItems: 'center', gap: 12, padding: 12,
                   border: '1px solid rgba(245,242,235,.1)', borderRadius: 10, background: 'rgba(245,242,235,.03)',
-                  flexWrap: (discountMode === 'per_item' || discountMode === 'manual_price') ? 'wrap' : 'nowrap',
+                  // Always wraps now — the "Mailing required?" checkbox row (below) is
+                  // width:100% and needs its own line regardless of discount mode.
+                  flexWrap: 'wrap',
                 }}>
                   <div style={{
                     width: 48, height: 48, borderRadius: 8, flexShrink: 0, overflow: 'hidden',
@@ -315,6 +334,17 @@ export default function App() {
                   </div>
                   <QtyStepper value={l.qty} onChange={q => updateQty(l.product.id, q)} />
                   <button onClick={() => removeFromCart(l.product.id)} style={{ background: 'none', border: 'none', color: 'rgba(248,113,113,.7)', cursor: 'pointer', padding: 4 }}>✕</button>
+                  <label style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 6, marginTop: 2, cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={!!mailingRequired[l.product.id]}
+                      onChange={e => setMailingRequired(prev => ({ ...prev, [l.product.id]: e.target.checked }))}
+                      style={{ width: 14, height: 14, cursor: 'pointer' }}
+                    />
+                    <span style={{ fontSize: 10.5, color: mailingRequired[l.product.id] ? '#f87171' : 'rgba(245,242,235,.45)', fontWeight: mailingRequired[l.product.id] ? 600 : 400 }}>
+                      Mailing required? — not on hand, ship from operation hub
+                    </span>
+                  </label>
                   {discountMode === 'per_item' && (
                     <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
                       <span style={{ fontSize: 10.5, color: 'rgba(245,242,235,.4)' }}>Discount %</span>

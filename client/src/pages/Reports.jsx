@@ -15,7 +15,7 @@ export default function Reports() {
         <Input label="From" type="date" value={from} onChange={e=>setFrom(e.target.value)} style={{width:155}}/>
         <Input label="To"   type="date" value={to}   onChange={e=>setTo(e.target.value)}   style={{width:155}}/>
         <Select label="Market" value={market} onChange={e=>setMkt(e.target.value)} style={{width:120}}>
-          <option value="">All markets</option>{['SG','MY','AU'].map(m=><option key={m} value={m}>{m}</option>)}
+          <option value="">All markets</option>{['SG','MY'].map(m=><option key={m} value={m}>{m}</option>)}
         </Select>
         <Btn onClick={run} disabled={loading} size="md">{loading?'Calculating…':'Run Report'}</Btn>
       </div>

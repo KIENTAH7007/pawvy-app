@@ -115,7 +115,7 @@ export default function RecordSale() {
     if (p === 'Consignment') {
       return prod.price_consignment_sg || prod.price_wholesale_sg || 0;
     }
-    return m === 'MY' ? prod.price_wholesale_my : m === 'AU' ? prod.price_wholesale_au : (prod.price_wholesale_sg || 0);
+    return m === 'MY' ? prod.price_wholesale_my : (prod.price_wholesale_sg || 0);
   }
 
   async function ensureProducts(brand_id) {
@@ -340,7 +340,7 @@ export default function RecordSale() {
             <div style={{ padding: 16, display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1fr 1fr 1fr 2fr', gap: 12 }}>
               <Input label="Date *" type="date" value={date} onChange={e => setDate(e.target.value)} />
               <Select label="Market *" value={market} onChange={e => setMarket(e.target.value)}>
-                {['SG', 'MY', 'AU'].map(m => <option key={m} value={m}>{m}</option>)}
+                {['SG', 'MY'].map(m => <option key={m} value={m}>{m}</option>)}
               </Select>
               <Select label="Channel *" value={channel} onChange={e => setChannel(e.target.value)} style={isMobile ? {gridColumn:'span 2'} : {}}>
                 <option value="">— Select —</option>

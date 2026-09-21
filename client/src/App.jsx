@@ -217,7 +217,7 @@ function Topbar({ onMenuToggle }) {
         {!isMobile && <div style={{ fontSize:11, color:'var(--cream-30)' }}>{today}</div>}
       </div>
       <div style={{ display:'flex', gap:5 }}>
-        {['SG','MY','AU'].map((m,i) => (
+        {['SG','MY'].map((m,i) => (
           <span key={m} style={{
             fontSize:9, fontWeight:700, padding:'3px 8px', borderRadius:3, letterSpacing:.5,
             background: i===0 ? 'var(--navy-light)' : 'transparent',

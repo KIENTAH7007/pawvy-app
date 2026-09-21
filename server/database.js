@@ -122,8 +122,6 @@ function createSchema() {
       price_rrp_sg REAL DEFAULT 0,
       price_wholesale_my REAL DEFAULT 0,
       price_rrp_my REAL DEFAULT 0,
-      price_wholesale_au REAL DEFAULT 0,
-      price_rrp_au REAL DEFAULT 0,
       is_active INTEGER DEFAULT 1,
       notes TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -1184,6 +1182,53 @@ function createSchema() {
   // box-price discount, just nudged toward ordering in the pack sizes
   // he actually receives stock in (fewer opened boxes to repack by hand).
   try { db.run("ALTER TABLE products ADD COLUMN pack_size INTEGER"); } catch(e) {}
+
+  // AU market removed (Sep 2026, per KT — no AU expansion planned, and
+  // confirmed zero existing partners/sales/costs tagged 'AU' before this
+  // shipped). price_wholesale_au/price_rrp_au are gone from the CREATE
+  // TABLE above (so a brand-new install never gets them), but on an
+  // ALREADY-EXISTING production database those two columns physically
+  // remain — same reasoning as instagram_posts.url elsewhere in this
+  // file: SQLite's ALTER TABLE DROP COLUMN is unreliable under sql.js,
+  // and CREATE TABLE IF NOT EXISTS never retroactively drops a column
+  // from a table that already exists. They're simply never read or
+  // written by the app again anywhere — fully inert, harmless dead data.
+  // 'AU' also removed from every market dropdown/tab across the app
+  // (Products, Partners, Sales, Costs, Reports, RecordSale) — 'market'
+  // itself stays a free-text column (not a DB-level enum), so this is a
+  // UI-only change with nothing further required at the schema level.
+
+  // Online-platform RRP (Sep 2026, per KT) — starting 1 Jan 2027, Shopee/
+  // Lazada listings move to MAP = RRP + 8% while physical retail and
+  // retailer-owned websites stay at MAP = RRP (no change). This is a
+  // SEPARATE, freely-editable field per product/market — NOT a computed
+  // RRP*1.08 formula — because KT was explicit he wants to hand-adjust it
+  // per product rather than have it locked to a fixed markup. NULL means
+  // "not set yet"; the one-time backfill below seeds every existing
+  // product at RRP*1.08 as a sensible starting point, but from that
+  // moment on this column is fully independent of price_rrp_sg/my — if
+  // RRP changes later, this does NOT follow automatically (confirmed
+  // with KT: no "reset to RRP+8%" convenience needed).
+  try { db.run("ALTER TABLE products ADD COLUMN price_rrp_online_sg REAL"); } catch(e) {}
+  try { db.run("ALTER TABLE products ADD COLUMN price_rrp_online_my REAL"); } catch(e) {}
+  try {
+    db.run("UPDATE products SET price_rrp_online_sg = ROUND(price_rrp_sg * 1.08, 2) WHERE price_rrp_online_sg IS NULL AND price_rrp_sg > 0");
+    db.run("UPDATE products SET price_rrp_online_my = ROUND(price_rrp_my * 1.08, 2) WHERE price_rrp_online_my IS NULL AND price_rrp_my > 0");
+  } catch(e) {}
+
+  // Per-line "mailing required" flag (Sep 2026, per KT) — distinct from
+  // the existing mailing_name/address/phone fields, which are captured
+  // ONCE per POS checkout and copied onto every line item in that sale.
+  // This flag is set per LINE ITEM instead: at an event, KT sometimes
+  // sells items A, B, C together but only has A and B on hand — C gets
+  // mailed later from the operation hub. Previously nothing distinguished
+  // "handed over on the spot" from "still needs to be mailed" once
+  // multiple lines shared one checkout's mailing details. Defaults to 0
+  // (not required) so every existing sales row is unaffected. Cleared
+  // back to 0 by KT via the Sales Ledger's existing pencil-icon "Edit
+  // Sale Details" modal once the item has actually been mailed out — see
+  // client/src/pages/Sales.jsx.
+  try { db.run("ALTER TABLE sales ADD COLUMN mailing_required INTEGER DEFAULT 0"); } catch(e) {}
 
   console.log('✅ Schema ready');
 }

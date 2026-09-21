@@ -93,6 +93,15 @@ module.exports = function(db, inventoryRouter) {
       return res.status(400).json({ error: 'Cart is empty.' });
     }
 
+    // If any line is flagged mailing_required, a real recipient name/
+    // address/phone must be present — defense-in-depth mirroring the
+    // frontend check, so a flagged item never ends up with nowhere to
+    // actually mail it to.
+    const anyMailingRequired = items.some(line => line.mailing_required);
+    if (anyMailingRequired && (!mailing_name?.trim() || !mailing_address?.trim() || !mailing_phone?.trim())) {
+      return res.status(400).json({ error: 'At least one item is marked mailing required — recipient name, address, and phone are needed.' });
+    }
+
     // If an email is being collected, PDPA consent must be given for it —
     // defense-in-depth in case a future caller (e.g. the new website) skips
     // the frontend checkbox validation. No email, no consent needed.
@@ -175,9 +184,9 @@ module.exports = function(db, inventoryRouter) {
         INSERT INTO sales
           (date, product_id, partner_id, channel, market, qty, unit_cost, unit_price,
            platform_fee_pct, platform_fee_amt, shipping_charged, shipping_cost, notes,
-           mailing_name, mailing_address, mailing_phone, shipping_channel,
+           mailing_name, mailing_address, mailing_phone, shipping_channel, mailing_required,
            customer_email, pdpa_consent, pdpa_consent_text, pdpa_consent_at)
-        VALUES (?,?,?,?,?,?,?,?,0,0,?,?,?,?,?,?,?,?,?,?,?)
+        VALUES (?,?,?,?,?,?,?,?,0,0,?,?,?,?,?,?,?,?,?,?,?,?)
       `, [
         today, line.product_id, null, 'Event Sale', 'SG', qty, unitCost, unitPrice,
         isFirst ? shipCharged : 0,
@@ -187,6 +196,10 @@ module.exports = function(db, inventoryRouter) {
         hasMailing ? (mailing_address || null) : null,
         hasMailing ? (mailing_phone || null) : null,
         shipping_channel?.trim() || null,
+        // mailing_required is per LINE ITEM (see App.jsx's mailingRequired
+        // state) — distinct from mailing_name/address/phone above, which
+        // are captured once per checkout and copied onto every line.
+        line.mailing_required ? 1 : 0,
         hasConsentedEmail ? customer_email.trim() : null,
         hasConsentedEmail ? 1 : 0,
         hasConsentedEmail ? (pdpa_consent_text || null) : null,
