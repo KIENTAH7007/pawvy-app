@@ -336,7 +336,7 @@ function createSchema() {
       arrival_date DATE,
       costed_date DATE,
       status TEXT NOT NULL DEFAULT 'ordered',
-      received_warehouse TEXT DEFAULT 'Storhub',
+      received_warehouse TEXT DEFAULT 'Mega',
       fx_rate_actual REAL,
       fx_processing_charge REAL DEFAULT 0,
       cashback REAL DEFAULT 0,
@@ -398,7 +398,7 @@ function createSchema() {
     `CREATE TABLE IF NOT EXISTS restock_checklists (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       label TEXT,
-      direction TEXT NOT NULL DEFAULT 'storhub_to_home',
+      direction TEXT NOT NULL DEFAULT 'hougang_to_mega',
       status TEXT NOT NULL DEFAULT 'draft',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       completed_at DATETIME
@@ -793,7 +793,7 @@ function createSchema() {
   db.run("UPDATE partners SET tier = 'Active' WHERE tier IS NULL");
 
   // Phase 4: Inventory write-off location tracking
-  try { db.run("ALTER TABLE inventory_adjustments ADD COLUMN location TEXT DEFAULT 'Home'"); } catch(e) {}
+  try { db.run("ALTER TABLE inventory_adjustments ADD COLUMN location TEXT DEFAULT 'Mega'"); } catch(e) {}
 
   // Phase 3: Invoice / Delivery Order / SOA support columns
   [

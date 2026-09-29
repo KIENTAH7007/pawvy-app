@@ -1,68 +1,77 @@
-# Pawvy App — Hotfix: Hougang/Mega current stock levels swapped
+# Pawvy App — Hotfix: Order Portal showing everything as unavailable
 
-## What was wrong
+## Root cause (this explains all three bugs from today)
 
-The earlier warehouse-rename fix carried the old `Storhub`→`Hougang` and
-`Home`→`Mega` quantities straight across, 1:1, name-for-name. That assumed
-the old `Storhub`/`Home` location values already matched physical reality —
-but they didn't. You confirmed this with a live before/after count: SKU 8009
-physically had 30 units at the **Mega** counter, but the system showed
-Hougang=30 / Mega=0, and after ringing up 1 unit sold (which correctly
-deducts from Mega), it went to Mega=-1 instead of 29.
+Traced this back to one single accident, three days after the original
+warehouse rename: the "Order Portal: optional box-quantity nudge" commit
+(18 Sep) was built from a **stale, pre-rename copy** of the code — one taken
+before the 16 Sep Storhub→Hougang / Home→Mega rename had merged in. Saving
+that stale copy's changes silently reverted the rename in two files back to
+the old location names, alongside the legitimate box-quantity feature:
 
-So the *quantities* under Hougang and Mega needed a one-time swap — separate
-from the rename itself, which was correct (Mega is genuinely the operational
-hub, Hougang the warehouse; sales/consignment correctly deduct from Mega;
-shipments correctly default into Mega; Restock Checklist's Hougang→Mega
-"common" direction is correctly labelled — none of that changes).
+1. `server/database.js` — the data-migration block that renames existing
+   rows got dropped entirely. **Fixed earlier today** (the inventory-showing-0
+   hotfix).
+2. `server/database.js` — three schema DEFAULT values (shipment intake
+   warehouse, restock checklist direction, adjustment location) also got
+   reverted back to `'Storhub'`/`'Home'`. Low-impact since the app always
+   passes an explicit value rather than relying on these defaults, but
+   fixed now for consistency.
+3. `server/routes/portal.js` — **this is today's bug.** Every Order Portal
+   query (catalogue, top-sellers, order submission) joins
+   `inventory_levels` against the location names `'Home'` and `'Storhub'`.
+   Since your actual stock has been living under `'Hougang'`/`'Mega'` since
+   the rename, every single one of those joins matched nothing — every
+   product's computed stock was 0, so everything showed "Currently
+   unavailable," regardless of real stock.
 
-**Scope, per your instruction:** this only swaps the current on-hand
-quantities (`inventory_levels` — the "Stock Levels" page). Historical
-Restock/Sale/Transfer/Write-off log entries are left exactly as they are —
-nothing in `inventory_movements`, `inventory_adjustments`, shipments'
-received-warehouse default, or Restock Checklist directions is touched.
+I also swept the rest of the codebase for the same pattern and found one
+more, lower-traffic spot: the CSV "2026 baseline import" endpoint in
+`server/routes/inventory.js` was writing new opening-stock rows under
+`'Storhub'`/`'Home'` too. Fixed for consistency, though it's a one-off admin
+tool that isn't part of normal day-to-day flow.
 
 ## The fix
 
-`server/database.js` — added a **one-time** swap of the `inventory_levels`
-quantities between Hougang and Mega, for every product. It:
+Three files this time:
 
-- Uses a 3-step rename-through-a-placeholder so it can never collide with
-  the `UNIQUE(product_id, location)` constraint, even where a product only
-  has a row at one of the two locations (that row just moves fully to the
-  other name, which is the correct behaviour).
-- Is guarded by a tiny `one_time_migrations` marker table so it runs
-  **exactly once** — unlike the earlier rename fix, a swap is NOT safe to
-  re-run on every startup (running it twice would flip the numbers straight
-  back to wrong), so this needed different, one-shot-safe handling.
+- `server/routes/portal.js` — all three endpoints (`/catalogue`,
+  `/top-sellers`, `/orders`) now join against `'Mega'`/`'Hougang'`, matching
+  every other part of the app (Website, POS already query these correctly).
+- `server/database.js` — the three leftover schema defaults corrected back
+  to `'Mega'`/`'hougang_to_mega'`.
+- `server/routes/inventory.js` — the baseline-import endpoint now writes to
+  `'Hougang'`/`'Mega'`.
 
-Verified with a full backend smoke test: spun up the real server against
-injected pre-swap data covering all three shapes — a product with only a
-Hougang row (your 8009/8467 case), a product with both rows, and a product
-with only a Mega row — confirmed every case swaps correctly, and confirmed
-restarting the server a second time does **not** re-swap (marker correctly
-prevents it). Also did a cold `client/` build to confirm nothing else broke.
+Verified with a full backend smoke test against the real server: seeded one
+product with real stock split across Mega(20)+Hougang(5), and two genuinely
+out-of-stock products, then hit the actual `/api/portal/catalogue` endpoint
+over HTTP — the in-stock product correctly showed `"available"`, the two
+empty ones correctly showed `"out_of_stock"` (previously all three would
+have shown out of stock). Also tested the order-submission hard-cap: an
+order for more than the available 25 units was correctly rejected with the
+right number, and an order within stock succeeded. Cold `npm run build`
+across all three frontends (client, POS, portal) passes clean.
 
 ## Apply this
-
-One file again. In your `pawvy-app` folder:
 
 ```
 git checkout main
 git pull origin main
 ```
 
-Copy `server/database.js` from this zip over your local
-`pawvy-app/server/database.js`, then:
+Copy `server/database.js`, `server/routes/portal.js`, and
+`server/routes/inventory.js` from this zip over your local files, then:
 
 ```
-git add server/database.js
-git commit -m "Hotfix: one-time swap of Hougang/Mega current stock quantities (confirmed by physical count)"
+git add server/database.js server/routes/portal.js server/routes/inventory.js
+git commit -m "Hotfix: Order Portal availability was joining against pre-rename location names (Home/Storhub), showing everything as unavailable"
 git push origin main
 ```
 
-Railway redeploys automatically; the swap runs once during that startup —
-no manual database step needed. Then sync staging:
+Railway redeploys automatically — no manual database step needed (this fix
+is pure query/schema-default logic, not a data migration). Then sync
+staging:
 
 ```
 git checkout staging
@@ -72,12 +81,10 @@ git push origin staging
 
 ## Test checklist after deploy
 
-- [ ] Check Railway's deploy log for `✅ One-time Hougang/Mega current-stock
-      swap applied` right after `✅ Loaded database` — confirms it ran
-- [ ] Inventory page: 8009 and 8467 (and a few others) should now show the
-      correct physical counts under Mega, not Hougang
-- [ ] Record a test sale on a SKU you know the physical Mega count for —
-      confirm the deduction lands on the right starting number this time
-- [ ] Redeploy once more (or restart the Railway service) and re-check the
-      same SKUs — numbers should be unchanged, confirming the swap didn't
-      fire a second time
+- [ ] Open the Order Portal — products you know are in stock should now
+      show as Available / Low Stock instead of "Currently unavailable"
+- [ ] Try submitting a test order within stock — should succeed
+- [ ] Try ordering more than what's available on one SKU — should be
+      rejected with the correct "Only N units available" message
+- [ ] Top Sellers section on Review Your Order — should show real upsell
+      products again, not an empty section

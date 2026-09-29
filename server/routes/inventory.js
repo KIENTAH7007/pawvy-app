@@ -190,11 +190,11 @@ module.exports = function(db, consignmentRouter) {
         continue;
       }
 
-      if (row.storhub_qty > 0) recordMovement({ date: today, product_id: product.id, location: 'Storhub', type: 'Opening Stock', qty_change: row.storhub_qty, notes: '2026 baseline import' });
-      else setLevel(product.id, 'Storhub', 0);
+      if (row.storhub_qty > 0) recordMovement({ date: today, product_id: product.id, location: 'Hougang', type: 'Opening Stock', qty_change: row.storhub_qty, notes: '2026 baseline import' });
+      else setLevel(product.id, 'Hougang', 0);
 
-      if (row.home_qty > 0) recordMovement({ date: today, product_id: product.id, location: 'Home', type: 'Opening Stock', qty_change: row.home_qty, notes: '2026 baseline import' });
-      else setLevel(product.id, 'Home', 0);
+      if (row.home_qty > 0) recordMovement({ date: today, product_id: product.id, location: 'Mega', type: 'Opening Stock', qty_change: row.home_qty, notes: '2026 baseline import' });
+      else setLevel(product.id, 'Mega', 0);
 
       matched.push({ product_id: product.id, item_series: product.item_series, storhub_qty: row.storhub_qty, home_qty: row.home_qty });
     }
