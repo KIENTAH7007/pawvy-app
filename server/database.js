@@ -1276,6 +1276,45 @@ function createSchema() {
   try { db.run("UPDATE restock_checklists SET direction = 'mega_to_hougang' WHERE direction = 'home_to_storhub'"); } catch(e) {}
   try { db.run("UPDATE shipments SET received_warehouse = 'Hougang' WHERE received_warehouse = 'Storhub'"); } catch(e) {}
 
+  // ONE-TIME current-stock swap (Sep 2026, per KT — confirmed by physical
+  // count against live sales, not a guess): the migration above carried
+  // the old 'Storhub'/'Home' location values straight across to their new
+  // names (Storhub's qty -> Hougang, Home's qty -> Mega). That assumed the
+  // old labels already matched physical reality. KT physically counted
+  // stock at the Mega counter and recorded live sales against it — the
+  // numbers only line up if what's now under 'Hougang' is actually the
+  // Mega (operational hub) quantity and vice versa. So the CURRENT
+  // on-hand qty needs a one-time swap between the two locations.
+  //
+  // Deliberately scoped to inventory_levels (current stock) ONLY, per KT:
+  // historical inventory_movements/inventory_adjustments rows, shipments'
+  // received_warehouse default, and restock_checklists direction are all
+  // already confirmed correct and must NOT be touched — KT does not want
+  // historical records amended, only the going-forward quantities fixed.
+  //
+  // This must run EXACTLY ONCE — unlike the rename above, a swap is not
+  // naturally idempotent (running it twice would flip the numbers right
+  // back to wrong). Guarded by a tiny one-time-migrations marker table so
+  // it's still safe to leave this code in place permanently.
+  try {
+    db.run("CREATE TABLE IF NOT EXISTS one_time_migrations (migration_key TEXT PRIMARY KEY, applied_at DATETIME DEFAULT CURRENT_TIMESTAMP)");
+    const MIGRATION_KEY = 'inventory_levels_hougang_mega_qty_swap_2026_09_29';
+    const already = db.exec(`SELECT 1 FROM one_time_migrations WHERE migration_key = '${MIGRATION_KEY}'`);
+    if (!already.length || !already[0].values.length) {
+      // 3-step rename-through-a-placeholder swap — sidesteps the
+      // UNIQUE(product_id, location) constraint entirely (no two rows
+      // ever collide on the same name mid-swap) and correctly handles a
+      // product that only has a row at ONE of the two locations (that
+      // row just moves fully to the other name, which is exactly what
+      // "swap" should do when there's nothing on the other side yet).
+      db.run("UPDATE inventory_levels SET location = '__hougang_mega_swap_tmp__' WHERE location = 'Hougang'");
+      db.run("UPDATE inventory_levels SET location = 'Hougang' WHERE location = 'Mega'");
+      db.run("UPDATE inventory_levels SET location = 'Mega' WHERE location = '__hougang_mega_swap_tmp__'");
+      db.run(`INSERT INTO one_time_migrations (migration_key) VALUES ('${MIGRATION_KEY}')`);
+      console.log('✅ One-time Hougang/Mega current-stock swap applied');
+    }
+  } catch(e) { console.error('⚠️  Hougang/Mega qty swap check failed:', e.message); }
+
   console.log('✅ Schema ready');
 }
 

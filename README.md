@@ -1,46 +1,51 @@
-# Pawvy App — Hotfix: Inventory showing 0 at Mega and Hougang after main merge
+# Pawvy App — Hotfix: Hougang/Mega current stock levels swapped
 
-## What broke
+## What was wrong
 
-When the warehouse rename (Storhub → Hougang, Home → Mega) originally shipped on
-16 Sep 2026, it included a one-time data migration in `server/database.js` that
-renames every existing `inventory_levels` / `inventory_movements` /
-`inventory_adjustments` / `inventory` / `restock_checklists` / `shipments` row
-from the old location names to the new ones, on every server startup.
+The earlier warehouse-rename fix carried the old `Storhub`→`Hougang` and
+`Home`→`Mega` quantities straight across, 1:1, name-for-name. That assumed
+the old `Storhub`/`Home` location values already matched physical reality —
+but they didn't. You confirmed this with a live before/after count: SKU 8009
+physically had 30 units at the **Mega** counter, but the system showed
+Hougang=30 / Mega=0, and after ringing up 1 unit sold (which correctly
+deducts from Mega), it went to Mega=-1 instead of 29.
 
-A later commit (21 Sep 2026, "Remove AU market; add Online RRP…") edited the
-same area of `database.js` and that migration block was accidentally dropped —
-not removed on purpose, just lost in the edit. It never ran again after that.
+So the *quantities* under Hougang and Mega needed a one-time swap — separate
+from the rename itself, which was correct (Mega is genuinely the operational
+hub, Hougang the warehouse; sales/consignment correctly deduct from Mega;
+shipments correctly default into Mega; Restock Checklist's Hougang→Mega
+"common" direction is correctly labelled — none of that changes).
 
-The app code itself (routes, Inventory page) had already been fully switched
-over to query `'Hougang'` / `'Mega'` since the 16 Sep commit. So after your
-merge to `main` today, the server started up, found no rows under those new
-location names (your real stock was still sitting under the old `'Storhub'` /
-`'Home'` labels), and every product read back as 0 at both locations.
-
-**No inventory data was lost.** The quantities were never touched — they were
-just sitting under the old location labels the app had stopped looking for.
+**Scope, per your instruction:** this only swaps the current on-hand
+quantities (`inventory_levels` — the "Stock Levels" page). Historical
+Restock/Sale/Transfer/Write-off log entries are left exactly as they are —
+nothing in `inventory_movements`, `inventory_adjustments`, shipments'
+received-warehouse default, or Restock Checklist directions is touched.
 
 ## The fix
 
-`server/database.js` — restored the missing migration block, with one safety
-upgrade: if any product already has *both* an old-label row and a new-label
-row (which could happen if any restock/sale was logged against Hougang/Mega
-in the window between the merge and this fix), the fix merges the quantities
-into the new-label row instead of raising a duplicate-key error, then renames
-everything else with no collision. It's safe to run on every server startup,
-exactly like the original design — the first run does the real work, every
-run after that is a no-op.
+`server/database.js` — added a **one-time** swap of the `inventory_levels`
+quantities between Hougang and Mega, for every product. It:
 
-Verified: cold `npm run build` in `client/`, plus a full backend smoke test —
-spun up the real server against a copy of production-shaped data with
-injected legacy rows (including one deliberately collision-prone product),
-confirmed quantities come back correctly labelled and unchanged in total, and
-confirmed the migration is a clean no-op on a second startup.
+- Uses a 3-step rename-through-a-placeholder so it can never collide with
+  the `UNIQUE(product_id, location)` constraint, even where a product only
+  has a row at one of the two locations (that row just moves fully to the
+  other name, which is the correct behaviour).
+- Is guarded by a tiny `one_time_migrations` marker table so it runs
+  **exactly once** — unlike the earlier rename fix, a swap is NOT safe to
+  re-run on every startup (running it twice would flip the numbers straight
+  back to wrong), so this needed different, one-shot-safe handling.
+
+Verified with a full backend smoke test: spun up the real server against
+injected pre-swap data covering all three shapes — a product with only a
+Hougang row (your 8009/8467 case), a product with both rows, and a product
+with only a Mega row — confirmed every case swaps correctly, and confirmed
+restarting the server a second time does **not** re-swap (marker correctly
+prevents it). Also did a cold `client/` build to confirm nothing else broke.
 
 ## Apply this
 
-This only touches one file. In your `pawvy-app` folder:
+One file again. In your `pawvy-app` folder:
 
 ```
 git checkout main
@@ -52,15 +57,12 @@ Copy `server/database.js` from this zip over your local
 
 ```
 git add server/database.js
-git commit -m "Hotfix: restore warehouse-rename data migration dropped in a later commit (fixes inventory showing 0 at Mega/Hougang)"
+git commit -m "Hotfix: one-time swap of Hougang/Mega current stock quantities (confirmed by physical count)"
 git push origin main
 ```
 
-Railway will redeploy `main` automatically. The migration runs as part of
-normal server startup — no manual database step needed. Once it's deployed,
-refresh the Inventory page and your Mega/Hougang quantities should be back.
-
-Then bring `staging` back in sync so it doesn't drift from `main`:
+Railway redeploys automatically; the swap runs once during that startup —
+no manual database step needed. Then sync staging:
 
 ```
 git checkout staging
@@ -70,11 +72,12 @@ git push origin staging
 
 ## Test checklist after deploy
 
-- [ ] Inventory page: spot-check a few products you know the real stock for —
-      Hougang and Mega quantities should match what you expect, not 0
-- [ ] Total stock (Hougang + Mega + consignment) looks right on a product or
-      two you can verify by memory
-- [ ] Try a restock or transfer on one product to confirm read/write still
-      works normally post-fix
-- [ ] Check Railway's deploy log for `✅ Schema ready` with no errors right
-      after `✅ Loaded database`
+- [ ] Check Railway's deploy log for `✅ One-time Hougang/Mega current-stock
+      swap applied` right after `✅ Loaded database` — confirms it ran
+- [ ] Inventory page: 8009 and 8467 (and a few others) should now show the
+      correct physical counts under Mega, not Hougang
+- [ ] Record a test sale on a SKU you know the physical Mega count for —
+      confirm the deduction lands on the right starting number this time
+- [ ] Redeploy once more (or restart the Railway service) and re-check the
+      same SKUs — numbers should be unchanged, confirming the swap didn't
+      fire a second time
