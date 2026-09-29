@@ -1,57 +1,80 @@
-# Pawvy App — Sales Ledger fix: stray "0" + red-highlight instead of dot
+# Pawvy App — Hotfix: Inventory showing 0 at Mega and Hougang after main merge
 
-## What changed
-One file: `client/src/pages/Sales.jsx`
+## What broke
 
-Two fixes to the Product column of the Sales Ledger table:
+When the warehouse rename (Storhub → Hougang, Home → Mega) originally shipped on
+16 Sep 2026, it included a one-time data migration in `server/database.js` that
+renames every existing `inventory_levels` / `inventory_movements` /
+`inventory_adjustments` / `inventory` / `restock_checklists` / `shipments` row
+from the old location names to the new ones, on every server startup.
 
-1. **Fixed the stray "0" text.** `mailing_required` comes back from the
-   database as the number `0` or `1`, not `true`/`false`. The condition that
-   decides whether to show the mail icon button was a raw `||` chain
-   (`s.mailing_name || ... || s.mailing_required`) — when every field was
-   falsy, the chain's last operand (`0`) was returned and React rendered it
-   as literal text. It's now wrapped in `Boolean(...)`, so it always
-   evaluates to a real `true`/`false` and never leaks a `0` into the page.
+A later commit (21 Sep 2026, "Remove AU market; add Online RRP…") edited the
+same area of `database.js` and that migration block was accidentally dropped —
+not removed on purpose, just lost in the edit. It never ran again after that.
 
-2. **Replaced the red dot with red product-name text.** Per your request,
-   the small red dot badge on the mail icon is removed entirely. Instead,
-   whenever a line has `mailing_required` set, the product name text itself
-   (the "Product" column, e.g. "BetterBone · Grain-Free") is rendered in red
-   (`#f87171`, bold) — so the whole row is obviously flagged at a glance,
-   no dot required. The mail icon itself also switches to red when flagged,
-   for consistency; the icon's tooltip still says "Mailing required — not
-   yet sent."
+The app code itself (routes, Inventory page) had already been fully switched
+over to query `'Hougang'` / `'Mega'` since the 16 Sep commit. So after your
+merge to `main` today, the server started up, found no rows under those new
+location names (your real stock was still sitting under the old `'Storhub'` /
+`'Home'` labels), and every product read back as 0 at both locations.
 
-Nothing else changed — same mail-icon click behavior (opens the
-Customer & Mailing Details modal), same Edit Sale Details checkbox to
-untoggle mailing_required once you've mailed the item, same backend/API.
+**No inventory data was lost.** The quantities were never touched — they were
+just sitting under the old location labels the app had stopped looking for.
 
-## How to apply (staging)
+## The fix
 
-```bash
-git checkout staging
-git pull origin staging
+`server/database.js` — restored the missing migration block, with one safety
+upgrade: if any product already has *both* an old-label row and a new-label
+row (which could happen if any restock/sale was logged against Hougang/Mega
+in the window between the merge and this fix), the fix merges the quantities
+into the new-label row instead of raising a duplicate-key error, then renames
+everything else with no collision. It's safe to run on every server startup,
+exactly like the original design — the first run does the real work, every
+run after that is a no-op.
+
+Verified: cold `npm run build` in `client/`, plus a full backend smoke test —
+spun up the real server against a copy of production-shaped data with
+injected legacy rows (including one deliberately collision-prone product),
+confirmed quantities come back correctly labelled and unchanged in total, and
+confirmed the migration is a clean no-op on a second startup.
+
+## Apply this
+
+This only touches one file. In your `pawvy-app` folder:
+
+```
+git checkout main
+git pull origin main
 ```
 
-Copy `client/src/pages/Sales.jsx` from this zip into your repo at the same
-path (overwrite the existing file), then:
+Copy `server/database.js` from this zip over your local
+`pawvy-app/server/database.js`, then:
 
-```bash
-git add client/src/pages/Sales.jsx
-git commit -m "Sales Ledger: fix stray 0 text, red-highlight product name instead of dot for mailing-required rows"
+```
+git add server/database.js
+git commit -m "Hotfix: restore warehouse-rename data migration dropped in a later commit (fixes inventory showing 0 at Mega/Hougang)"
+git push origin main
+```
+
+Railway will redeploy `main` automatically. The migration runs as part of
+normal server startup — no manual database step needed. Once it's deployed,
+refresh the Inventory page and your Mega/Hougang quantities should be back.
+
+Then bring `staging` back in sync so it doesn't drift from `main`:
+
+```
+git checkout staging
+git merge main
 git push origin staging
 ```
 
-## Test checklist
-- [ ] Sales Ledger loads with no visible "0" text anywhere in the Product
-      column, for any row.
-- [ ] A row with `mailing_required` unset shows the product name in normal
-      color, with the mail icon only appearing if there's other mailing
-      info to view (unchanged from before).
-- [ ] A row with `mailing_required` set (e.g. record a POS sale with the
-      "Mailing required?" checkbox ticked) shows the product name in red,
-      bold — no dot anywhere.
-- [ ] Clicking the mail icon still opens the same modal with mailing
-      details and the "Mailing required — not yet sent" status line.
-- [ ] Using the pencil (Edit Sale Details) icon to untick "Mailing
-      required" flips the row back to normal color immediately after save.
+## Test checklist after deploy
+
+- [ ] Inventory page: spot-check a few products you know the real stock for —
+      Hougang and Mega quantities should match what you expect, not 0
+- [ ] Total stock (Hougang + Mega + consignment) looks right on a product or
+      two you can verify by memory
+- [ ] Try a restock or transfer on one product to confirm read/write still
+      works normally post-fix
+- [ ] Check Railway's deploy log for `✅ Schema ready` with no errors right
+      after `✅ Loaded database`

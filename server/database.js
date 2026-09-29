@@ -1230,6 +1230,52 @@ function createSchema() {
   // client/src/pages/Sales.jsx.
   try { db.run("ALTER TABLE sales ADD COLUMN mailing_required INTEGER DEFAULT 0"); } catch(e) {}
 
+  // Warehouse rename (Sep 2026, per KT) — Storhub (pure warehouse) moved
+  // and is now called Hougang; Home (operational hub — where sales, POS,
+  // and consignment placements deduct from) is now called Mega, since
+  // Mega is taking over that operational-hub role going forward. This
+  // updates every existing row so historical records read correctly
+  // under the new names — WHERE clauses make each line a no-op once
+  // already migrated, safe to run on every startup.
+  //
+  // RESTORED Sep 2026 — this block was accidentally dropped from an
+  // intervening commit (never deleted on purpose) and so never ran
+  // against production. The app code was already renamed to query
+  // 'Hougang'/'Mega', but production's rows were still labelled
+  // 'Storhub'/'Home', so every product read back as 0 stock at both
+  // locations. No inventory data was ever lost — restoring this
+  // migration re-labels the existing rows and the real quantities
+  // come straight back.
+  //
+  // inventory_levels carries a UNIQUE(product_id, location) constraint,
+  // so a plain rename could collide if a product already picked up a
+  // fresh 'Hougang'/'Mega' row from activity recorded after the botched
+  // deploy (e.g. a restock logged while this bug was live) while its
+  // real historical stock still sits under 'Storhub'/'Home'. Handle
+  // that by merging quantities into the new-name row first, then
+  // renaming everything that's left with no collision.
+  try {
+    db.run(`UPDATE inventory_levels SET qty = qty + (
+      SELECT qty FROM inventory_levels old WHERE old.product_id = inventory_levels.product_id AND old.location = 'Storhub'
+    ) WHERE location = 'Hougang' AND product_id IN (SELECT product_id FROM inventory_levels WHERE location = 'Storhub')`);
+    db.run(`DELETE FROM inventory_levels WHERE location = 'Storhub' AND product_id IN (SELECT product_id FROM inventory_levels WHERE location = 'Hougang')`);
+    db.run(`UPDATE inventory_levels SET qty = qty + (
+      SELECT qty FROM inventory_levels old WHERE old.product_id = inventory_levels.product_id AND old.location = 'Home'
+    ) WHERE location = 'Mega' AND product_id IN (SELECT product_id FROM inventory_levels WHERE location = 'Home')`);
+    db.run(`DELETE FROM inventory_levels WHERE location = 'Home' AND product_id IN (SELECT product_id FROM inventory_levels WHERE location = 'Mega')`);
+  } catch(e) {}
+  try { db.run("UPDATE inventory_levels SET location = 'Hougang' WHERE location = 'Storhub'"); } catch(e) {}
+  try { db.run("UPDATE inventory_levels SET location = 'Mega' WHERE location = 'Home'"); } catch(e) {}
+  try { db.run("UPDATE inventory_movements SET location = 'Hougang' WHERE location = 'Storhub'"); } catch(e) {}
+  try { db.run("UPDATE inventory_movements SET location = 'Mega' WHERE location = 'Home'"); } catch(e) {}
+  try { db.run("UPDATE inventory_adjustments SET location = 'Hougang' WHERE location = 'Storhub'"); } catch(e) {}
+  try { db.run("UPDATE inventory_adjustments SET location = 'Mega' WHERE location = 'Home'"); } catch(e) {}
+  try { db.run("UPDATE inventory SET location = 'Hougang' WHERE location = 'Storhub'"); } catch(e) {}
+  try { db.run("UPDATE inventory SET location = 'Mega' WHERE location = 'Home'"); } catch(e) {}
+  try { db.run("UPDATE restock_checklists SET direction = 'hougang_to_mega' WHERE direction = 'storhub_to_home'"); } catch(e) {}
+  try { db.run("UPDATE restock_checklists SET direction = 'mega_to_hougang' WHERE direction = 'home_to_storhub'"); } catch(e) {}
+  try { db.run("UPDATE shipments SET received_warehouse = 'Hougang' WHERE received_warehouse = 'Storhub'"); } catch(e) {}
+
   console.log('✅ Schema ready');
 }
 
