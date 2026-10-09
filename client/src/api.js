@@ -1,5 +1,34 @@
 const BASE = '/api';
 
+// Authenticated binary download (ZIP/XLSX exports, etc.) — same PIN-token
+// auth as req() below, but returns a Blob instead of parsing JSON. A plain
+// `window.location.href` navigation to a PIN-gated route can't carry the
+// Authorization header (browsers only attach that to a real fetch/XHR), so
+// anything downloadable from a gated route MUST go through this, not a
+// direct link — see server/index.js's PIN-gate comment for why.
+async function downloadFile(path) {
+  const token = localStorage.getItem('pawvy_auth_token');
+  const headers = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const res = await fetch(`${BASE}${path}`, { headers });
+  if (res.status === 401 && !path.startsWith('/auth')) {
+    localStorage.removeItem('pawvy_auth_token');
+    localStorage.removeItem('pawvy_auth_expires');
+    window.dispatchEvent(new Event('pawvy:session-expired'));
+  }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || res.statusText);
+  }
+
+  const blob = await res.blob();
+  const cd = res.headers.get('Content-Disposition') || '';
+  const match = cd.match(/filename="?([^"]+)"?/i);
+  const filename = match ? match[1] : 'download';
+  return { blob, filename };
+}
+
 async function req(method, path, body) {
   const token = localStorage.getItem('pawvy_auth_token');
   const headers = body ? { 'Content-Type': 'application/json' } : {};
@@ -28,6 +57,7 @@ export const api = {
   put:    (path, body)  => req('PUT',    path, body),
   patch:  (path, body)  => req('PATCH',  path, body),
   delete: (path)        => req('DELETE', path),
+  downloadFile,
 };
 
 const qs = (q) => q ? '?' + new URLSearchParams(q) : '';

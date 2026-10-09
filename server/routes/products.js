@@ -1,5 +1,7 @@
 const { Router } = require('express');
 const archiver = require('archiver');
+const ExcelJS = require('exceljs');
+const sizeOf = require('image-size');
 const { withEffectivePrice } = require('../lib/pricing');
 const { uploadBuffer, getObjectStream, decodeDataUrl, buildImageKey, deleteObject } = require('../lib/bucket');
 const { NEED_TAGS } = require('../lib/needTags');
@@ -105,6 +107,128 @@ module.exports = function(db) {
     }
 
     archive.finalize();
+  });
+
+  // ── Export partner product sheet (.xlsx, embedded photos) ──────────
+  // Built for the one-sheet format a business partner needs: Brand,
+  // Item Series, Variation, Barcode, RRP (SGD), RRP Online (SGD),
+  // Description, and the actual product photo embedded in the cell
+  // (not a link/filename). Respects the same brand_id / search /
+  // active filters as the main products list and the Export CSV
+  // button, so "Export for Partner" exports exactly what's currently
+  // filtered/visible on the Products & Pricing tab.
+  router.get('/export-partner-sheet', async (req, res) => {
+    const { brand_id, active, search } = req.query;
+    let sql = `
+      SELECT p.id, p.item_series, p.variation, p.barcode,
+        p.price_rrp_sg, p.price_rrp_online_sg, p.description,
+        p.image_data, p.image_url,
+        b.name AS brand_name
+      FROM products p JOIN brands b ON b.id = p.brand_id
+      WHERE 1=1
+    `;
+    const params = [];
+    if (brand_id) { sql += ' AND p.brand_id = ?'; params.push(brand_id); }
+    if (active !== undefined) { sql += ' AND p.is_active = ?'; params.push(active === 'true' ? 1 : 0); }
+    if (search) {
+      sql += ' AND (p.item_series LIKE ? OR p.variation LIKE ? OR p.barcode LIKE ?)';
+      params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    }
+    sql += ' ORDER BY b.name, p.item_series, p.variation';
+    const products = db.query(sql, params);
+
+    if (!products.length) {
+      return res.status(404).json({ error: 'No products match the current filters.' });
+    }
+
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Products');
+
+    sheet.columns = [
+      { header: 'Brand', key: 'brand', width: 18 },
+      { header: 'Item Series', key: 'item_series', width: 24 },
+      { header: 'Variation', key: 'variation', width: 18 },
+      { header: 'Barcode', key: 'barcode', width: 16 },
+      { header: 'RRP (SGD)', key: 'rrp', width: 12 },
+      { header: 'RRP Online (SGD)', key: 'rrp_online', width: 16 },
+      { header: 'Description', key: 'description', width: 40 },
+      { header: 'Product Image', key: 'image', width: 18 },
+    ];
+    sheet.getRow(1).font = { bold: true };
+
+    const IMG_BOX_PX = 110; // product photo is scaled to fit inside this square, aspect preserved
+    const ROW_HEIGHT_PT = 85; // tall enough for the 110px photo box plus margin
+
+    for (let i = 0; i < products.length; i++) {
+      const p = products[i];
+      const rowNumber = i + 2; // row 1 is the header
+
+      sheet.addRow({
+        brand: p.brand_name,
+        item_series: p.item_series,
+        variation: p.variation || '',
+        barcode: p.barcode || '',
+        rrp: p.price_rrp_sg != null ? p.price_rrp_sg : '',
+        rrp_online: p.price_rrp_online_sg != null ? p.price_rrp_online_sg : '',
+        description: p.description || '',
+        image: '',
+      });
+      sheet.getRow(rowNumber).height = ROW_HEIGHT_PT;
+
+      // Fetch the actual photo — same source pattern as /export-images:
+      // image_url -> bucket stream, image_data -> legacy base64 fallback.
+      // Any failure here just leaves that one row's image cell blank;
+      // it never fails the whole export.
+      let buffer = null, ext = null;
+      try {
+        if (p.image_url) {
+          const key = p.image_url.replace(/^\/api\/uploads\//, '');
+          const obj = await getObjectStream(key);
+          const chunks = [];
+          for await (const chunk of obj.Body) chunks.push(chunk);
+          buffer = Buffer.concat(chunks);
+          const rawExt = (obj.ContentType || 'image/jpeg').split('/')[1] || 'jpeg';
+          ext = rawExt === 'jpg' ? 'jpeg' : rawExt;
+        } else if (p.image_data) {
+          const decoded = decodeDataUrl(p.image_data);
+          buffer = decoded.buffer;
+          ext = decoded.extension === 'jpg' ? 'jpeg' : decoded.extension;
+        }
+      } catch {
+        buffer = null;
+      }
+
+      if (buffer && ['jpeg', 'png', 'gif'].includes(ext)) {
+        try {
+          // Scale to fit inside the box while preserving aspect ratio,
+          // rather than stretching every photo to a fixed square.
+          let w = IMG_BOX_PX, h = IMG_BOX_PX;
+          try {
+            const dims = sizeOf(buffer);
+            if (dims.width && dims.height) {
+              const scale = Math.min(IMG_BOX_PX / dims.width, IMG_BOX_PX / dims.height);
+              w = Math.max(1, Math.round(dims.width * scale));
+              h = Math.max(1, Math.round(dims.height * scale));
+            }
+          } catch { /* fall back to the fixed square above */ }
+
+          const imageId = workbook.addImage({ buffer, extension: ext });
+          sheet.addImage(imageId, {
+            tl: { col: 7, row: rowNumber - 1 },
+            ext: { width: w, height: h },
+            editAs: 'oneCell',
+          });
+        } catch {
+          // malformed image data — skip the photo, row's text data still exports fine
+        }
+      }
+    }
+
+    const filename = `pawvy-partner-products-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    await workbook.xlsx.write(res);
+    res.end();
   });
 
   // GET single product

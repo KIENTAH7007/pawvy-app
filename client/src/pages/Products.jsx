@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Download, Trash2 } from 'lucide-react';
-import { productsApi, brandsApi, waitlistAdminApi } from '../api';
+import { api, productsApi, brandsApi, waitlistAdminApi } from '../api';
 import { Page, Select, Input, Badge, Btn, Modal, FormRow, Divider } from '../components/ui';
 import { NEED_TAG_OPTIONS } from '../constants';
 import { localDateStr } from '../utils/dates';
@@ -201,6 +201,57 @@ export default function Products() {
     URL.revokeObjectURL(url);
   }
 
+  // Shared by any export that has to round-trip through the server (image
+  // ZIP, partner XLSX) — saves a Blob the server returned exactly like the
+  // CSV export above does, just factored out since two buttons need it now.
+  function saveBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  const [exportingImages, setExportingImages] = useState(false);
+  async function exportProductImages() {
+    setExportingImages(true);
+    try {
+      const { blob, filename } = await api.downloadFile('/products/export-images');
+      saveBlob(blob, filename || `pawvy_product_images.zip`);
+    } catch (e) {
+      alert(`Image export failed: ${e.message || 'unknown error'}`);
+    } finally {
+      setExportingImages(false);
+    }
+  }
+
+  // Partner-facing spreadsheet (Brand, Item Series, Variation, Barcode, RRP,
+  // RRP Online, Description, Product Image with the actual photo embedded)
+  // — built server-side so the real image bytes can be fetched from the
+  // bucket and dropped into the sheet. Respects whatever brand/search/
+  // archived filters are currently applied, same as Export CSV, so KT can
+  // filter to one brand before exporting to send a partner just their line.
+  const [exportingPartnerSheet, setExportingPartnerSheet] = useState(false);
+  async function exportPartnerSheet() {
+    setExportingPartnerSheet(true);
+    try {
+      const q = {};
+      if (filterBrand) q.brand_id = filterBrand;
+      if (search)      q.search   = search;
+      if (!showArchived) q.active = 'true';
+      const qs = new URLSearchParams(q).toString();
+      const { blob, filename } = await api.downloadFile(`/products/export-partner-sheet${qs ? '?' + qs : ''}`);
+      saveBlob(blob, filename || `pawvy-partner-products-${localDateStr()}.xlsx`);
+    } catch (e) {
+      alert(`Partner sheet export failed: ${e.message || 'unknown error'}`);
+    } finally {
+      setExportingPartnerSheet(false);
+    }
+  }
+
   return (
     <Page title="PRODUCTS & PRICING" subtitle={`${activeCount} active SKUs${archivedCount > 0 && showArchived ? ` + ${archivedCount} archived` : ''}`}
       action={
@@ -208,8 +259,11 @@ export default function Products() {
           <Btn variant="ghost" size="sm" onClick={exportProductsCsv}>
             <Download size={13} /> Export CSV
           </Btn>
-          <Btn variant="ghost" size="sm" onClick={() => { window.location.href = '/api/products/export-images'; }}>
-            <Download size={13} /> Export Images
+          <Btn variant="ghost" size="sm" onClick={exportProductImages} disabled={exportingImages}>
+            <Download size={13} /> {exportingImages ? 'Exporting…' : 'Export Images'}
+          </Btn>
+          <Btn variant="ghost" size="sm" onClick={exportPartnerSheet} disabled={exportingPartnerSheet}>
+            <Download size={13} /> {exportingPartnerSheet ? 'Exporting…' : 'Export for Partner'}
           </Btn>
           <Btn variant="ghost" size="sm" onClick={() => { setBrandForm({ name:'', color: BRAND_COLORS[0] }); setModal('addBrand'); }}>
             + Add Brand

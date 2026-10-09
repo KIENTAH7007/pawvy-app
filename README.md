@@ -1,90 +1,132 @@
-# Pawvy App — Hotfix: Order Portal showing everything as unavailable
+# Pawvy App — Export Images Fix + Export for Partner
 
-## Root cause (this explains all three bugs from today)
+## What's in this delivery
 
-Traced this back to one single accident, three days after the original
-warehouse rename: the "Order Portal: optional box-quantity nudge" commit
-(18 Sep) was built from a **stale, pre-rename copy** of the code — one taken
-before the 16 Sep Storhub→Hougang / Home→Mega rename had merged in. Saving
-that stale copy's changes silently reverted the rename in two files back to
-the old location names, alongside the legitimate box-quantity feature:
+1. **Bug fix**: the "Export Images" button on Products & Pricing was failing
+   with `{"error":"Not logged in."}`.
+2. **New feature**: a new "Export for Partner" button on Products & Pricing
+   that downloads a spreadsheet (`.xlsx`) formatted for a business partner —
+   Brand, Item Series, Variation, Barcode, RRP (SGD), RRP Online (SGD),
+   Description, and an **actual embedded product photo** in the last column
+   (not a link or filename).
 
-1. `server/database.js` — the data-migration block that renames existing
-   rows got dropped entirely. **Fixed earlier today** (the inventory-showing-0
-   hotfix).
-2. `server/database.js` — three schema DEFAULT values (shipment intake
-   warehouse, restock checklist direction, adjustment location) also got
-   reverted back to `'Storhub'`/`'Home'`. Low-impact since the app always
-   passes an explicit value rather than relying on these defaults, but
-   fixed now for consistency.
-3. `server/routes/portal.js` — **this is today's bug.** Every Order Portal
-   query (catalogue, top-sellers, order submission) joins
-   `inventory_levels` against the location names `'Home'` and `'Storhub'`.
-   Since your actual stock has been living under `'Hougang'`/`'Mega'` since
-   the rename, every single one of those joins matched nothing — every
-   product's computed stock was 0, so everything showed "Currently
-   unavailable," regardless of real stock.
+Both buttons respect whatever Brand/Search/Show Archived filters are
+currently applied on the page — same as Export CSV already does.
 
-I also swept the rest of the codebase for the same pattern and found one
-more, lower-traffic spot: the CSV "2026 baseline import" endpoint in
-`server/routes/inventory.js` was writing new opening-stock rows under
-`'Storhub'`/`'Home'` too. Fixed for consistency, though it's a one-off admin
-tool that isn't part of normal day-to-day flow.
+---
 
-## The fix
+## Root cause of the Export Images bug
 
-Three files this time:
+Every `/api/products/*` route requires a login token, sent as an
+`Authorization: Bearer <token>` header. The old "Export Images" button
+triggered the download with a plain `window.location.href = '/api/products/export-images'`
+navigation — but a browser navigation (or an `<img>` tag) can **never** attach
+a custom header like that. Only a real `fetch`/`XHR` call can. So the request
+reached the server with no token at all, and the login check correctly
+rejected it with `{"error":"Not logged in."}`.
 
-- `server/routes/portal.js` — all three endpoints (`/catalogue`,
-  `/top-sellers`, `/orders`) now join against `'Mega'`/`'Hougang'`, matching
-  every other part of the app (Website, POS already query these correctly).
-- `server/database.js` — the three leftover schema defaults corrected back
-  to `'Mega'`/`'hougang_to_mega'`.
-- `server/routes/inventory.js` — the baseline-import endpoint now writes to
-  `'Hougang'`/`'Mega'`.
+The fix adds a proper authenticated-download helper (`api.downloadFile()`
+in `client/src/api.js`) that does a real `fetch` with the auth header, reads
+the response as a `Blob`, and triggers the save via a synthetic
+`<a download>` click. "Export Images" now uses this, and the new
+"Export for Partner" button is built the same way from day one.
 
-Verified with a full backend smoke test against the real server: seeded one
-product with real stock split across Mega(20)+Hougang(5), and two genuinely
-out-of-stock products, then hit the actual `/api/portal/catalogue` endpoint
-over HTTP — the in-stock product correctly showed `"available"`, the two
-empty ones correctly showed `"out_of_stock"` (previously all three would
-have shown out of stock). Also tested the order-submission hard-cap: an
-order for more than the available 25 units was correctly rejected with the
-right number, and an order within stock succeeded. Cold `npm run build`
-across all three frontends (client, POS, portal) passes clean.
+## How the new Partner Export works
 
-## Apply this
+A new server route, `GET /api/products/export-partner-sheet`, builds the
+`.xlsx` on the fly:
 
-```
+- Pulls products (with the same `brand_id` / `search` / `active` filters the
+  page is currently using) and writes one row per product with the 7 text
+  columns plus an empty 8th "Product Image" column.
+- Fetches each product's actual photo — from the image bucket if the
+  product has `image_url`, or from the older base64 `image_data` column as
+  a fallback — exactly the same two-path lookup the existing "Export
+  Images" ZIP button already uses.
+- Embeds the real photo into the Product Image cell (scaled to fit a small
+  box, aspect ratio preserved), not a filename or a link.
+- A product with no photo, or an image that fails to load for any reason,
+  just gets a blank image cell — it never fails the whole export.
+
+This needed a new dependency, **`exceljs`**, because the existing `xlsx`
+package in this project (SheetJS, community edition) can't embed images
+into cells. A second new dependency, **`image-size`**, is used only to read
+each photo's width/height so it can be scaled into the cell without
+stretching/distorting it.
+
+---
+
+## Files changed/added
+
+- `client/src/api.js` — added `downloadFile()`, a proper authenticated
+  blob-download helper.
+- `client/src/pages/Products.jsx` — fixed the Export Images button to use
+  the new helper; added the new "Export for Partner" button and its
+  handler.
+- `server/routes/products.js` — added the new
+  `GET /api/products/export-partner-sheet` route.
+- `package.json` / `package-lock.json` — added `exceljs` and `image-size`
+  as dependencies.
+
+Nothing else was touched. No database schema changes, no changes to any
+other route.
+
+---
+
+## Tested before delivery
+
+- Started the server locally against a copy of the real database, logged in
+  with a real PIN, and hit both endpoints with real HTTP requests
+  (authenticated and unauthenticated) via `curl`.
+- Confirmed `export-images` still returns a valid ZIP and correctly 401s
+  without a token.
+- Confirmed `export-partner-sheet` returns a valid `.xlsx` with the right 8
+  columns, that the brand/search filters correctly narrow the rows, and
+  that a product's seeded photo lands embedded in the correct row (verified
+  by inspecting the generated file's internal XML directly, not just that
+  a file came back).
+- Cold `npm run build` across all three frontends (client, portal, POS) —
+  all three built clean.
+
+---
+
+## How to apply
+
+From your local `pawvy-app` checkout:
+
+```bash
 git checkout main
 git pull origin main
 ```
 
-Copy `server/database.js`, `server/routes/portal.js`, and
-`server/routes/inventory.js` from this zip over your local files, then:
+Copy the files from this zip into your repo, preserving their folder
+structure (overwrite the existing files at those same paths):
 
+- `client/src/api.js`
+- `client/src/pages/Products.jsx`
+- `server/routes/products.js`
+- `package.json`
+- `package-lock.json`
+
+Then install the two new dependencies (this also makes sure your local
+`node_modules` matches the updated lock file):
+
+```bash
+npm install
 ```
-git add server/database.js server/routes/portal.js server/routes/inventory.js
-git commit -m "Hotfix: Order Portal availability was joining against pre-rename location names (Home/Storhub), showing everything as unavailable"
+
+Commit and push:
+
+```bash
+git add client/src/api.js client/src/pages/Products.jsx server/routes/products.js package.json package-lock.json
+git commit -m "Fix Export Images auth bug; add Export for Partner spreadsheet"
 git push origin main
 ```
 
-Railway redeploys automatically — no manual database step needed (this fix
-is pure query/schema-default logic, not a data migration). Then sync
-staging:
+Railway will redeploy automatically from `main` as usual. No other steps,
+migrations, or environment variables are needed — this uses the same image
+bucket and auth setup already in place.
 
-```
-git checkout staging
-git merge main
-git push origin staging
-```
-
-## Test checklist after deploy
-
-- [ ] Open the Order Portal — products you know are in stock should now
-      show as Available / Low Stock instead of "Currently unavailable"
-- [ ] Try submitting a test order within stock — should succeed
-- [ ] Try ordering more than what's available on one SKU — should be
-      rejected with the correct "Only N units available" message
-- [ ] Top Sellers section on Review Your Order — should show real upsell
-      products again, not an empty section
+Once it's live, on Products & Pricing you should see two working buttons:
+**Export Images** (now fixed) and **Export for Partner** (new) sitting next
+to Export CSV.
