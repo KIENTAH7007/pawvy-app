@@ -105,16 +105,32 @@ async function rawImage(p) {
 }
 
 // pdfkit only embeds JPEG/PNG, and a raw phone-sized upload would bloat the
-// PDF — so normalise to a modest JPEG (flattened on the cream tile colour).
+// PDF — so normalise to a modest JPEG. Product shots usually have a lot of
+// empty background around the item, which makes the product look small, so
+// we TRIM that uniform border (sharp trim removes only rows/columns that
+// match the background colour — it can never cut into the product itself),
+// then leave a small even margin. If trimming leaves nothing sensible we
+// simply use the original.
 async function loadPhoto(p) {
   try {
     const buf = await rawImage(p);
     if (!buf) return null;
     if (sharp) {
-      return await sharp(buf).rotate()
-        .resize({ width: 800, height: 800, fit: 'inside', withoutEnlargement: true })
-        .flatten({ background: CREAM })
-        .jpeg({ quality: 82 }).toBuffer();
+      const base = sharp(buf).rotate().flatten({ background: '#ffffff' });
+      let pipeline = base;
+      try {
+        const { data, info } = await base.clone().trim({ threshold: 18 }).toBuffer({ resolveWithObject: true });
+        const meta = await base.clone().metadata();
+        // keep the trimmed version only if something real is left of it
+        if (info.width >= 40 && info.height >= 40 && info.width <= meta.width && info.height <= meta.height) {
+          const pad = Math.round(Math.max(info.width, info.height) * 0.04);
+          pipeline = sharp(data).extend({ top: pad, bottom: pad, left: pad, right: pad, background: '#ffffff' });
+        }
+      } catch { /* fall back to the untrimmed image */ }
+      return await pipeline
+        .resize({ width: 900, height: 900, fit: 'inside', withoutEnlargement: false })
+        .flatten({ background: '#ffffff' })
+        .jpeg({ quality: 85 }).toBuffer();
     }
     const isJpg = buf[0] === 0xFF && buf[1] === 0xD8;
     const isPng = buf[0] === 0x89 && buf[1] === 0x50;
@@ -138,20 +154,19 @@ function centerText(doc, str, cx, cy, w) {
   doc.text(str, cx - w / 2, cy - h / 2, { width: w, align: 'center', lineBreak: false });
 }
 
-function drawPhotoTile(doc, x, y, w, h, radius, photo) {
-  doc.save();
-  doc.roundedRect(x, y, w, h, radius).fill(CREAM);
-  doc.restore();
+// Photos sit directly on the white card (product shots are on white, so no
+// visible box and no wasted frame). A missing photo gets a soft cream tile
+// with a faint Pawvy mark so the gap still looks intentional.
+function drawPhoto(doc, x, y, w, h, radius, photo) {
   if (photo) {
     doc.save();
     doc.roundedRect(x, y, w, h, radius).clip();
-    const pad = Math.min(8, w * 0.05);
-    doc.image(photo, x + pad, y + pad, { fit: [w - pad * 2, h - pad * 2], align: 'center', valign: 'center' });
+    doc.image(photo, x + 2, y + 2, { fit: [w - 4, h - 4], align: 'center', valign: 'center' });
     doc.restore();
   } else {
-    // Branded fallback: faint Pawvy mark, so a missing photo still looks intentional.
-    const mh = h * 0.5, mw = mh * (300 / 404);
     doc.save();
+    doc.roundedRect(x, y, w, h, radius).fill(CREAM);
+    const mh = h * 0.5, mw = mh * (300 / 404);
     doc.opacity(0.1);
     doc.image(MARK_PATH, x + (w - mw) / 2, y + (h - mh) / 2, { width: mw, height: mh });
     doc.restore();
@@ -160,9 +175,9 @@ function drawPhotoTile(doc, x, y, w, h, radius, photo) {
 
 function drawHeader(doc) {
   const lh = 38;
-  doc.image(LOGO_PATH, PAD_X, 40, { height: lh });
+  doc.image(LOGO_PATH, PAD_X, 36, { height: lh });
   doc.font('Inter-Medium').fontSize(11).fillColor(GREY);
-  doc.text('BEST SELLERS REPORT', PAD_X, 40 + lh / 2 - 6.5, {
+  doc.text('BEST SELLERS REPORT', PAD_X, 36 + lh / 2 - 6.5, {
     width: CONTENT_W, align: 'right', characterSpacing: 2, lineBreak: false,
   });
 }
@@ -174,12 +189,13 @@ function drawFooter(doc, partnerName) {
   doc.text(text, PAD_X, y, { width: CONTENT_W, align: 'right', lineBreak: false, characterSpacing: 0.4 });
 }
 
-// Podium card: big photo with the rank medal pinned to its corner, then the
-// product title (large) and variation. Card height follows from the photo
-// height, so 1st/2nd/3rd step down naturally.
-const PODIUM_TEXT_H = 38 + 2 + 34;
+// ── Podium ────────────────────────────────────────────────────────
+// Rank medal straddles the card's top edge (classic podium badge, and it
+// never covers the product). Card height follows from the photo height, so
+// 1st / 2nd / 3rd step down naturally.
+const POD = { padX: 10, photoTop: 28, titleH: 60, subH: 34, bottom: 12 };
 function podiumCardHeight(photoH, showUnits) {
-  return 14 + photoH + 10 + PODIUM_TEXT_H + (showUnits ? 20 : 0) + 14;
+  return POD.photoTop + photoH + 8 + POD.titleH + 3 + POD.subH + (showUnits ? 22 : 0) + POD.bottom;
 }
 
 function drawPodiumCard(doc, item, photos, rank, x, panelBottom, w, photoH, orangeMedal, showUnits) {
@@ -189,79 +205,83 @@ function drawPodiumCard(doc, item, photos, rank, x, panelBottom, w, photoH, oran
   doc.roundedRect(x, top, w, cardH + 20, 18).fill(WHITE); // +20 so the bottom corners sit below the clipped panel edge
   doc.restore();
 
-  const ix = x + 14, iw = w - 28, photoTop = top + 14;
-  drawPhotoTile(doc, ix, photoTop, iw, photoH, 12, photos.get(item.id));
+  const ix = x + POD.padX, iw = w - POD.padX * 2, photoTop = top + POD.photoTop;
+  drawPhoto(doc, ix, photoTop, iw, photoH, 10, photos.get(item.id));
 
-  // rank medal pinned to the photo corner
-  const mr = 17, mx = ix + 10 + mr, my = photoTop + 10 + mr;
-  doc.circle(mx, my, mr).lineWidth(2).fillAndStroke(orangeMedal ? ORANGE : NAVY, WHITE);
-  doc.font('Fraunces-Bold').fontSize(18).fillColor(orangeMedal ? WHITE : CREAM);
+  // medal on the top edge, ringed in the panel's navy
+  const mr = 19, mx = x + w / 2, my = top;
+  doc.circle(mx, my, mr).lineWidth(3).fillAndStroke(orangeMedal ? ORANGE : CREAM, NAVY);
+  doc.font('Fraunces-Bold').fontSize(20).fillColor(orangeMedal ? WHITE : NAVY);
   centerText(doc, String(rank), mx, my, mr * 2);
 
-  const nameTop = photoTop + photoH + 10;
-  doc.font('Inter-Semi').fontSize(15.5).fillColor(NAVY);
-  doc.text(item.item_series, ix, nameTop, { width: iw, align: 'center', height: 38, ellipsis: true, lineGap: 0 });
-  const used = Math.min(38, doc.heightOfString(item.item_series, { width: iw }));
+  const nameTop = photoTop + photoH + 8;
+  doc.font('Inter-Semi').fontSize(17).fillColor(NAVY);
+  doc.text(item.item_series, ix, nameTop, { width: iw, align: 'center', height: POD.titleH, ellipsis: true, lineGap: -1 });
+  const used = Math.min(POD.titleH, doc.heightOfString(item.item_series, { width: iw, lineGap: -1 }));
   if (item.variation) {
-    doc.font('Inter').fontSize(13.5).fillColor(GREY);
-    doc.text(item.variation, ix, nameTop + used + 2, { width: iw, align: 'center', height: 34, ellipsis: true });
+    doc.font('Inter-Medium').fontSize(14.5).fillColor(GREY);
+    doc.text(item.variation, ix, nameTop + used + 3, { width: iw, align: 'center', height: POD.subH, ellipsis: true });
   }
   if (showUnits) {
-    doc.font('Inter-Semi').fontSize(12.5).fillColor(ORANGE);
-    doc.text(`${item.units} units sold`, ix, nameTop + PODIUM_TEXT_H + 2, { width: iw, align: 'center', lineBreak: false });
+    doc.font('Inter-Semi').fontSize(13.5).fillColor(ORANGE);
+    doc.text(`${item.units} units sold`, ix, top + cardH - POD.bottom - 18, { width: iw, align: 'center', lineBreak: false });
   }
 }
 
-// Ranks 4+ : a two-column grid of cards with large thumbnails ("grid"), or —
-// when only a couple of items remain (Top 5) — full-width rows with even
-// bigger photos ("wide").
-const GRID = { h: 88, gap: 8, photo: 72 };
-const WIDE = { h: 124, gap: 10, photo: 108 };
+// ── Ranks 4+ ──────────────────────────────────────────────────────
+// Two-column grid of cards ("grid") with large thumbnails, or — when only a
+// couple of items remain (Top 5) — full-width rows with big photos ("wide").
+const GRID = { h: 94, gap: 8, photo: 82 };
+const WIDE = { h: 150, gap: 12, photo: 134 };
 
 function drawGridCard(doc, item, photos, rank, x, y, w, showUnits) {
   const h = GRID.h;
   doc.roundedRect(x, y, w, h, 14).fill(WHITE);
   doc.font('Fraunces-Bold').fontSize(22).fillColor(NAVY);
-  centerText(doc, String(rank), x + 12 + 15, y + h / 2, 30);
+  centerText(doc, String(rank), x + 10 + 14, y + h / 2, 28);
 
-  const px = x + 46;
-  drawPhotoTile(doc, px, y + (h - GRID.photo) / 2, GRID.photo, GRID.photo, 10, photos.get(item.id));
+  const px = x + 40;
+  drawPhoto(doc, px, y + (h - GRID.photo) / 2, GRID.photo, GRID.photo, 8, photos.get(item.id));
 
-  const tx = px + GRID.photo + 12, tw = x + w - 12 - tx;
-  doc.font('Inter-Semi').fontSize(14.5);
-  const th = Math.min(36, doc.heightOfString(item.item_series, { width: tw }));
-  const sub = [item.variation, showUnits ? `${item.units} units` : null].filter(Boolean).join('  ·  ');
-  const blockH = th + (sub ? 16 : 0);
+  const tx = px + GRID.photo + 10, tw = x + w - 12 - tx;
+  doc.font('Inter-Semi').fontSize(16);
+  const th = Math.min(40, doc.heightOfString(item.item_series, { width: tw, lineGap: -1 }));
+  const subs = [item.variation ? { t: item.variation, orange: false } : null,
+                showUnits ? { t: `${item.units} units`, orange: true } : null].filter(Boolean);
+  const blockH = th + subs.length * 17;
   let ty = y + (h - blockH) / 2;
-  doc.fillColor(NAVY).text(item.item_series, tx, ty, { width: tw, height: 36, ellipsis: true });
-  if (sub) {
-    doc.font('Inter').fontSize(12.5).fillColor(GREY);
-    doc.text(sub, tx, ty + th + 2, { width: tw, lineBreak: false, ellipsis: true });
+  doc.fillColor(NAVY).text(item.item_series, tx, ty, { width: tw, height: 40, ellipsis: true, lineGap: -1 });
+  ty += th + 2;
+  for (const ln of subs) {
+    doc.font(ln.orange ? 'Inter-Semi' : 'Inter-Medium').fontSize(13).fillColor(ln.orange ? ORANGE : GREY);
+    doc.text(ln.t, tx, ty, { width: tw, height: 16, ellipsis: true });
+    ty += 17;
   }
 }
 
 function drawWideRow(doc, item, photos, rank, y, showUnits) {
   const x = PAD_X, w = CONTENT_W, h = WIDE.h;
-  doc.roundedRect(x, y, w, h, 16).fill(WHITE);
-  doc.font('Fraunces-Bold').fontSize(28).fillColor(NAVY);
-  centerText(doc, String(rank), x + 14 + 20, y + h / 2, 40);
+  doc.roundedRect(x, y, w, h, 18).fill(WHITE);
+  doc.font('Fraunces-Bold').fontSize(32).fillColor(NAVY);
+  centerText(doc, String(rank), x + 14 + 22, y + h / 2, 44);
 
-  const px = x + 64;
-  drawPhotoTile(doc, px, y + (h - WIDE.photo) / 2, WIDE.photo, WIDE.photo, 12, photos.get(item.id));
+  const px = x + 68;
+  drawPhoto(doc, px, y + (h - WIDE.photo) / 2, WIDE.photo, WIDE.photo, 10, photos.get(item.id));
 
-  const tx = px + WIDE.photo + 20, tw = x + w - 20 - tx;
-  doc.font('Inter-Semi').fontSize(18);
-  const th = Math.min(46, doc.heightOfString(item.item_series, { width: tw }));
-  const lines = [item.variation, showUnits ? `${item.units} units sold` : null].filter(Boolean);
-  const blockH = th + lines.length * 21;
+  const tx = px + WIDE.photo + 22, tw = x + w - 22 - tx;
+  doc.font('Inter-Semi').fontSize(23);
+  const th = Math.min(58, doc.heightOfString(item.item_series, { width: tw, lineGap: -1 }));
+  const lines = [item.variation ? { t: item.variation, orange: false } : null,
+                 showUnits ? { t: `${item.units} units sold`, orange: true } : null].filter(Boolean);
+  const blockH = th + 4 + lines.length * 24;
   let ty = y + (h - blockH) / 2;
-  doc.fillColor(NAVY).text(item.item_series, tx, ty, { width: tw, height: 46, ellipsis: true });
-  ty += th + 3;
-  lines.forEach((ln, i) => {
-    doc.font(i === 0 && item.variation ? 'Inter' : 'Inter-Semi').fontSize(14.5).fillColor(i === 0 && item.variation ? GREY : ORANGE);
-    doc.text(ln, tx, ty, { width: tw, lineBreak: false, ellipsis: true });
-    ty += 21;
-  });
+  doc.fillColor(NAVY).text(item.item_series, tx, ty, { width: tw, height: 58, ellipsis: true, lineGap: -1 });
+  ty += th + 4;
+  for (const ln of lines) {
+    doc.font(ln.orange ? 'Inter-Semi' : 'Inter-Medium').fontSize(16.5).fillColor(ln.orange ? ORANGE : GREY);
+    doc.text(ln.t, tx, ty, { width: tw, height: 22, ellipsis: true });
+    ty += 24;
+  }
 }
 
 // pdfkit decides when to auto-break to a new page from UNSCALED coordinates,
@@ -285,21 +305,21 @@ function drawBrand(doc, { brand, items }, ctx, photos) {
   drawHeader(doc);
 
   // Title block
-  const titleTop = 100;
+  const titleTop = 90;
   doc.rect(PAD_X, titleTop + 5, 28, 3).fill(ORANGE);
   doc.font('Inter-Semi').fontSize(12).fillColor(ORANGE);
   const eyebrow = items.length ? `TOP ${items.length} · MOST LOVED` : 'BEST SELLERS';
   doc.text(eyebrow, PAD_X + 38, titleTop, { lineBreak: false, characterSpacing: 2.4 });
   doc.font('Fraunces-Bold').fontSize(72).fillColor(NAVY);
-  doc.text(name, PAD_X, titleTop + 22, { lineBreak: false });
+  doc.text(name, PAD_X, titleTop + 20, { lineBreak: false });
   doc.font('Inter-Semi').fontSize(13).fillColor(NAVY);
-  doc.text(period, PAD_X, titleTop + 22 + 52, { width: CONTENT_W, align: 'right', lineBreak: false });
+  doc.text(period, PAD_X, titleTop + 20 + 52, { width: CONTENT_W, align: 'right', lineBreak: false });
   doc.font('Inter').fontSize(13).fillColor(GREY);
-  doc.text('All sales channels', PAD_X, titleTop + 22 + 52 + 21, { width: CONTENT_W, align: 'right', lineBreak: false });
+  doc.text('All sales channels', PAD_X, titleTop + 20 + 52 + 21, { width: CONTENT_W, align: 'right', lineBreak: false });
 
   // Top 5 (or fewer) leaves plenty of page, so the podium gets even larger photos.
   const tall = items.length <= 5;
-  const panelTop = 220, panelH = tall ? 452 : 392, panelBottom = panelTop + panelH;
+  const panelTop = 204, panelH = tall ? 484 : 424, panelBottom = panelTop + panelH;
 
   if (!items.length) {
     doc.roundedRect(PAD_X, panelTop, CONTENT_W, 200, 26).fill(NAVY);
@@ -317,19 +337,19 @@ function drawBrand(doc, { brand, items }, ctx, photos) {
   doc.save();
   doc.roundedRect(PAD_X, panelTop, CONTENT_W, panelH, 26).clip();
   const top3 = items.slice(0, 3);
-  const gap = 14, innerW = CONTENT_W - 44;
-  const cardW = (innerW - gap * 2) / 3;
+  const gap = 10, innerW = CONTENT_W - 32;
+  const w1 = 252, wSide = (innerW - gap * 2 - w1) / 2;
+  const width = { 1: w1, 2: wSide, 3: wSide };
   // Visual order: 2nd, 1st, 3rd. With fewer than 3 items, centre what exists.
-  // Photo heights chosen so the tallest card (1st) fits under the panel's top padding.
   const spec = tall
-    ? { 1: { ph: 268, o: true }, 2: { ph: 218, o: false }, 3: { ph: 184, o: false } }
-    : { 1: { ph: 224, o: true }, 2: { ph: 182, o: false }, 3: { ph: 152, o: false } };
+    ? { 1: { ph: 282, o: true }, 2: { ph: 232, o: false }, 3: { ph: 196, o: false } }
+    : { 1: { ph: 236, o: true }, 2: { ph: 192, o: false }, 3: { ph: 160, o: false } };
   const order = [2, 1, 3].filter(r => top3[r - 1]);
-  const totalW = order.length * cardW + (order.length - 1) * gap;
+  const totalW = order.reduce((a, r) => a + width[r], 0) + (order.length - 1) * gap;
   let cx = PAD_X + (CONTENT_W - totalW) / 2;
   for (const r of order) {
-    drawPodiumCard(doc, top3[r - 1], photos, r, cx, panelBottom, cardW, spec[r].ph, spec[r].o, showUnits);
-    cx += cardW + gap;
+    drawPodiumCard(doc, top3[r - 1], photos, r, cx, panelBottom, width[r], spec[r].ph, spec[r].o, showUnits);
+    cx += width[r] + gap;
   }
   doc.restore();
   drawFooter(doc, partnerName);
@@ -347,7 +367,7 @@ function drawBrand(doc, { brand, items }, ctx, photos) {
     }
   } else if (rest.length) {
     const colW = (CONTENT_W - GRID.gap) / 2;
-    let y = panelBottom + 22;
+    let y = panelBottom + 20;
     for (let i = 0; i < rest.length; i += 2) {
       if (y + GRID.h > LIST_BOTTOM) {
         doc.restore();
@@ -356,11 +376,11 @@ function drawBrand(doc, { brand, items }, ctx, photos) {
         doc.rect(0, 0, PAGE_W, PAGE_H).fill(CREAM);
         drawHeader(doc);
         doc.font('Fraunces-Bold').fontSize(34).fillColor(NAVY);
-        doc.text(name, PAD_X, 100, { lineBreak: false });
+        doc.text(name, PAD_X, 96, { lineBreak: false });
         doc.font('Inter').fontSize(13).fillColor(GREY);
-        doc.text(`${period}  ·  continued`, PAD_X, 112, { width: CONTENT_W, align: 'right', lineBreak: false });
+        doc.text(`${period}  ·  continued`, PAD_X, 108, { width: CONTENT_W, align: 'right', lineBreak: false });
         drawFooter(doc, partnerName);
-        y = 160;
+        y = 150;
       }
       drawGridCard(doc, rest[i], photos, rank++, PAD_X, y, colW, showUnits);
       if (rest[i + 1]) drawGridCard(doc, rest[i + 1], photos, rank++, PAD_X + colW + GRID.gap, y, colW, showUnits);

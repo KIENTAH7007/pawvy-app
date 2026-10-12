@@ -1,31 +1,19 @@
-# Pawvy App - Best Sellers Report: amendments
+# Pawvy App - Best Sellers Report: bigger products and titles
+
+Only ONE file changes: `server/lib/bestSellersReport.js`. No npm install, no database changes.
 
 ## What changed
 
-1. **Bigger product photos.** Podium photos are now roughly 2x larger (largest for #1). Ranks 4+ use
-   much larger thumbnails: a two-column grid of cards for Top 10 and above, and big full-width rows
-   when only 4th and 5th remain (Top 5). Top 5 pages also get an extra-tall podium, since they have the room.
-2. **No percentages anywhere.** Items are still ranked by units sold, but the report no longer prints
-   any %. With "Show units sold" ticked it prints e.g. "40 units sold"; unticked, no numbers at all.
-3. **Bigger titles.** Podium titles went from 12.5 to 15.5 pt, variation names to 13.5; titles in the
-   ranked list are larger too.
-4. **Different Top N per brand.** In the pop-up, each brand now has its own "Top 5/10/15/20" dropdown
-   beside its checkbox. Defaults: Top 5 for every brand, Top 10 for GiGwi. The old single "Top" dropdown is gone.
-5. **Footer text removed.** The "% = share of ..." line is gone. The footer now only shows
-   "pawvy.co" (plus "Prepared for <partner>" if you fill that in).
-6. **Ranks 4-N photos** - covered in (1).
-
-## Files (3 changed, no new dependencies)
-
-- `client/src/pages/Sales.jsx`
-- `server/routes/sales.js`
-- `server/lib/bestSellersReport.js`
-
-## Tested
-
-Real server + real HTTP requests + browser click-through: GiGwi Top 10 beside BetterBone Top 5 in the
-same PDF, Top 5 with units shown, Top 15 spilling to a second page, products with and without photos,
-exclude-out-of-stock on/off, voided sales ignored. Rendered the pages and checked them visually. All three apps build clean.
+- **Products are much bigger.** Each photo's empty white border is now trimmed away automatically
+  before it goes into the PDF, and the grey frame behind photos is gone, so products sit straight on
+  the white card and fill it. The trim only removes the plain background around the item - it never
+  cuts into the product (this is why I did not use a "crop to fill", which could chop products).
+- **Wider podium cards.** #1 is wider than #2/#3, and the cards are packed closer, so photos get more width.
+- **Rank badges moved** onto the top edge of each podium card, so they no longer sit on top of the product.
+- **Bigger titles.** Podium titles 17 pt (was 15.5), variation 14.5; ranked-list titles 16 pt (was 14.5);
+  Top 5 rows 23 pt (was 18) with 134 px photos (was 96).
+- **Less empty space.** Top 5 pages now use a taller podium and bigger rows; Top 10 pages use bigger cards.
+- Fixed: with "Show units" on, long variation names could push "units" onto an awkward line - units now sit on their own line.
 
 ## How to apply
 
@@ -34,12 +22,10 @@ git checkout main
 git pull origin main
 ```
 
-Copy the 3 files from this zip into your repo at the same paths (overwrite), then:
+Copy `server/lib/bestSellersReport.js` from this zip over the existing file, then:
 
 ```bash
-git add client/src/pages/Sales.jsx server/routes/sales.js server/lib/bestSellersReport.js
-git commit -m "Best Sellers Report: bigger photos/titles, no percentages, per-brand Top N, footer cleanup"
+git add server/lib/bestSellersReport.js
+git commit -m "Best Sellers Report: trim photo borders, bigger podium photos and titles"
 git push origin main
 ```
-
-No `npm install` needed this time.
