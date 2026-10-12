@@ -146,6 +146,48 @@ module.exports = function(db, inventoryRouter) {
     res.json(channels.map(r => r.channel));
   });
 
+  // GET /best-sellers-report — partner-facing PDF: one page per selected
+  // brand, podium for the top 3 plus a ranked list. Shows each SKU's share
+  // (%) of its brand's units sold in the period; raw unit counts only when
+  // show_units=1. Counts every sales channel; voided sales are excluded.
+  // Query: brand_ids (comma list, required), date_from, date_to (YYYY-MM-DD,
+  // required), top_n (1-30, default 10), exclude_oos (default 1),
+  // show_units (default 0), partner_name (optional "Prepared for" line).
+  router.get('/best-sellers-report', async (req, res) => {
+    try {
+      const { renderBestSellersPdf } = require('../lib/bestSellersReport');
+      const isDate = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ''));
+
+      const brandIds = String(req.query.brand_ids || '')
+        .split(',').map(v => parseInt(v, 10)).filter(n => Number.isInteger(n) && n > 0);
+      if (!brandIds.length) return res.status(400).json({ error: 'Pick at least one brand.' });
+
+      const { date_from, date_to } = req.query;
+      if (!isDate(date_from) || !isDate(date_to)) return res.status(400).json({ error: 'A valid start and end date are required.' });
+      if (date_from > date_to) return res.status(400).json({ error: 'The start date must be on or before the end date.' });
+
+      const topN = Math.min(30, Math.max(1, parseInt(req.query.top_n, 10) || 10));
+      const partnerName = String(req.query.partner_name || '').trim().slice(0, 80);
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="pawvy-best-sellers-${localDateStr()}.pdf"`);
+      await renderBestSellersPdf(db, {
+        brandIds, dateFrom: date_from, dateTo: date_to, topN,
+        excludeOos: req.query.exclude_oos !== '0',
+        showUnits: req.query.show_units === '1',
+        partnerName,
+      }, res);
+    } catch (err) {
+      console.error('Best sellers report failed:', err);
+      if (!res.headersSent) {
+        res.removeHeader('Content-Disposition');
+        res.setHeader('Content-Type', 'application/json');
+        res.status(500).json({ error: 'Could not generate the report.' });
+      }
+      else res.end();
+    }
+  });
+
   // POST record a sale
   router.post('/', (req, res) => {
     const {

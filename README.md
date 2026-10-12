@@ -1,132 +1,62 @@
-# Pawvy App — Export Images Fix + Export for Partner
+# Pawvy App - Best Sellers Report (PDF)
 
-## What's in this delivery
+## What's new
 
-1. **Bug fix**: the "Export Images" button on Products & Pricing was failing
-   with `{"error":"Not logged in."}`.
-2. **New feature**: a new "Export for Partner" button on Products & Pricing
-   that downloads a spreadsheet (`.xlsx`) formatted for a business partner —
-   Brand, Item Series, Variation, Barcode, RRP (SGD), RRP Online (SGD),
-   Description, and an **actual embedded product photo** in the last column
-   (not a link or filename).
+A **Best Sellers Report** button on the **Sales Ledger** page (next to Record Sale).
+Click it, and a pop-up lets you choose:
 
-Both buttons respect whatever Brand/Search/Show Archived filters are
-currently applied on the page — same as Export CSV already does.
+- **Period** - last 30 days, 3 months, 6 months, year to date, this/last month, or custom dates
+- **Top** - 5, 10, 15 or 20 items per brand
+- **Brands** - tick the brands this partner carries (all ticked by default; Select all / Clear)
+- **Exclude out-of-stock items** - on by default
+- **Show units sold** - off by default (the PDF then shows only each item's % share)
+- **Prepared for** - optional partner name, printed in the footer
 
----
+Click **Generate PDF** and it downloads one PDF with one page per selected brand: a podium for
+ranks 1-3 with product photos, then the ranked list. If Top 15/20 doesn't fit one page, the list
+continues on a second page for that brand.
 
-## Root cause of the Export Images bug
+How the numbers work:
+- Counts every sales channel; voided sales are excluded.
+- % = the item's units / all units that brand sold in the period (so it always means "share of the
+  brand's sales", and doesn't change when you toggle out-of-stock).
+- Archived (inactive) products never appear. Out-of-stock = no stock in Mega + Hougang combined.
+- Products without a photo show a faint Pawvy mark on a cream tile instead of an empty box.
+- A selected brand with no qualifying sales gets a page saying so (nothing is silently skipped).
 
-Every `/api/products/*` route requires a login token, sent as an
-`Authorization: Bearer <token>` header. The old "Export Images" button
-triggered the download with a plain `window.location.href = '/api/products/export-images'`
-navigation — but a browser navigation (or an `<img>` tag) can **never** attach
-a custom header like that. Only a real `fetch`/`XHR` call can. So the request
-reached the server with no token at all, and the login check correctly
-rejected it with `{"error":"Not logged in."}`.
+## Files
 
-The fix adds a proper authenticated-download helper (`api.downloadFile()`
-in `client/src/api.js`) that does a real `fetch` with the auth header, reads
-the response as a `Blob`, and triggers the save via a synthetic
-`<a download>` click. "Export Images" now uses this, and the new
-"Export for Partner" button is built the same way from day one.
+- `client/src/pages/Sales.jsx` - the button and pop-up
+- `server/routes/sales.js` - new route `GET /api/sales/best-sellers-report` (PIN-protected like the rest)
+- `server/lib/bestSellersReport.js` - NEW: data query and PDF drawing
+- `server/assets/pawvy-logo-navy.png`, `pawvy-mark-navy.png` - NEW: your logo, recoloured navy
+- `package.json` / `package-lock.json` - new dependencies: `pdfkit` (PDF), `sharp` (shrinks photos so
+  the PDF stays small, and handles WebP), `@fontsource/fraunces` and `@fontsource/inter` (the brand fonts)
 
-## How the new Partner Export works
+No database changes. No environment variables needed.
 
-A new server route, `GET /api/products/export-partner-sheet`, builds the
-`.xlsx` on the fly:
+## Tested
 
-- Pulls products (with the same `brand_id` / `search` / `active` filters the
-  page is currently using) and writes one row per product with the 7 text
-  columns plus an empty 8th "Product Image" column.
-- Fetches each product's actual photo — from the image bucket if the
-  product has `image_url`, or from the older base64 `image_data` column as
-  a fallback — exactly the same two-path lookup the existing "Export
-  Images" ZIP button already uses.
-- Embeds the real photo into the Product Image cell (scaled to fit a small
-  box, aspect ratio preserved), not a filename or a link.
-- A product with no photo, or an image that fails to load for any reason,
-  just gets a blank image cell — it never fails the whole export.
-
-This needed a new dependency, **`exceljs`**, because the existing `xlsx`
-package in this project (SheetJS, community edition) can't embed images
-into cells. A second new dependency, **`image-size`**, is used only to read
-each photo's width/height so it can be scaled into the cell without
-stretching/distorting it.
-
----
-
-## Files changed/added
-
-- `client/src/api.js` — added `downloadFile()`, a proper authenticated
-  blob-download helper.
-- `client/src/pages/Products.jsx` — fixed the Export Images button to use
-  the new helper; added the new "Export for Partner" button and its
-  handler.
-- `server/routes/products.js` — added the new
-  `GET /api/products/export-partner-sheet` route.
-- `package.json` / `package-lock.json` — added `exceljs` and `image-size`
-  as dependencies.
-
-Nothing else was touched. No database schema changes, no changes to any
-other route.
-
----
-
-## Tested before delivery
-
-- Started the server locally against a copy of the real database, logged in
-  with a real PIN, and hit both endpoints with real HTTP requests
-  (authenticated and unauthenticated) via `curl`.
-- Confirmed `export-images` still returns a valid ZIP and correctly 401s
-  without a token.
-- Confirmed `export-partner-sheet` returns a valid `.xlsx` with the right 8
-  columns, that the brand/search filters correctly narrow the rows, and
-  that a product's seeded photo lands embedded in the correct row (verified
-  by inspecting the generated file's internal XML directly, not just that
-  a file came back).
-- Cold `npm run build` across all three frontends (client, portal, POS) —
-  all three built clean.
-
----
+Real server, logged in with a PIN, real HTTP requests and a real browser click-through:
+401 without login; 400 for no brand / bad dates; multi-brand PDFs; Top 15 continuation page; an
+out-of-stock item excluded and included on toggle; a 999-unit voided sale ignored; products with and
+without photos; a brand with no sales. Rendered the PDF pages and checked them visually.
+All three frontends cold-build clean.
 
 ## How to apply
-
-From your local `pawvy-app` checkout:
 
 ```bash
 git checkout main
 git pull origin main
 ```
 
-Copy the files from this zip into your repo, preserving their folder
-structure (overwrite the existing files at those same paths):
-
-- `client/src/api.js`
-- `client/src/pages/Products.jsx`
-- `server/routes/products.js`
-- `package.json`
-- `package-lock.json`
-
-Then install the two new dependencies (this also makes sure your local
-`node_modules` matches the updated lock file):
+Copy the files from this zip into your repo at the same paths (overwrite where they exist), then:
 
 ```bash
 npm install
-```
-
-Commit and push:
-
-```bash
-git add client/src/api.js client/src/pages/Products.jsx server/routes/products.js package.json package-lock.json
-git commit -m "Fix Export Images auth bug; add Export for Partner spreadsheet"
+git add client/src/pages/Sales.jsx server/routes/sales.js server/lib/bestSellersReport.js server/assets package.json package-lock.json
+git commit -m "Add Best Sellers Report (partner-facing PDF) to Sales Ledger"
 git push origin main
 ```
 
-Railway will redeploy automatically from `main` as usual. No other steps,
-migrations, or environment variables are needed — this uses the same image
-bucket and auth setup already in place.
-
-Once it's live, on Products & Pricing you should see two working buttons:
-**Export Images** (now fixed) and **Export for Partner** (new) sitting next
-to Export CSV.
+Railway redeploys from main as usual.

@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { salesApi, brandsApi, partnersApi } from '../api';
+import { api, salesApi, brandsApi, partnersApi } from '../api';
 import { Page, Select, Input, Badge, Btn, Modal, fmt } from '../components/ui';
-import { Ban, Mail, Pencil } from 'lucide-react';
-import { currentMonthRange } from '../utils/dates';
+import { Ban, Mail, Pencil, FileText } from 'lucide-react';
+import { currentMonthRange, localDateStr } from '../utils/dates';
 
 const MARKETPLACE = ['Shopee','Lazada','Amazon','TikTok Shop'];
 
@@ -20,6 +20,65 @@ export default function Sales() {
   const [editModal, setEditModal] = useState(null); // sale row pending shipping/mailing/notes edit
   const [editForm, setEditForm] = useState(null);
   const [editSaving, setEditSaving] = useState(false);
+
+  // ── Best Sellers Report (partner-facing PDF) ──────────────────────
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportBusy, setReportBusy] = useState(false);
+  const [reportError, setReportError] = useState('');
+  const [report, setReport] = useState({
+    preset: '3m', from: '', to: '', brandIds: [], topN: '10',
+    excludeOos: true, showUnits: false, partner: '',
+  });
+  const setR = (k, v) => setReport(r => ({ ...r, [k]: v }));
+
+  // Resolves the chosen period preset into concrete From/To dates.
+  function reportRange(r) {
+    const today = new Date();
+    const back = (fn) => { const d = new Date(today); fn(d); return localDateStr(d); };
+    switch (r.preset) {
+      case '30d': return { from: back(d => d.setDate(d.getDate() - 29)), to: localDateStr(today) };
+      case '3m':  return { from: back(d => { d.setMonth(d.getMonth() - 3); d.setDate(d.getDate() + 1); }), to: localDateStr(today) };
+      case '6m':  return { from: back(d => { d.setMonth(d.getMonth() - 6); d.setDate(d.getDate() + 1); }), to: localDateStr(today) };
+      case 'ytd': return { from: `${today.getFullYear()}-01-01`, to: localDateStr(today) };
+      case 'thismonth': return currentMonthRange(today);
+      case 'lastmonth': return currentMonthRange(new Date(today.getFullYear(), today.getMonth() - 1, 1));
+      default: return { from: r.from, to: r.to };
+    }
+  }
+
+  function openReport() {
+    // Every brand ticked by default — untick the ones this partner doesn't carry.
+    setReport(r => ({ ...r, brandIds: brands.map(b => b.id) }));
+    setReportError('');
+    setReportOpen(true);
+  }
+
+  async function generateReport() {
+    const { from, to } = reportRange(report);
+    if (!report.brandIds.length) return setReportError('Tick at least one brand.');
+    if (!from || !to) return setReportError('Choose a start and end date.');
+    if (from > to) return setReportError('The start date must be on or before the end date.');
+    setReportBusy(true); setReportError('');
+    try {
+      const q = new URLSearchParams({
+        brand_ids: report.brandIds.join(','), date_from: from, date_to: to,
+        top_n: report.topN, exclude_oos: report.excludeOos ? '1' : '0',
+        show_units: report.showUnits ? '1' : '0',
+      });
+      if (report.partner.trim()) q.set('partner_name', report.partner.trim());
+      const { blob, filename } = await api.downloadFile(`/sales/best-sellers-report?${q}`);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename || `pawvy-best-sellers-${localDateStr()}.pdf`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      setReportOpen(false);
+    } catch (e) {
+      setReportError(e.message || 'Could not generate the report.');
+    } finally {
+      setReportBusy(false);
+    }
+  }
 
   useEffect(() => {
     brandsApi.getAll().then(setBrands);
@@ -110,7 +169,12 @@ export default function Sales() {
 
   return (
     <Page title="SALES LEDGER" subtitle={`${sales.length} transactions`}
-      action={<Btn onClick={() => nav('/sales/record')}><span style={{fontSize:16}}>+</span> Record Sale</Btn>}>
+      action={
+        <div style={{display:'flex',gap:8}}>
+          <Btn variant="ghost" onClick={openReport}><FileText size={14}/> Best Sellers Report</Btn>
+          <Btn onClick={() => nav('/sales/record')}><span style={{fontSize:16}}>+</span> Record Sale</Btn>
+        </div>
+      }>
 
       {/* Filters */}
       <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'flex-end'}}>
@@ -165,6 +229,84 @@ export default function Sales() {
           </div>
         </div>
       )}
+
+      {/* Best Sellers Report — choose period, brands and options, then generate a partner-ready PDF */}
+      <Modal open={reportOpen} title="BEST SELLERS REPORT" onClose={() => !reportBusy && setReportOpen(false)} width={520}>
+        <div style={{display:'flex',flexDirection:'column',gap:16}}>
+          <div style={{fontSize:12,color:'var(--cream-60)',lineHeight:1.6}}>
+            Creates a PDF with a podium for each brand's top 3, then the full ranking. Counts every sales channel and skips voided sales. Shows each item's share of its brand's sales, not revenue.
+          </div>
+
+          <div style={{display:'flex',gap:10,flexWrap:'wrap',alignItems:'flex-end'}}>
+            <Select label="Period" value={report.preset} onChange={e=>setR('preset',e.target.value)} style={{flex:'1 1 180px'}}>
+              <option value="30d">Last 30 days</option>
+              <option value="3m">Last 3 months</option>
+              <option value="6m">Last 6 months</option>
+              <option value="ytd">Year to date</option>
+              <option value="thismonth">This month</option>
+              <option value="lastmonth">Last month</option>
+              <option value="custom">Custom dates…</option>
+            </Select>
+            <Select label="Top" value={report.topN} onChange={e=>setR('topN',e.target.value)} style={{flex:'0 0 110px'}}>
+              {['5','10','15','20'].map(n => <option key={n} value={n}>Top {n}</option>)}
+            </Select>
+          </div>
+
+          {report.preset === 'custom' ? (
+            <div style={{display:'flex',gap:10}}>
+              <Input label="From" type="date" value={report.from} onChange={e=>setR('from',e.target.value)} style={{flex:1}}/>
+              <Input label="To"   type="date" value={report.to}   onChange={e=>setR('to',e.target.value)}   style={{flex:1}}/>
+            </div>
+          ) : (
+            <div style={{fontSize:11,color:'var(--cream-30)',marginTop:-8}}>
+              {(() => { const r = reportRange(report); return `${r.from} to ${r.to}`; })()}
+            </div>
+          )}
+
+          <div>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
+              <span style={{fontSize:11,fontWeight:600,color:'var(--cream-60)',letterSpacing:.5,textTransform:'uppercase'}}>Brands in this report</span>
+              <span style={{display:'flex',gap:12,fontSize:11}}>
+                <button type="button" onClick={()=>setR('brandIds',brands.map(b=>b.id))} style={{background:'none',border:'none',color:'var(--orange)',cursor:'pointer',padding:0,fontSize:11}}>Select all</button>
+                <button type="button" onClick={()=>setR('brandIds',[])} style={{background:'none',border:'none',color:'var(--cream-60)',cursor:'pointer',padding:0,fontSize:11}}>Clear</button>
+              </span>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+              {brands.map(b => {
+                const on = report.brandIds.includes(b.id);
+                return (
+                  <label key={b.id} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',border:`1px solid ${on?'var(--orange)':'var(--border)'}`,borderRadius:7,cursor:'pointer',fontSize:13,color:'var(--cream)'}}>
+                    <input type="checkbox" checked={on} onChange={()=>setR('brandIds', on ? report.brandIds.filter(id=>id!==b.id) : [...report.brandIds,b.id])}/>
+                    {b.name}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+
+          <div style={{display:'flex',flexDirection:'column',gap:8}}>
+            <label style={{display:'flex',alignItems:'center',gap:8,fontSize:13,color:'var(--cream)',cursor:'pointer'}}>
+              <input type="checkbox" checked={report.excludeOos} onChange={e=>setR('excludeOos',e.target.checked)}/>
+              Exclude out-of-stock items
+            </label>
+            <label style={{display:'flex',alignItems:'center',gap:8,fontSize:13,color:'var(--cream)',cursor:'pointer'}}>
+              <input type="checkbox" checked={report.showUnits} onChange={e=>setR('showUnits',e.target.checked)}/>
+              Show units sold next to each percentage
+            </label>
+          </div>
+
+          <Input label="Prepared for (optional)" placeholder="Partner name, shown in the footer" value={report.partner} onChange={e=>setR('partner',e.target.value)} maxLength={80}/>
+
+          {reportError && <div style={{fontSize:12,color:'#f87171'}}>{reportError}</div>}
+
+          <div style={{display:'flex',gap:10}}>
+            <Btn onClick={generateReport} disabled={reportBusy} style={{flex:1,justifyContent:'center'}}>
+              <FileText size={14}/> {reportBusy ? 'Generating… this can take a few seconds' : 'Generate PDF'}
+            </Btn>
+            <Btn variant="ghost" onClick={()=>setReportOpen(false)} disabled={reportBusy}>Cancel</Btn>
+          </div>
+        </div>
+      </Modal>
 
       {/* Mailing info modal — populated by the POS System when a sale needs
           to be posted out rather than collected in person, or when a
