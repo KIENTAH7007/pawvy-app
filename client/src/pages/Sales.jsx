@@ -26,7 +26,7 @@ export default function Sales() {
   const [reportBusy, setReportBusy] = useState(false);
   const [reportError, setReportError] = useState('');
   const [report, setReport] = useState({
-    preset: '3m', from: '', to: '', brandIds: [], topN: '10',
+    preset: '3m', from: '', to: '', brandIds: [], tops: {},
     excludeOos: true, showUnits: false, partner: '',
   });
   const setR = (k, v) => setReport(r => ({ ...r, [k]: v }));
@@ -46,9 +46,14 @@ export default function Sales() {
     }
   }
 
+  // Default depth per brand: Top 5, except GiGwi (more SKUs) at Top 10.
+  const defaultTop = (b) => (b.name === 'GiGwi' ? '10' : '5');
+
   function openReport() {
     // Every brand ticked by default — untick the ones this partner doesn't carry.
-    setReport(r => ({ ...r, brandIds: brands.map(b => b.id) }));
+    const tops = {};
+    brands.forEach(b => { tops[b.id] = defaultTop(b); });
+    setReport(r => ({ ...r, brandIds: brands.map(b => b.id), tops }));
     setReportError('');
     setReportOpen(true);
   }
@@ -62,7 +67,7 @@ export default function Sales() {
     try {
       const q = new URLSearchParams({
         brand_ids: report.brandIds.join(','), date_from: from, date_to: to,
-        top_n: report.topN, exclude_oos: report.excludeOos ? '1' : '0',
+        top_n: '5', brand_tops: report.brandIds.map(id => `${id}:${report.tops[id] || 5}`).join(','), exclude_oos: report.excludeOos ? '1' : '0',
         show_units: report.showUnits ? '1' : '0',
       });
       if (report.partner.trim()) q.set('partner_name', report.partner.trim());
@@ -234,7 +239,7 @@ export default function Sales() {
       <Modal open={reportOpen} title="BEST SELLERS REPORT" onClose={() => !reportBusy && setReportOpen(false)} width={520}>
         <div style={{display:'flex',flexDirection:'column',gap:16}}>
           <div style={{fontSize:12,color:'var(--cream-60)',lineHeight:1.6}}>
-            Creates a PDF with a podium for each brand's top 3, then the full ranking. Counts every sales channel and skips voided sales. Shows each item's share of its brand's sales, not revenue.
+            Creates a PDF with a podium for each brand's top 3, then the rest of its ranking. Ranked by units sold across every sales channel, voided sales skipped. No percentages or revenue are shown.
           </div>
 
           <div style={{display:'flex',gap:10,flexWrap:'wrap',alignItems:'flex-end'}}>
@@ -246,9 +251,6 @@ export default function Sales() {
               <option value="thismonth">This month</option>
               <option value="lastmonth">Last month</option>
               <option value="custom">Custom dates…</option>
-            </Select>
-            <Select label="Top" value={report.topN} onChange={e=>setR('topN',e.target.value)} style={{flex:'0 0 110px'}}>
-              {['5','10','15','20'].map(n => <option key={n} value={n}>Top {n}</option>)}
             </Select>
           </div>
 
@@ -265,7 +267,7 @@ export default function Sales() {
 
           <div>
             <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
-              <span style={{fontSize:11,fontWeight:600,color:'var(--cream-60)',letterSpacing:.5,textTransform:'uppercase'}}>Brands in this report</span>
+              <span style={{fontSize:11,fontWeight:600,color:'var(--cream-60)',letterSpacing:.5,textTransform:'uppercase'}}>Brands in this report &amp; how many items</span>
               <span style={{display:'flex',gap:12,fontSize:11}}>
                 <button type="button" onClick={()=>setR('brandIds',brands.map(b=>b.id))} style={{background:'none',border:'none',color:'var(--orange)',cursor:'pointer',padding:0,fontSize:11}}>Select all</button>
                 <button type="button" onClick={()=>setR('brandIds',[])} style={{background:'none',border:'none',color:'var(--cream-60)',cursor:'pointer',padding:0,fontSize:11}}>Clear</button>
@@ -275,10 +277,16 @@ export default function Sales() {
               {brands.map(b => {
                 const on = report.brandIds.includes(b.id);
                 return (
-                  <label key={b.id} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',border:`1px solid ${on?'var(--orange)':'var(--border)'}`,borderRadius:7,cursor:'pointer',fontSize:13,color:'var(--cream)'}}>
-                    <input type="checkbox" checked={on} onChange={()=>setR('brandIds', on ? report.brandIds.filter(id=>id!==b.id) : [...report.brandIds,b.id])}/>
-                    {b.name}
-                  </label>
+                  <div key={b.id} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 10px',border:`1px solid ${on?'var(--orange)':'var(--border)'}`,borderRadius:7,fontSize:13,color:'var(--cream)'}}>
+                    <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',flex:1,minWidth:0}}>
+                      <input type="checkbox" checked={on} onChange={()=>setR('brandIds', on ? report.brandIds.filter(id=>id!==b.id) : [...report.brandIds,b.id])}/>
+                      {b.name}
+                    </label>
+                    <select disabled={!on} value={report.tops[b.id] || '5'} onChange={e=>setR('tops',{...report.tops,[b.id]:e.target.value})}
+                      style={{background:'var(--navy-light)',border:'1px solid var(--border)',borderRadius:6,color:'var(--cream)',fontSize:12,padding:'4px 6px',opacity:on?1:0.4}}>
+                      {['5','10','15','20'].map(n => <option key={n} value={n}>Top {n}</option>)}
+                    </select>
+                  </div>
                 );
               })}
             </div>
@@ -291,7 +299,7 @@ export default function Sales() {
             </label>
             <label style={{display:'flex',alignItems:'center',gap:8,fontSize:13,color:'var(--cream)',cursor:'pointer'}}>
               <input type="checkbox" checked={report.showUnits} onChange={e=>setR('showUnits',e.target.checked)}/>
-              Show units sold next to each percentage
+              Show units sold
             </label>
           </div>
 

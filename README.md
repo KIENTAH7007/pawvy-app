@@ -1,47 +1,31 @@
-# Pawvy App - Best Sellers Report (PDF)
+# Pawvy App - Best Sellers Report: amendments
 
-## What's new
+## What changed
 
-A **Best Sellers Report** button on the **Sales Ledger** page (next to Record Sale).
-Click it, and a pop-up lets you choose:
+1. **Bigger product photos.** Podium photos are now roughly 2x larger (largest for #1). Ranks 4+ use
+   much larger thumbnails: a two-column grid of cards for Top 10 and above, and big full-width rows
+   when only 4th and 5th remain (Top 5). Top 5 pages also get an extra-tall podium, since they have the room.
+2. **No percentages anywhere.** Items are still ranked by units sold, but the report no longer prints
+   any %. With "Show units sold" ticked it prints e.g. "40 units sold"; unticked, no numbers at all.
+3. **Bigger titles.** Podium titles went from 12.5 to 15.5 pt, variation names to 13.5; titles in the
+   ranked list are larger too.
+4. **Different Top N per brand.** In the pop-up, each brand now has its own "Top 5/10/15/20" dropdown
+   beside its checkbox. Defaults: Top 5 for every brand, Top 10 for GiGwi. The old single "Top" dropdown is gone.
+5. **Footer text removed.** The "% = share of ..." line is gone. The footer now only shows
+   "pawvy.co" (plus "Prepared for <partner>" if you fill that in).
+6. **Ranks 4-N photos** - covered in (1).
 
-- **Period** - last 30 days, 3 months, 6 months, year to date, this/last month, or custom dates
-- **Top** - 5, 10, 15 or 20 items per brand
-- **Brands** - tick the brands this partner carries (all ticked by default; Select all / Clear)
-- **Exclude out-of-stock items** - on by default
-- **Show units sold** - off by default (the PDF then shows only each item's % share)
-- **Prepared for** - optional partner name, printed in the footer
+## Files (3 changed, no new dependencies)
 
-Click **Generate PDF** and it downloads one PDF with one page per selected brand: a podium for
-ranks 1-3 with product photos, then the ranked list. If Top 15/20 doesn't fit one page, the list
-continues on a second page for that brand.
-
-How the numbers work:
-- Counts every sales channel; voided sales are excluded.
-- % = the item's units / all units that brand sold in the period (so it always means "share of the
-  brand's sales", and doesn't change when you toggle out-of-stock).
-- Archived (inactive) products never appear. Out-of-stock = no stock in Mega + Hougang combined.
-- Products without a photo show a faint Pawvy mark on a cream tile instead of an empty box.
-- A selected brand with no qualifying sales gets a page saying so (nothing is silently skipped).
-
-## Files
-
-- `client/src/pages/Sales.jsx` - the button and pop-up
-- `server/routes/sales.js` - new route `GET /api/sales/best-sellers-report` (PIN-protected like the rest)
-- `server/lib/bestSellersReport.js` - NEW: data query and PDF drawing
-- `server/assets/pawvy-logo-navy.png`, `pawvy-mark-navy.png` - NEW: your logo, recoloured navy
-- `package.json` / `package-lock.json` - new dependencies: `pdfkit` (PDF), `sharp` (shrinks photos so
-  the PDF stays small, and handles WebP), `@fontsource/fraunces` and `@fontsource/inter` (the brand fonts)
-
-No database changes. No environment variables needed.
+- `client/src/pages/Sales.jsx`
+- `server/routes/sales.js`
+- `server/lib/bestSellersReport.js`
 
 ## Tested
 
-Real server, logged in with a PIN, real HTTP requests and a real browser click-through:
-401 without login; 400 for no brand / bad dates; multi-brand PDFs; Top 15 continuation page; an
-out-of-stock item excluded and included on toggle; a 999-unit voided sale ignored; products with and
-without photos; a brand with no sales. Rendered the PDF pages and checked them visually.
-All three frontends cold-build clean.
+Real server + real HTTP requests + browser click-through: GiGwi Top 10 beside BetterBone Top 5 in the
+same PDF, Top 5 with units shown, Top 15 spilling to a second page, products with and without photos,
+exclude-out-of-stock on/off, voided sales ignored. Rendered the pages and checked them visually. All three apps build clean.
 
 ## How to apply
 
@@ -50,13 +34,12 @@ git checkout main
 git pull origin main
 ```
 
-Copy the files from this zip into your repo at the same paths (overwrite where they exist), then:
+Copy the 3 files from this zip into your repo at the same paths (overwrite), then:
 
 ```bash
-npm install
-git add client/src/pages/Sales.jsx server/routes/sales.js server/lib/bestSellersReport.js server/assets package.json package-lock.json
-git commit -m "Add Best Sellers Report (partner-facing PDF) to Sales Ledger"
+git add client/src/pages/Sales.jsx server/routes/sales.js server/lib/bestSellersReport.js
+git commit -m "Best Sellers Report: bigger photos/titles, no percentages, per-brand Top N, footer cleanup"
 git push origin main
 ```
 
-Railway redeploys from main as usual.
+No `npm install` needed this time.

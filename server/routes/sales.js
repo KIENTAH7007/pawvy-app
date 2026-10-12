@@ -152,7 +152,9 @@ module.exports = function(db, inventoryRouter) {
   // show_units=1. Counts every sales channel; voided sales are excluded.
   // Query: brand_ids (comma list, required), date_from, date_to (YYYY-MM-DD,
   // required), top_n (1-30, default 10), exclude_oos (default 1),
-  // show_units (default 0), partner_name (optional "Prepared for" line).
+  // show_units (default 0), partner_name (optional "Prepared for" line),
+  // brand_tops (optional per-brand Top N, e.g. "2:10,1:5" = brand 2 gets Top 10,
+  // brand 1 gets Top 5; brands not listed use top_n).
   router.get('/best-sellers-report', async (req, res) => {
     try {
       const { renderBestSellersPdf } = require('../lib/bestSellersReport');
@@ -168,11 +170,16 @@ module.exports = function(db, inventoryRouter) {
 
       const topN = Math.min(30, Math.max(1, parseInt(req.query.top_n, 10) || 10));
       const partnerName = String(req.query.partner_name || '').trim().slice(0, 80);
+      const topNByBrand = {};
+      String(req.query.brand_tops || '').split(',').forEach(pair => {
+        const [id, n] = pair.split(':').map(v => parseInt(v, 10));
+        if (Number.isInteger(id) && Number.isInteger(n) && n > 0) topNByBrand[id] = Math.min(30, n);
+      });
 
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="pawvy-best-sellers-${localDateStr()}.pdf"`);
       await renderBestSellersPdf(db, {
-        brandIds, dateFrom: date_from, dateTo: date_to, topN,
+        brandIds, dateFrom: date_from, dateTo: date_to, topN, topNByBrand,
         excludeOos: req.query.exclude_oos !== '0',
         showUnits: req.query.show_units === '1',
         partnerName,

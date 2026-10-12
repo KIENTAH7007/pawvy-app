@@ -2,10 +2,11 @@
 //
 // One A4 page per selected brand (plus continuation pages if Top N is
 // large): a podium for ranks 1-3 with product photos, then a ranked list.
-// Shows each SKU's SHARE of its brand's units sold in the period (%), never
-// revenue or profit. Raw unit counts are only shown when the caller turns
-// "show units" on. Layout mirrors the approved "C - Pawvy Palette" mockup,
-// drawn in mockup pixels (794 x 1123) and scaled to A4 points.
+// Ranked by units sold, but NO percentages or sales figures are printed —
+// raw unit counts appear only when the caller turns "show units" on. Each
+// brand can have its own Top N. Layout follows the approved "C - Pawvy
+// Palette" mockup (drawn in mockup pixels, 794 x 1123, scaled to A4 points)
+// with large product photos.
 
 const path = require('path');
 const PDFDocument = require('pdfkit');
@@ -49,11 +50,9 @@ function fmtPeriod(from, to) {
 }
 
 // ── Data ──────────────────────────────────────────────────────────
-// Returns [{ brand, shownItems:[{...product, units, pct}] }] in display order.
-// % = product units / ALL units the brand sold in the period (active or
-// not, in stock or not) so the figure always means "share of the brand's
-// sales" and doesn't silently change when "exclude out-of-stock" is toggled.
-function collectBestSellers(db, { brandIds, dateFrom, dateTo, topN, excludeOos }) {
+// Returns [{ brand, items:[{...product, units}] }] in display order, ranked
+// by units sold in the period (voided sales excluded, all channels).
+function collectBestSellers(db, { brandIds, dateFrom, dateTo, topN, topNByBrand = {}, excludeOos }) {
   const ph = brandIds.map(() => '?').join(',');
   const rows = db.query(`
     SELECT p.id, p.item_series, p.variation, p.image_url, p.image_data, p.is_active,
@@ -80,15 +79,14 @@ function collectBestSellers(db, { brandIds, dateFrom, dateTo, topN, excludeOos }
 
   return brands.map(brand => {
     const mine = rows.filter(r => r.brand_id === brand.id);
-    const brandTotal = mine.reduce((a, r) => a + r.units, 0);
+    const limit = topNByBrand[brand.id] || topN;
     const ranked = mine
       .filter(r => r.is_active)
       .filter(r => !excludeOos || r.stock > 0)
       .sort((a, b) => b.units - a.units
         || String(a.item_series).localeCompare(String(b.item_series))
         || String(a.variation || '').localeCompare(String(b.variation || '')))
-      .slice(0, topN)
-      .map(r => ({ ...r, pct: brandTotal ? Math.round((r.units / brandTotal) * 100) : 0 }));
+      .slice(0, limit);
     return { brand, items: ranked };
   });
 }
@@ -114,7 +112,7 @@ async function loadPhoto(p) {
     if (!buf) return null;
     if (sharp) {
       return await sharp(buf).rotate()
-        .resize({ width: 560, height: 560, fit: 'inside', withoutEnlargement: true })
+        .resize({ width: 800, height: 800, fit: 'inside', withoutEnlargement: true })
         .flatten({ background: CREAM })
         .jpeg({ quality: 82 }).toBuffer();
     }
@@ -147,12 +145,12 @@ function drawPhotoTile(doc, x, y, w, h, radius, photo) {
   if (photo) {
     doc.save();
     doc.roundedRect(x, y, w, h, radius).clip();
-    const pad = Math.min(8, w * 0.06);
+    const pad = Math.min(8, w * 0.05);
     doc.image(photo, x + pad, y + pad, { fit: [w - pad * 2, h - pad * 2], align: 'center', valign: 'center' });
     doc.restore();
   } else {
     // Branded fallback: faint Pawvy mark, so a missing photo still looks intentional.
-    const mh = h * 0.52, mw = mh * (300 / 404);
+    const mh = h * 0.5, mw = mh * (300 / 404);
     doc.save();
     doc.opacity(0.1);
     doc.image(MARK_PATH, x + (w - mw) / 2, y + (h - mh) / 2, { width: mw, height: mh });
@@ -160,7 +158,7 @@ function drawPhotoTile(doc, x, y, w, h, radius, photo) {
   }
 }
 
-function drawHeader(doc, continued) {
+function drawHeader(doc) {
   const lh = 38;
   doc.image(LOGO_PATH, PAD_X, 40, { height: lh });
   doc.font('Inter-Medium').fontSize(11).fillColor(GREY);
@@ -169,81 +167,101 @@ function drawHeader(doc, continued) {
   });
 }
 
-function drawFooter(doc, brandName, partnerName) {
+function drawFooter(doc, partnerName) {
   const y = PAGE_H - 30 - 12;
+  const text = partnerName ? `pawvy.co  ·  Prepared for ${partnerName}` : 'pawvy.co';
   doc.font('Inter').fontSize(10).fillColor(GREY);
-  doc.text(`% = share of ${brandName} units sold in the period. Voided sales excluded.`, PAD_X, y, {
-    width: CONTENT_W * 0.62, lineBreak: false, characterSpacing: 0.4,
-  });
-  const right = partnerName ? `pawvy.co  ·  Prepared for ${partnerName}` : 'pawvy.co';
-  doc.text(right, PAD_X + CONTENT_W * 0.5, y, {
-    width: CONTENT_W * 0.5, align: 'right', lineBreak: false, characterSpacing: 0.4,
-  });
+  doc.text(text, PAD_X, y, { width: CONTENT_W, align: 'right', lineBreak: false, characterSpacing: 0.4 });
 }
 
-function drawPodiumCard(doc, item, photos, rank, x, panelBottom, w, cardH, photoH, orangeMedal, showUnits) {
+// Podium card: big photo with the rank medal pinned to its corner, then the
+// product title (large) and variation. Card height follows from the photo
+// height, so 1st/2nd/3rd step down naturally.
+const PODIUM_TEXT_H = 38 + 2 + 34;
+function podiumCardHeight(photoH, showUnits) {
+  return 14 + photoH + 10 + PODIUM_TEXT_H + (showUnits ? 20 : 0) + 14;
+}
+
+function drawPodiumCard(doc, item, photos, rank, x, panelBottom, w, photoH, orangeMedal, showUnits) {
+  const cardH = podiumCardHeight(photoH, showUnits);
   const top = panelBottom - cardH;
   doc.save();
   doc.roundedRect(x, top, w, cardH + 20, 18).fill(WHITE); // +20 so the bottom corners sit below the clipped panel edge
   doc.restore();
 
-  const ix = x + 14, iw = w - 28;
-  // medal
-  doc.circle(ix + 16, top + 14 + 16, 16).fill(orangeMedal ? ORANGE : NAVY);
-  doc.font('Fraunces-Bold').fontSize(17).fillColor(orangeMedal ? WHITE : CREAM);
-  centerText(doc, String(rank), ix + 16, top + 14 + 16, 32);
-
-  // photo
-  const photoTop = top + 14 + 32;
+  const ix = x + 14, iw = w - 28, photoTop = top + 14;
   drawPhotoTile(doc, ix, photoTop, iw, photoH, 12, photos.get(item.id));
 
-  // name block (max 2 lines of series, 1-2 of variation inside 48px)
-  const nameTop = photoTop + photoH + 8;
-  doc.font('Inter-Semi').fontSize(12.5).fillColor(NAVY);
-  doc.text(item.item_series, ix, nameTop, { width: iw, align: 'center', height: 32, ellipsis: true, lineGap: 0.5 });
-  const used = Math.min(32, doc.heightOfString(item.item_series, { width: iw, lineGap: 0.5 }));
-  doc.font('Inter').fontSize(12).fillColor(GREY);
-  if (item.variation) doc.text(item.variation, ix, nameTop + used + 1, { width: iw, align: 'center', height: 16, ellipsis: true });
+  // rank medal pinned to the photo corner
+  const mr = 17, mx = ix + 10 + mr, my = photoTop + 10 + mr;
+  doc.circle(mx, my, mr).lineWidth(2).fillAndStroke(orangeMedal ? ORANGE : NAVY, WHITE);
+  doc.font('Fraunces-Bold').fontSize(18).fillColor(orangeMedal ? WHITE : CREAM);
+  centerText(doc, String(rank), mx, my, mr * 2);
 
-  // percent
-  const pctTop = nameTop + 48 + 8;
-  doc.font('Fraunces-Bold').fontSize(32).fillColor(ORANGE);
-  doc.text(`${item.pct}%`, ix, pctTop, { width: iw, align: 'center', lineBreak: false });
+  const nameTop = photoTop + photoH + 10;
+  doc.font('Inter-Semi').fontSize(15.5).fillColor(NAVY);
+  doc.text(item.item_series, ix, nameTop, { width: iw, align: 'center', height: 38, ellipsis: true, lineGap: 0 });
+  const used = Math.min(38, doc.heightOfString(item.item_series, { width: iw }));
+  if (item.variation) {
+    doc.font('Inter').fontSize(13.5).fillColor(GREY);
+    doc.text(item.variation, ix, nameTop + used + 2, { width: iw, align: 'center', height: 34, ellipsis: true });
+  }
   if (showUnits) {
-    doc.font('Inter').fontSize(11).fillColor(GREY);
-    doc.text(`${item.units} units sold`, ix, pctTop + 40, { width: iw, align: 'center', lineBreak: false });
+    doc.font('Inter-Semi').fontSize(12.5).fillColor(ORANGE);
+    doc.text(`${item.units} units sold`, ix, nameTop + PODIUM_TEXT_H + 2, { width: iw, align: 'center', lineBreak: false });
   }
 }
 
-function drawRow(doc, item, photos, rank, y, showUnits) {
-  const x = PAD_X, w = CONTENT_W, h = 52;
-  doc.roundedRect(x, y, w, h, 14).fill(WHITE);
+// Ranks 4+ : a two-column grid of cards with large thumbnails ("grid"), or —
+// when only a couple of items remain (Top 5) — full-width rows with even
+// bigger photos ("wide").
+const GRID = { h: 88, gap: 8, photo: 72 };
+const WIDE = { h: 124, gap: 10, photo: 108 };
 
-  doc.font('Fraunces-Bold').fontSize(20).fillColor(NAVY);
+function drawGridCard(doc, item, photos, rank, x, y, w, showUnits) {
+  const h = GRID.h;
+  doc.roundedRect(x, y, w, h, 14).fill(WHITE);
+  doc.font('Fraunces-Bold').fontSize(22).fillColor(NAVY);
   centerText(doc, String(rank), x + 12 + 15, y + h / 2, 30);
 
-  drawPhotoTile(doc, x + 56, y + 6, 40, 40, 10, photos.get(item.id));
+  const px = x + 46;
+  drawPhotoTile(doc, px, y + (h - GRID.photo) / 2, GRID.photo, GRID.photo, 10, photos.get(item.id));
 
-  const pillW = 54, pillH = 26, right = x + w - 16;
-  const unitsW = showUnits ? 74 + 14 : 0;
-  const textX = x + 110;
-  const textW = right - pillW - 14 - unitsW - textX;
-
-  doc.font('Inter-Semi').fontSize(13).fillColor(NAVY);
-  doc.text(item.item_series, textX, y + 9, { width: textW, lineBreak: false, ellipsis: true });
-  if (item.variation) {
-    doc.font('Inter').fontSize(12).fillColor(GREY);
-    doc.text(item.variation, textX, y + 27, { width: textW, lineBreak: false, ellipsis: true });
+  const tx = px + GRID.photo + 12, tw = x + w - 12 - tx;
+  doc.font('Inter-Semi').fontSize(14.5);
+  const th = Math.min(36, doc.heightOfString(item.item_series, { width: tw }));
+  const sub = [item.variation, showUnits ? `${item.units} units` : null].filter(Boolean).join('  ·  ');
+  const blockH = th + (sub ? 16 : 0);
+  let ty = y + (h - blockH) / 2;
+  doc.fillColor(NAVY).text(item.item_series, tx, ty, { width: tw, height: 36, ellipsis: true });
+  if (sub) {
+    doc.font('Inter').fontSize(12.5).fillColor(GREY);
+    doc.text(sub, tx, ty + th + 2, { width: tw, lineBreak: false, ellipsis: true });
   }
+}
 
-  if (showUnits) {
-    doc.font('Inter').fontSize(12).fillColor(GREY);
-    doc.text(`${item.units} units`, right - pillW - 14 - 74, y + h / 2 - 7, { width: 74, align: 'right', lineBreak: false });
-  }
+function drawWideRow(doc, item, photos, rank, y, showUnits) {
+  const x = PAD_X, w = CONTENT_W, h = WIDE.h;
+  doc.roundedRect(x, y, w, h, 16).fill(WHITE);
+  doc.font('Fraunces-Bold').fontSize(28).fillColor(NAVY);
+  centerText(doc, String(rank), x + 14 + 20, y + h / 2, 40);
 
-  doc.roundedRect(right - pillW, y + (h - pillH) / 2, pillW, pillH, 13).fill(NAVY);
-  doc.font('Inter-Semi').fontSize(13).fillColor(CREAM);
-  centerText(doc, `${item.pct}%`, right - pillW / 2, y + h / 2, pillW);
+  const px = x + 64;
+  drawPhotoTile(doc, px, y + (h - WIDE.photo) / 2, WIDE.photo, WIDE.photo, 12, photos.get(item.id));
+
+  const tx = px + WIDE.photo + 20, tw = x + w - 20 - tx;
+  doc.font('Inter-Semi').fontSize(18);
+  const th = Math.min(46, doc.heightOfString(item.item_series, { width: tw }));
+  const lines = [item.variation, showUnits ? `${item.units} units sold` : null].filter(Boolean);
+  const blockH = th + lines.length * 21;
+  let ty = y + (h - blockH) / 2;
+  doc.fillColor(NAVY).text(item.item_series, tx, ty, { width: tw, height: 46, ellipsis: true });
+  ty += th + 3;
+  lines.forEach((ln, i) => {
+    doc.font(i === 0 && item.variation ? 'Inter' : 'Inter-Semi').fontSize(14.5).fillColor(i === 0 && item.variation ? GREY : ORANGE);
+    doc.text(ln, tx, ty, { width: tw, lineBreak: false, ellipsis: true });
+    ty += 21;
+  });
 }
 
 // pdfkit decides when to auto-break to a new page from UNSCALED coordinates,
@@ -279,7 +297,9 @@ function drawBrand(doc, { brand, items }, ctx, photos) {
   doc.font('Inter').fontSize(13).fillColor(GREY);
   doc.text('All sales channels', PAD_X, titleTop + 22 + 52 + 21, { width: CONTENT_W, align: 'right', lineBreak: false });
 
-  const panelTop = 220, panelH = 392, panelBottom = panelTop + panelH;
+  // Top 5 (or fewer) leaves plenty of page, so the podium gets even larger photos.
+  const tall = items.length <= 5;
+  const panelTop = 220, panelH = tall ? 452 : 392, panelBottom = panelTop + panelH;
 
   if (!items.length) {
     doc.roundedRect(PAD_X, panelTop, CONTENT_W, 200, 26).fill(NAVY);
@@ -287,7 +307,7 @@ function drawBrand(doc, { brand, items }, ctx, photos) {
     doc.text('No qualifying sales for this brand in the selected period.', PAD_X, panelTop + 90, {
       width: CONTENT_W, align: 'center', lineBreak: false,
     });
-    drawFooter(doc, name, partnerName);
+    drawFooter(doc, partnerName);
     doc.restore();
     return;
   }
@@ -300,38 +320,52 @@ function drawBrand(doc, { brand, items }, ctx, photos) {
   const gap = 14, innerW = CONTENT_W - 44;
   const cardW = (innerW - gap * 2) / 3;
   // Visual order: 2nd, 1st, 3rd. With fewer than 3 items, centre what exists.
-  const spec = { 1: { h: 348, ph: 150, o: true }, 2: { h: 296, ph: 112, o: false }, 3: { h: 268, ph: 92, o: false } };
+  // Photo heights chosen so the tallest card (1st) fits under the panel's top padding.
+  const spec = tall
+    ? { 1: { ph: 268, o: true }, 2: { ph: 218, o: false }, 3: { ph: 184, o: false } }
+    : { 1: { ph: 224, o: true }, 2: { ph: 182, o: false }, 3: { ph: 152, o: false } };
   const order = [2, 1, 3].filter(r => top3[r - 1]);
   const totalW = order.length * cardW + (order.length - 1) * gap;
   let cx = PAD_X + (CONTENT_W - totalW) / 2;
   for (const r of order) {
-    drawPodiumCard(doc, top3[r - 1], photos, r, cx, panelBottom, cardW, spec[r].h, spec[r].ph, spec[r].o, showUnits);
+    drawPodiumCard(doc, top3[r - 1], photos, r, cx, panelBottom, cardW, spec[r].ph, spec[r].o, showUnits);
     cx += cardW + gap;
   }
   doc.restore();
+  drawFooter(doc, partnerName);
 
-  // Ranked list (4+), flowing onto continuation pages if needed
+  // Ranks 4+
   const rest = items.slice(3);
-  const ROW_PITCH = 58, LIST_BOTTOM = PAGE_H - 30 - 12 - 14;
-  let y = panelBottom + 22;
-  drawFooter(doc, name, partnerName);
+  const LIST_BOTTOM = PAGE_H - 30 - 12 - 14;
   let rank = 4;
-  for (const item of rest) {
-    if (y + 52 > LIST_BOTTOM) {
-      doc.restore();
-      newPage(doc);
-      doc.save(); doc.scale(K);
-      doc.rect(0, 0, PAGE_W, PAGE_H).fill(CREAM);
-      drawHeader(doc);
-      doc.font('Fraunces-Bold').fontSize(34).fillColor(NAVY);
-      doc.text(`${name}`, PAD_X, 100, { lineBreak: false });
-      doc.font('Inter').fontSize(13).fillColor(GREY);
-      doc.text(`${period}  ·  continued`, PAD_X, 112, { width: CONTENT_W, align: 'right', lineBreak: false });
-      drawFooter(doc, name, partnerName);
-      y = 160;
+
+  if (rest.length && rest.length <= 2) {
+    let y = panelBottom + 22;
+    for (const item of rest) {
+      drawWideRow(doc, item, photos, rank++, y, showUnits);
+      y += WIDE.h + WIDE.gap;
     }
-    drawRow(doc, item, photos, rank, y, showUnits);
-    y += ROW_PITCH; rank += 1;
+  } else if (rest.length) {
+    const colW = (CONTENT_W - GRID.gap) / 2;
+    let y = panelBottom + 22;
+    for (let i = 0; i < rest.length; i += 2) {
+      if (y + GRID.h > LIST_BOTTOM) {
+        doc.restore();
+        newPage(doc);
+        doc.save(); doc.scale(K);
+        doc.rect(0, 0, PAGE_W, PAGE_H).fill(CREAM);
+        drawHeader(doc);
+        doc.font('Fraunces-Bold').fontSize(34).fillColor(NAVY);
+        doc.text(name, PAD_X, 100, { lineBreak: false });
+        doc.font('Inter').fontSize(13).fillColor(GREY);
+        doc.text(`${period}  ·  continued`, PAD_X, 112, { width: CONTENT_W, align: 'right', lineBreak: false });
+        drawFooter(doc, partnerName);
+        y = 160;
+      }
+      drawGridCard(doc, rest[i], photos, rank++, PAD_X, y, colW, showUnits);
+      if (rest[i + 1]) drawGridCard(doc, rest[i + 1], photos, rank++, PAD_X + colW + GRID.gap, y, colW, showUnits);
+      y += GRID.h + GRID.gap;
+    }
   }
   doc.restore();
 }
