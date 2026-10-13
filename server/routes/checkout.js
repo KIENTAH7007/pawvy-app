@@ -290,13 +290,16 @@ module.exports = function(db, inventoryRouter, stripeClient) {
       const product = db.queryOne('SELECT unit_cost FROM products WHERE id = ?', [line.product_id]);
       const isFirst = i === 0;
 
+      // Every paid website order has to be posted out, so each line starts
+      // flagged mailing_required=1 (red in the Sales Ledger). KT clears it
+      // via the pencil-icon Edit Sale Details once the parcel is mailed.
       const result = db.run(`
         INSERT INTO sales
           (date, product_id, partner_id, channel, market, qty, unit_cost, unit_price,
            platform_fee_pct, platform_fee_amt, shipping_charged, shipping_cost, stripe_fee_amt, stripe_fee_confirmed, notes,
            mailing_name, mailing_address, mailing_phone, customer_email,
-           pdpa_consent, pdpa_consent_text, pdpa_consent_at, website_order_id)
-        VALUES (?,?,?,?,?,?,?,?,0,?,?,0,?,?,?,?,?,?,?,?,?,?,?)
+           pdpa_consent, pdpa_consent_text, pdpa_consent_at, website_order_id, mailing_required)
+        VALUES (?,?,?,?,?,?,?,?,0,?,?,0,?,?,?,?,?,?,?,?,?,?,?,1)
       `, [
         today, line.product_id, null, 'Direct Online Sale', 'SG', line.qty,
         product?.unit_cost || 0, line.unit_price,

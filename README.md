@@ -1,31 +1,22 @@
-# Pawvy App - Best Sellers Report: bigger products and titles
+# Website orders auto-highlighted red (mailing required)
 
-Only ONE file changes: `server/lib/bestSellersReport.js`. No npm install, no database changes.
+Every paid Pawvy.co order now lands in the Sales Ledger flagged "mailing required", so it shows red automatically. Once mailed, click the pencil icon on the row, untick "mailing required" and save — the red goes away (same as POS today).
 
-## What changed
+Only one file changed: `server/routes/checkout.js` (no database change, no client rebuild needed).
 
-- **Products are much bigger.** Each photo's empty white border is now trimmed away automatically
-  before it goes into the PDF, and the grey frame behind photos is gone, so products sit straight on
-  the white card and fill it. The trim only removes the plain background around the item - it never
-  cuts into the product (this is why I did not use a "crop to fill", which could chop products).
-- **Wider podium cards.** #1 is wider than #2/#3, and the cards are packed closer, so photos get more width.
-- **Rank badges moved** onto the top edge of each podium card, so they no longer sit on top of the product.
-- **Bigger titles.** Podium titles 17 pt (was 15.5), variation 14.5; ranked-list titles 16 pt (was 14.5);
-  Top 5 rows 23 pt (was 18) with 134 px photos (was 96).
-- **Less empty space.** Top 5 pages now use a taller podium and bigger rows; Top 10 pages use bigger cards.
-- Fixed: with "Show units" on, long variation names could push "units" onto an awkward line - units now sit on their own line.
-
-## How to apply
-
-```bash
-git checkout main
-git pull origin main
+## Apply
 ```
-
-Copy `server/lib/bestSellersReport.js` from this zip over the existing file, then:
-
-```bash
-git add server/lib/bestSellersReport.js
-git commit -m "Best Sellers Report: trim photo borders, bigger podium photos and titles"
-git push origin main
+cd pawvy-app
+git checkout staging
+git pull origin staging
+# copy server/routes/checkout.js from this zip over your existing one
+git add server/routes/checkout.js
+git commit -m "Website orders: flag mailing_required automatically so they show red in Sales Ledger"
+git push origin staging
 ```
+To go live (after testing on staging): `git checkout main && git pull origin main && git merge staging --ff-only && git push origin main && git checkout staging`
+
+## Notes
+- Applies to NEW orders only. Existing website orders are not changed (many are already mailed, so a blanket backfill would turn them all red). For any past order still unmailed, tick "mailing required" via the pencil icon.
+- Multi-item orders: every line is flagged red; clear each line when mailed.
+- Test: place a test order on pawvy.co → after payment, the Sales Ledger rows should be red.
