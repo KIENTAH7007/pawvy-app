@@ -1,22 +1,19 @@
-# Website orders auto-highlighted red (mailing required)
+# Pawvy App – trimmed product images endpoint (for the website)
 
-Every paid Pawvy.co order now lands in the Sales Ledger flagged "mailing required", so it shows red automatically. Once mailed, click the pencil icon on the row, untick "mailing required" and save — the red goes away (same as POS today).
+Adds `?trim=1` to image URLs: `/api/uploads/<key>?trim=1` returns the same photo with the empty border trimmed and re-padded to a square, so the product fills more of its card. Nothing that isn't background is cut (corner labels like "Classic"/"Mini", shadows and small print stay). Without `?trim=1` nothing changes, so the app, POS, portal and PDF reports are untouched. Uploaded originals are never modified.
 
-Only one file changed: `server/routes/checkout.js` (no database change, no client rebuild needed).
+Files: `server/lib/imageTrim.js` (new), `server/routes/uploads.js` (changed). Uses `sharp`, already in package.json. No database change.
 
 ## Apply
 ```
 cd pawvy-app
 git checkout staging
 git pull origin staging
-# copy server/routes/checkout.js from this zip over your existing one
-git add server/routes/checkout.js
-git commit -m "Website orders: flag mailing_required automatically so they show red in Sales Ledger"
+# copy server/lib/imageTrim.js and server/routes/uploads.js from this zip into the same places
+git add server/lib/imageTrim.js server/routes/uploads.js
+git commit -m "Uploads: ?trim=1 returns border-trimmed square product photos for the website"
 git push origin staging
 ```
-To go live (after testing on staging): `git checkout main && git pull origin main && git merge staging --ff-only && git push origin main && git checkout staging`
+Deploy this one first (the website zip works either way: if the app is older it simply ignores ?trim=1 and serves the original).
 
-## Notes
-- Applies to NEW orders only. Existing website orders are not changed (many are already mailed, so a blanket backfill would turn them all red). For any past order still unmailed, tick "mailing required" via the pencil icon.
-- Multi-item orders: every line is flagged red; clear each line when mailed.
-- Test: place a test order on pawvy.co → after payment, the Sales Ledger rows should be red.
+Quick check after deploy: open `<app-url>/api/uploads/<any product image key>?trim=1` in a browser — it should be the same photo, tighter and square.

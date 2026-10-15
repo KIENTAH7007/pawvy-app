@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const { pipeline } = require('stream/promises');
 const { getObjectStream } = require('../lib/bucket');
+const { trimmedSquare } = require('../lib/imageTrim');
 
 // Railway Buckets are private-only (no public buckets, per Railway's own
 // docs as of Aug 2026) — this route is the one place that actually talks
@@ -30,6 +31,25 @@ module.exports = function() {
       // clean 404 type — treat any failure here as "not found" rather
       // than leaking bucket error details to the client.
       return res.status(404).json({ error: 'Image not found.' });
+    }
+
+    // ?trim=1 — website product photos: border trimmed, square, product bigger
+    // (see lib/imageTrim.js). Same immutable-URL caching reasoning as below
+    // applies, since the output depends only on the (unique) key. Falls
+    // through to the untouched original if trimming isn't possible.
+    if (req.query.trim === '1' && /^image\/(jpe?g|png|webp)$/i.test(obj.ContentType || '')) {
+      try {
+        const chunks = [];
+        for await (const chunk of obj.Body) chunks.push(chunk);
+        const original = Buffer.concat(chunks);
+        const t = await trimmedSquare(original, key);
+        res.setHeader('Content-Type', t ? t.type : obj.ContentType);
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        return res.end(t ? t.buf : original);
+      } catch (err) {
+        if (!res.headersSent) return res.status(404).json({ error: 'Image not found.' });
+        return;
+      }
     }
 
     res.setHeader('Content-Type', obj.ContentType || 'application/octet-stream');
