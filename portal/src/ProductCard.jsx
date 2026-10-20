@@ -8,7 +8,8 @@ const STOCK_LABEL = {
   out_of_stock: { text: 'Out of Stock', color: '#f87171' },
 };
 
-const sgd = v => `SGD ${parseFloat(v || 0).toFixed(2)}`;
+import { CURRENCY } from './api.js';
+const sgd = v => `${CURRENCY} ${parseFloat(v || 0).toFixed(2)}`;
 
 // Box-quantity nudge (Sep 2026, per KT) — purely informational, never
 // blocks the order. Only shown when the product has a pack_size set AND
@@ -87,11 +88,11 @@ export default function ProductCard({ product, cartQty, onAdd, onUpdateQty, onRe
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 2 }}>
           <div>
             <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: .4, textTransform: 'uppercase', color: 'rgba(245,242,235,.35)' }}>Your Price</div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--orange)' }}>{sgd(product.price_wholesale_sg)}</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--orange)' }}>{sgd(product.price_wholesale)}</div>
           </div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: .4, textTransform: 'uppercase', color: 'rgba(245,242,235,.35)' }}>RRP</div>
-            <div style={{ fontSize: 12, color: 'rgba(245,242,235,.5)' }}>{sgd(product.price_rrp_sg)}</div>
+            <div style={{ fontSize: 12, color: 'rgba(245,242,235,.5)' }}>{sgd(product.price_rrp)}</div>
           </div>
         </div>
 

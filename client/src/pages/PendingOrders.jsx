@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { myShippingReminder } from '../utils/myShipping';
+import { MarketBadge } from '../components/ui';
 import { CheckCircle, XCircle, Trash2, Plus, ChevronDown, ChevronUp, Clock } from 'lucide-react';
 import { partnersApi, brandsApi, productsApi, ordersApi } from '../api';
 import { Page, Card, Input, Select, Btn, fmt } from '../components/ui';
@@ -140,6 +141,7 @@ export default function PendingOrders() {
         ...prev,
         [order.id]: {
           partnerId: order.partner_id || '',
+          market: order.market === 'MY' ? 'MY' : 'SG', // which portal link it came through
           shippingCharged: '',
           shippingCost: '',
           // KT's one-off, per-occasion discount — same 4-mode pattern as
@@ -160,7 +162,7 @@ export default function PendingOrders() {
             variation: it.variation,
             brand_name: it.brand_name,
             brand_color: it.brand_color,
-            unit_price: it.price_wholesale_sg,
+            unit_price: order.market === 'MY' ? it.price_wholesale_my : it.price_wholesale_sg,
           })),
         },
       }));
@@ -185,6 +187,7 @@ export default function PendingOrders() {
     ensureProducts(brand_id);
   }
   function updateNewLineProduct(orderId, idx, product_id, brand_id) {
+    const es_market = editState[orderId]?.market;
     const prod = (pbb[brand_id] || []).find(p => String(p.id) === String(product_id));
     updateEdit(orderId, es => ({
       ...es,
@@ -192,7 +195,7 @@ export default function PendingOrders() {
         ...it, product_id,
         item_series: prod?.item_series, variation: prod?.variation,
         brand_name: prod?.brand_name, brand_color: prod?.brand_color,
-        unit_price: prod?.price_wholesale_sg,
+        unit_price: es_market === 'MY' ? prod?.price_wholesale_my : prod?.price_wholesale_sg,
       } : it),
     }));
   }
@@ -361,6 +364,7 @@ export default function PendingOrders() {
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--cream)', display: 'flex', alignItems: 'center', gap: 8 }}>
                       {order.company_name}
+                      <MarketBadge market={order.market}/>
                       {order.voided_at && (
                         <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: .5, color: '#f87171', background: 'rgba(248,113,113,.12)', border: '1px solid rgba(248,113,113,.3)', borderRadius: 4, padding: '2px 6px' }}>
                           VOIDED
@@ -437,10 +441,15 @@ export default function PendingOrders() {
                       <Select label="Match to Partner *" value={es.partnerId}
                         onChange={e => updateEdit(order.id, prev => ({ ...prev, partnerId: e.target.value }))}>
                         <option value="">— Select partner —</option>
-                        {partners.slice().sort((a,b)=>a.company_name.localeCompare(b.company_name)).map(p =>
+                        {partners.filter(p => (p.market || 'SG') === es.market).sort((a,b)=>a.company_name.localeCompare(b.company_name)).map(p =>
                           <option key={p.id} value={p.id}>{p.company_name}</option>
                         )}
                       </Select>
+                      {es.market === 'MY' && (
+                        <div style={{ fontSize: 11, color: 'var(--cream-30)', marginTop: 4 }}>
+                          Malaysia order (MYR prices) — only MY partners are listed. If the company isn't there, add it under Partners with Market = MY.
+                        </div>
+                      )}
                     </div>
 
                     <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -464,7 +473,7 @@ export default function PendingOrders() {
                               <div style={{ flex: 1, fontSize: 12.5, color: 'var(--cream)' }}>
                                 <span style={{ color: it.brand_color || 'var(--cream-30)', fontWeight: 600, fontSize: 10.5, textTransform: 'uppercase', marginRight: 8 }}>{it.brand_name}</span>
                                 {it.item_series}{it.variation ? ` · ${it.variation}` : ''}
-                                <span style={{ color: 'var(--cream-30)', marginLeft: 8, fontSize: 11 }}>{fmt.sgd(it.unit_price)}/u</span>
+                                <span style={{ color: 'var(--cream-30)', marginLeft: 8, fontSize: 11 }}>{fmt.money(it.unit_price, es.market === 'MY' ? 'MYR' : 'SGD')}/u</span>
                               </div>
                             )}
                             <Input type="number" min="1" value={it.qty} onChange={e => updateItemQty(order.id, idx, e.target.value)} style={{ width: 70 }}/>
@@ -535,7 +544,7 @@ export default function PendingOrders() {
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                             {es.items.filter(it => it.product_id).map(it => (
                               <div key={it.product_id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <span style={{ flex: 1, fontSize: 11.5, color: 'var(--cream-60)' }}>{it.item_series}{it.variation ? ` · ${it.variation}` : ''} <span style={{ color: 'var(--cream-30)' }}>(RRP {fmt.sgd(it.unit_price)})</span></span>
+                                <span style={{ flex: 1, fontSize: 11.5, color: 'var(--cream-60)' }}>{it.item_series}{it.variation ? ` · ${it.variation}` : ''} <span style={{ color: 'var(--cream-30)' }}>(RRP {fmt.money(it.unit_price, es.market === 'MY' ? 'MYR' : 'SGD')})</span></span>
                                 <Input type="number" min="0" step="0.01" placeholder={parseFloat(it.unit_price).toFixed(2)}
                                   value={es.specialItemPrices?.[it.product_id] !== undefined ? es.specialItemPrices[it.product_id] : ''}
                                   onChange={e => updateEdit(order.id, prev => ({ ...prev, specialItemPrices: { ...prev.specialItemPrices, [it.product_id]: e.target.value } }))}
@@ -553,10 +562,10 @@ export default function PendingOrders() {
                         SHIPPING (OPTIONAL)
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, paddingTop: 10 }}>
-                        <Input label={`Shipping Charged to Partner (${totals?.partner?.market === 'MY' ? 'MYR' : 'SGD'})`} type="number" step="0.01" placeholder="0.00"
+                        <Input label={`Shipping Charged to Partner (${es.market === 'MY' ? 'MYR' : 'SGD'})`} type="number" step="0.01" placeholder="0.00"
                           value={es.shippingCharged}
                           onChange={e => updateEdit(order.id, prev => ({ ...prev, shippingCharged: e.target.value }))}/>
-                        <Input label={`Actual Shipping Cost (${totals?.partner?.market === 'MY' ? 'MYR' : 'SGD'})`} type="number" step="0.01" placeholder="0.00"
+                        <Input label={`Actual Shipping Cost (${es.market === 'MY' ? 'MYR' : 'SGD'})`} type="number" step="0.01" placeholder="0.00"
                           value={es.shippingCost}
                           onChange={e => updateEdit(order.id, prev => ({ ...prev, shippingCost: e.target.value }))}/>
                       </div>
@@ -569,32 +578,32 @@ export default function PendingOrders() {
                       <div style={{ marginTop: 14, padding: 12, background: 'rgba(245,242,235,.03)', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
                           <span style={{ color: 'var(--cream-60)' }}>Subtotal</span>
-                          <span style={{ color: 'var(--cream)' }}>{fmt.money(totals.rawSubtotal, totals.partner?.market === 'MY' ? 'MYR' : 'SGD')}</span>
+                          <span style={{ color: 'var(--cream)' }}>{fmt.money(totals.rawSubtotal, es.market === 'MY' ? 'MYR' : 'SGD')}</span>
                         </div>
                         {totals.specialDiscountTotal > 0 && (
                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
                             <span style={{ color: '#e0a458' }}>Special discount</span>
-                            <span style={{ color: '#e0a458', fontWeight: 700 }}>− {fmt.money(totals.specialDiscountTotal, totals.partner?.market === 'MY' ? 'MYR' : 'SGD')}</span>
+                            <span style={{ color: '#e0a458', fontWeight: 700 }}>− {fmt.money(totals.specialDiscountTotal, es.market === 'MY' ? 'MYR' : 'SGD')}</span>
                           </div>
                         )}
                         {totals.discount.label && (
                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
                             <span style={{ color: '#7fc93e' }}>{totals.discount.label}</span>
                             {totals.discountAffectsTotal && totals.discount.amount > 0 && (
-                              <span style={{ color: '#7fc93e', fontWeight: 700 }}>− {fmt.money(totals.discount.amount, totals.partner?.market === 'MY' ? 'MYR' : 'SGD')}</span>
+                              <span style={{ color: '#7fc93e', fontWeight: 700 }}>− {fmt.money(totals.discount.amount, es.market === 'MY' ? 'MYR' : 'SGD')}</span>
                             )}
                           </div>
                         )}
                         {totals.shipCharged > 0 && (
                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
                             <span style={{ color: 'var(--cream-60)' }}>Shipping charged</span>
-                            <span style={{ color: 'var(--cream)' }}>+ {fmt.money(totals.shipCharged, totals.partner?.market === 'MY' ? 'MYR' : 'SGD')}</span>
+                            <span style={{ color: 'var(--cream)' }}>+ {fmt.money(totals.shipCharged, es.market === 'MY' ? 'MYR' : 'SGD')}</span>
                           </div>
                         )}
                         <div style={{ height: 1, background: 'var(--border)', margin: '2px 0' }}/>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, fontWeight: 700 }}>
                           <span style={{ color: 'var(--cream)' }}>Net Total</span>
-                          <span style={{ color: 'var(--orange)' }}>{fmt.money(totals.netTotal, totals.partner?.market === 'MY' ? 'MYR' : 'SGD')}</span>
+                          <span style={{ color: 'var(--orange)' }}>{fmt.money(totals.netTotal, es.market === 'MY' ? 'MYR' : 'SGD')}</span>
                         </div>
                       </div>
                     )}

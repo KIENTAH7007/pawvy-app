@@ -246,21 +246,25 @@ function reportsRouter(db) {
   // product's CURRENT wholesale price as a proxy (portal_order_items only
   // stores qty, not price-at-order-time) — directionally accurate for
   // "is upsell working", not meant as an exact historical revenue figure.
+  // ?market=MY → MY-link orders valued at MYR wholesale prices; default SG (as before).
   router.get('/upsell', (req, res) => {
+    const mk = req.query.market === 'MY' ? 'MY' : 'SG';
+    const pc = mk === 'MY' ? 'price_wholesale_my' : 'price_wholesale_sg';
     const rows = db.query(`
       SELECT poi.source, SUM(poi.qty) AS total_qty,
-        SUM(poi.qty * COALESCE(p.price_wholesale_sg,0)) AS total_amount
+        SUM(poi.qty * COALESCE(p.${pc},0)) AS total_amount
       FROM portal_order_items poi
       JOIN portal_orders po ON po.id = poi.portal_order_id
       LEFT JOIN products p ON p.id = poi.product_id
-      WHERE po.status = 'approved' AND po.voided_at IS NULL
+      WHERE po.status = 'approved' AND po.voided_at IS NULL AND COALESCE(po.market,'SG') = ?
       GROUP BY poi.source
-    `);
+    `, [mk]);
     const result = { catalogue: { qty:0, amount:0 }, upsell: { qty:0, amount:0 } };
     rows.forEach(r => {
       const key = r.source === 'upsell' ? 'upsell' : 'catalogue';
       result[key] = { qty: r.total_qty || 0, amount: parseFloat((r.total_amount || 0).toFixed(2)) };
     });
+    result.currency = mk === 'MY' ? 'MYR' : 'SGD';
     res.json(result);
   });
 
@@ -270,6 +274,8 @@ function reportsRouter(db) {
   // so the totals always agree with what the chart shows.
   router.get('/upsell/detail', (req, res) => {
     const { source } = req.query;
+    const mk = req.query.market === 'MY' ? 'MY' : 'SG';
+    const pc = mk === 'MY' ? 'price_wholesale_my' : 'price_wholesale_sg';
     if (source !== 'upsell' && source !== 'catalogue') {
       return res.status(400).json({ error: "source must be 'upsell' or 'catalogue'" });
     }
@@ -280,15 +286,15 @@ function reportsRouter(db) {
         p.item_series, p.variation,
         b.name AS brand_name, b.color AS brand_color,
         poi.qty,
-        COALESCE(p.price_wholesale_sg, 0) AS unit_price
+        COALESCE(p.${pc}, 0) AS unit_price
       FROM portal_order_items poi
       JOIN portal_orders po ON po.id = poi.portal_order_id
       LEFT JOIN products p ON p.id = poi.product_id
       LEFT JOIN brands   b ON b.id = p.brand_id
       WHERE po.status = 'approved' AND po.voided_at IS NULL
-        AND COALESCE(poi.source, 'catalogue') = ?
+        AND COALESCE(poi.source, 'catalogue') = ? AND COALESCE(po.market,'SG') = ?
       ORDER BY po.submitted_at DESC
-    `, [source]);
+    `, [source, mk]);
 
     res.json(rows.map(r => ({
       company_name: r.company_name,

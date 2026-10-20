@@ -117,19 +117,20 @@ async function notifyBackupEmail(subject, text, attachmentPath, attachmentName) 
 // Fire-and-forget from the caller's perspective — both channels are
 // independently try/caught above, so a Telegram or email outage never
 // blocks or slows down the actual order submission response.
-function notifyNewPortalOrder({ orderId, companyName, notes, lines }) {
+function notifyNewPortalOrder({ orderId, companyName, notes, lines, market }) {
+  const mk = market === 'MY' ? ' 🇲🇾 [MY]' : '';
   const itemLines = lines.map(l => `• ${l.qty}x ${l.name}`).join('\n');
   const itemCount = lines.reduce((s, l) => s + l.qty, 0);
 
   const telegramText =
-    `🐾 *New Order Portal order!*\n` +
+    `🐾 *New Order Portal order!*${mk}\n` +
     `Company: ${companyName}\n` +
     `${lines.length} SKU${lines.length === 1 ? '' : 's'}, ${itemCount} unit${itemCount === 1 ? '' : 's'} total:\n` +
     `${itemLines}` +
     (notes ? `\nNotes: ${notes}` : '') +
     `\n\nReview in Pending Orders → Pawvy App.`;
 
-  const emailSubject = `New Order Portal submission — ${companyName}`;
+  const emailSubject = `New Order Portal submission${mk} — ${companyName}`;
   const emailText =
     `New order received from ${companyName}.\n\n` +
     `${itemLines}` +

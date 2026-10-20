@@ -206,11 +206,13 @@ export default function Dashboard() {
     }).catch(() => setLoading(false));
   }, [dmarket]);
 
-  useEffect(() => { reportsApi.upsell().then(setUpsell).catch(() => {}); }, []);
+  // Order Portal upsell: MY view reads MY-link orders in MYR; SG and All show the SG portal (SGD)
+  const upsellMarket = dmarket === 'MY' ? 'MY' : '';
+  useEffect(() => { reportsApi.upsell(upsellMarket ? { market: upsellMarket } : {}).then(setUpsell).catch(() => {}); }, [dmarket]);
 
   function openUpsellDetail(source) {
     setUpsellDetailModal({ source, rows: null, loading: true });
-    reportsApi.upsellDetail(source)
+    reportsApi.upsellDetail(source, upsellMarket)
       .then(rows => setUpsellDetailModal({ source, rows, loading: false }))
       .catch(e => setUpsellDetailModal({ source, rows: [], loading: false, error: e.message }));
   }
@@ -444,7 +446,7 @@ export default function Dashboard() {
                   </ResponsiveContainer>
                 </div>
                 <div>
-                  <div style={{fontSize:10,fontWeight:700,letterSpacing:.8,textTransform:'uppercase',color:'var(--cream-30)',marginBottom:8}}>Estimated Amount (SGD)</div>
+                  <div style={{fontSize:10,fontWeight:700,letterSpacing:.8,textTransform:'uppercase',color:'var(--cream-30)',marginBottom:8}}>Estimated Amount ({upsellMarket ? 'MYR' : 'SGD'})</div>
                   <ResponsiveContainer width="100%" height={140}>
                     <BarChart data={[
                       { name:'Catalogue', amount: upsell.catalogue.amount },
@@ -572,7 +574,7 @@ export default function Dashboard() {
                         <span style={{color:r.brand_color}}>{r.brand_name}</span> {r.item_series}{r.variation ? ` · ${r.variation}` : ''}
                       </td>
                       <td style={{padding:'6px 8px',textAlign:'right',color:'var(--cream)'}}>{r.qty}</td>
-                      <td style={{padding:'6px 8px',textAlign:'right',color:'var(--cream-60)'}}>SGD {r.amount.toFixed(2)}</td>
+                      <td style={{padding:'6px 8px',textAlign:'right',color:'var(--cream-60)'}}>{upsellMarket ? 'MYR' : 'SGD'} {r.amount.toFixed(2)}</td>
                       <td style={{padding:'6px 8px',color:'var(--cream-30)',whiteSpace:'nowrap'}}>{fmt.date(r.submitted_at)}</td>
                     </tr>
                   ))}

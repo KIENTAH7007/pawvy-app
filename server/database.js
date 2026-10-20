@@ -1243,6 +1243,8 @@ function createSchema() {
   try { db.run("ALTER TABLE sales ADD COLUMN fx_rate REAL"); } catch(e) {}
   try { db.run("ALTER TABLE operating_costs ADD COLUMN currency TEXT DEFAULT 'SGD'"); } catch(e) {}
   try { db.run("ALTER TABLE operating_costs ADD COLUMN fx_rate REAL"); } catch(e) {}
+  // Order Portal: which market link the order came through (SG link vs MY link at /order/my)
+  try { db.run("ALTER TABLE portal_orders ADD COLUMN market TEXT DEFAULT 'SG'"); } catch(e) {}
   // West / East Malaysia — shipping zone for MY partners (shows the right
   // free-delivery reminder in Pending Orders). Separate from partners.region,
   // which is the SG region tag for the public Stockist page.

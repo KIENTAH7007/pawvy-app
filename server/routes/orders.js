@@ -7,7 +7,7 @@ module.exports = function(db, inventoryRouter) {
   function withItems(order) {
     const items = db.query(`
       SELECT poi.id, poi.product_id, poi.qty, poi.source,
-        p.item_series, p.variation, p.price_wholesale_sg, p.price_rrp_sg,
+        p.item_series, p.variation, p.price_wholesale_sg, p.price_rrp_sg, p.price_wholesale_my, p.price_rrp_my,
         b.name AS brand_name, b.color AS brand_color
       FROM portal_order_items poi
       JOIN products p ON p.id = poi.product_id
@@ -120,11 +120,15 @@ module.exports = function(db, inventoryRouter) {
 
     // Market (and so currency) comes from the partner — never from the typed
     // company name. MY partner → MY sale in MYR with today's rate saved on it.
-    const ptr = db.queryOne('SELECT market FROM partners WHERE id = ?', [partner_id]);
-    const mkt = ptr?.market === 'MY' ? 'MY' : 'SG';
-    // Portal prices are still SG until the Malaysia Order Portal (Phase 2) brings MYR wholesale
-    // prices — approving here would record SGD prices as MYR, so it is blocked for now.
-    if (mkt === 'MY') return res.status(400).json({ error: 'Approving orders for Malaysia partners is switched on with the Malaysia Order Portal (next phase). Until then, record MY orders via Record Sale.' });
+    // The order's market comes from the portal link it was submitted through (SG link / MY link);
+    // the matched partner must be in that same market so prices, currency and rules line up.
+    const ptr = db.queryOne('SELECT market, company_name FROM partners WHERE id = ?', [partner_id]);
+    const mkt = order.market === 'MY' ? 'MY' : 'SG';
+    if ((ptr?.market === 'MY' ? 'MY' : 'SG') !== mkt) {
+      return res.status(400).json({ error: mkt === 'MY'
+        ? `This order came through the Malaysia portal (MYR prices), but "${ptr?.company_name}" is an SG partner. Pick a MY partner, or change that partner's market to MY first.`
+        : `This order came through the Singapore portal (SGD prices), but "${ptr?.company_name}" is a MY partner. Pick an SG partner.` });
+    }
     let st;
     try { st = require('../lib/fx').stamp(db, mkt, today); } catch (e) { return res.status(e.status || 500).json({ error: e.message }); }
     const shipCharged = parseFloat(shipping_charged) || 0;

@@ -17,11 +17,19 @@ module.exports = function(db) {
   const router = Router();
 
   // GET /api/portal/catalogue — public product catalogue with live stock
+  // ?market=MY → the Malaysia link: MYR prices (price_wholesale_my / price_rrp_my), and only products
+  // that have a MY wholesale price set. Default is SG, unchanged. Stock is the same shared stock.
+  const marketOf = (req) => (String(req.query.market || '').toUpperCase() === 'MY' ? 'MY' : 'SG');
+  const priceFields = (r, mk) => mk === 'MY'
+    ? { price_wholesale: r.price_wholesale_my, price_rrp: r.price_rrp_my, currency: 'MYR' }
+    : { price_wholesale: r.price_wholesale_sg, price_rrp: r.price_rrp_sg, currency: 'SGD' };
+
   router.get('/catalogue', (req, res) => {
+    const mk = marketOf(req);
     const rows = db.query(`
       SELECT
         p.id, p.item_series, p.variation, p.image_url,
-        p.price_wholesale_sg, p.price_rrp_sg, p.is_new, p.new_until, p.pack_size,
+        p.price_wholesale_sg, p.price_rrp_sg, p.price_wholesale_my, p.price_rrp_my, p.is_new, p.new_until, p.pack_size,
         b.id AS brand_id, b.name AS brand_name, b.color AS brand_color,
         COALESCE(mega.qty, 0)    AS mega_qty,
         COALESCE(hougang.qty, 0) AS hougang_qty
@@ -29,7 +37,7 @@ module.exports = function(db) {
       JOIN brands b ON b.id = p.brand_id
       LEFT JOIN inventory_levels mega    ON mega.product_id = p.id    AND mega.location    = 'Mega'
       LEFT JOIN inventory_levels hougang ON hougang.product_id = p.id AND hougang.location = 'Hougang'
-      WHERE p.is_active = 1
+      WHERE p.is_active = 1 ${mk === 'MY' ? 'AND COALESCE(p.price_wholesale_my,0) > 0' : ''}
       -- Aug 2026 (per KT): stock status is now the TOP-level sort key
       -- (was brand-first) — matches routes/shop.js and routes/pos.js,
       -- kept consistent across Website, POS, and Order Portal per KT's
@@ -50,6 +58,7 @@ module.exports = function(db) {
       image_url: r.image_url || null,
       price_wholesale_sg: r.price_wholesale_sg,
       price_rrp_sg: r.price_rrp_sg,
+      ...priceFields(r, mk),
       pack_size: r.pack_size || null,
       is_new_active: withEffectivePrice(r).is_new_active,
       stock_status: stockStatus(r.mega_qty + r.hougang_qty),
@@ -66,6 +75,7 @@ module.exports = function(db) {
   // /catalogue (so the same ProductCard renders both) plus a 1-indexed
   // `rank` field for the #1/#2/#3 badge on the frontend.
   router.get('/top-sellers', (req, res) => {
+    const mk = marketOf(req);
     const since = new Date();
     since.setMonth(since.getMonth() - 3);
     const sinceStr = localDateStr(since);
@@ -75,11 +85,11 @@ module.exports = function(db) {
     const ranked = db.query(`
       SELECT s.product_id, SUM(s.qty) AS total_qty
       FROM sales s
-      WHERE s.date >= ? AND COALESCE(s.voided,0) = 0
+      WHERE s.date >= ? AND COALESCE(s.voided,0) = 0 AND COALESCE(s.market,'SG') = ?
       GROUP BY s.product_id
       ORDER BY total_qty DESC
       LIMIT 30
-    `, [sinceStr]);
+    `, [sinceStr, mk]);
 
     if (ranked.length === 0) return res.json([]);
 
@@ -87,7 +97,7 @@ module.exports = function(db) {
     const rows = db.query(`
       SELECT
         p.id, p.item_series, p.variation, p.image_url, p.is_active,
-        p.price_wholesale_sg, p.price_rrp_sg,
+        p.price_wholesale_sg, p.price_rrp_sg, p.price_wholesale_my, p.price_rrp_my,
         b.id AS brand_id, b.name AS brand_name, b.color AS brand_color,
         COALESCE(mega.qty, 0)    AS mega_qty,
         COALESCE(hougang.qty, 0) AS hougang_qty
@@ -106,7 +116,7 @@ module.exports = function(db) {
     // re-number them 1-8 cleanly (never a gap like #1, #3, #4).
     const topSellers = ranked
       .map(r => byId[r.product_id])
-      .filter(r => r && r.is_active)
+      .filter(r => r && r.is_active && (mk !== 'MY' || (r.price_wholesale_my || 0) > 0))
       .map(r => ({
         id: r.id,
         brand_id: r.brand_id,
@@ -117,6 +127,7 @@ module.exports = function(db) {
         image_url: r.image_url || null,
         price_wholesale_sg: r.price_wholesale_sg,
         price_rrp_sg: r.price_rrp_sg,
+        ...priceFields(r, mk),
         stock_status: stockStatus(r.mega_qty + r.hougang_qty),
       }))
       .filter(p => p.stock_status !== 'out_of_stock')
@@ -129,6 +140,7 @@ module.exports = function(db) {
   // POST /api/portal/orders — public order submission
   router.post('/orders', (req, res) => {
     const { company_name, notes, items } = req.body;
+    const mk = String(req.body.market || '').toUpperCase() === 'MY' ? 'MY' : 'SG';
 
     if (!company_name || !String(company_name).trim()) {
       return res.status(400).json({ error: 'Company name is required.' });
@@ -145,7 +157,7 @@ module.exports = function(db) {
         return res.status(400).json({ error: 'Each item needs a valid product and quantity.' });
       }
       const product = db.queryOne(`
-        SELECT p.id, p.is_active, p.item_series, p.variation,
+        SELECT p.id, p.is_active, p.item_series, p.variation, p.price_wholesale_my,
           COALESCE(mega.qty, 0) + COALESCE(hougang.qty, 0) AS total_qty
         FROM products p
         LEFT JOIN inventory_levels mega    ON mega.product_id = p.id    AND mega.location    = 'Mega'
@@ -154,6 +166,9 @@ module.exports = function(db) {
       `, [line.product_id]);
       if (!product || !product.is_active) {
         return res.status(400).json({ error: `One of the items in your order is no longer available.` });
+      }
+      if (mk === 'MY' && !(product.price_wholesale_my > 0)) {
+        return res.status(400).json({ error: 'One of the items in your order is not available for Malaysia.' });
       }
       if (product.total_qty <= 0) {
         return res.status(400).json({ error: `One of the items in your order just went out of stock — please remove it and try again.` });
@@ -173,9 +188,9 @@ module.exports = function(db) {
     }
 
     const orderResult = db.run(`
-      INSERT INTO portal_orders (company_name, notes, status)
-      VALUES (?, ?, 'pending')
-    `, [String(company_name).trim(), notes || null]);
+      INSERT INTO portal_orders (company_name, notes, status, market)
+      VALUES (?, ?, 'pending', ?)
+    `, [String(company_name).trim(), notes || null, mk]);
 
     const portalOrderId = orderResult.lastID;
     for (const line of items) {
@@ -201,6 +216,7 @@ module.exports = function(db) {
       notifyNewPortalOrder({
         orderId: portalOrderId,
         companyName: String(company_name).trim(),
+        market: mk,
         notes: notes || null,
         lines: items.map(l => ({ qty: parseInt(l.qty), name: nameById[l.product_id] || `Product #${l.product_id}` })),
       });

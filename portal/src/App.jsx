@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { Search, ShoppingCart, ArrowLeft, CheckCircle2, Loader2, ImageOff } from 'lucide-react'
-import { portalApi } from './api.js'
+import { portalApi, MARKET, CURRENCY } from './api.js'
 import { PAWVY_LOGO_WHITE } from './pawvyLogo.js'
 import ProductCard from './ProductCard.jsx'
 import QtyStepper from './QtyStepper.jsx'
@@ -76,7 +76,7 @@ export default function App() {
   }, [cart, byId]);
 
   const cartCount = cartLines.reduce((s, l) => s + l.qty, 0);
-  const cartSubtotal = cartLines.reduce((s, l) => s + l.qty * (l.product.price_wholesale_sg || 0), 0);
+  const cartSubtotal = cartLines.reduce((s, l) => s + l.qty * (l.product.price_wholesale || 0), 0);
 
   // source defaults to 'catalogue'; the upsell grid passes 'upsell' explicitly.
   // If a product's already in the cart, the ORIGINAL source is kept even if
@@ -195,7 +195,7 @@ export default function App() {
                     {l.product.item_series}
                     {l.product.variation && <span style={{ color: 'rgba(245,242,235,.5)' }}> · {l.product.variation}</span>}
                     <div style={{ fontSize: 11, color: 'rgba(245,242,235,.4)', fontWeight: 400, marginTop: 2 }}>
-                      SGD {parseFloat(l.product.price_wholesale_sg).toFixed(2)} / unit
+                      {CURRENCY} {parseFloat(l.product.price_wholesale).toFixed(2)} / unit
                     </div>
                   </div>
                   <QtyStepper value={l.qty} onChange={q => updateQty(l.product.id, q)} />
@@ -205,7 +205,7 @@ export default function App() {
 
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'rgba(245,242,235,.6)', padding: '8px 4px' }}>
                 <span>Subtotal (before any applicable discount)</span>
-                <strong style={{ color: 'var(--cream)' }}>SGD {cartSubtotal.toFixed(2)}</strong>
+                <strong style={{ color: 'var(--cream)' }}>{CURRENCY} {cartSubtotal.toFixed(2)}</strong>
               </div>
 
               <div style={{
@@ -213,14 +213,29 @@ export default function App() {
                 border: '1px solid rgba(245,242,235,.1)', borderRadius: 10, background: 'rgba(245,242,235,.03)',
               }}>
                 <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--cream)', marginBottom: 8, textDecoration: 'underline' }}>Delivery</div>
-                <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <li style={{ fontSize: 12, color: 'rgba(245,242,235,.75)' }}>Order &gt; $200 — FOC Delivery</li>
-                  <li style={{ fontSize: 12, color: 'rgba(245,242,235,.75)' }}>Order &gt; $400 — Cash rebate $12 off</li>
-                  <li style={{ fontSize: 12, color: 'rgba(245,242,235,.75)' }}>Order &gt; $600 — Cash rebate $30 off</li>
-                </ul>
-                <div style={{ fontSize: 10.5, color: 'rgba(245,242,235,.35)', marginTop: 8 }}>
-                  *Relevant discount (where applicable) will be reflected in the invoice directly.
-                </div>
+                {MARKET === 'MY' ? (
+                  <>
+                    <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <li style={{ fontSize: 12, color: 'rgba(245,242,235,.75)' }}>West Malaysia: order above MYR 600 — free delivery</li>
+                      <li style={{ fontSize: 12, color: 'rgba(245,242,235,.75)' }}>West Malaysia: order below MYR 600 — MYR 25 delivery fee</li>
+                      <li style={{ fontSize: 12, color: 'rgba(245,242,235,.75)' }}>East Malaysia: delivery charge confirmed case by case</li>
+                    </ul>
+                    <div style={{ fontSize: 10.5, color: 'rgba(245,242,235,.35)', marginTop: 8 }}>
+                      *Final delivery arrangement will be reflected in the invoice.
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <li style={{ fontSize: 12, color: 'rgba(245,242,235,.75)' }}>Order &gt; $200 — FOC Delivery</li>
+                      <li style={{ fontSize: 12, color: 'rgba(245,242,235,.75)' }}>Order &gt; $400 — Cash rebate $12 off</li>
+                      <li style={{ fontSize: 12, color: 'rgba(245,242,235,.75)' }}>Order &gt; $600 — Cash rebate $30 off</li>
+                    </ul>
+                    <div style={{ fontSize: 10.5, color: 'rgba(245,242,235,.35)', marginTop: 8 }}>
+                      *Relevant discount (where applicable) will be reflected in the invoice directly.
+                    </div>
+                  </>
+                )}
               </div>
 
               <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 12 }}>
