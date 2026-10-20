@@ -4,6 +4,7 @@ import { brandsApi, productsApi, salesApi } from '../api';
 import { Page, Card, Input, Select, Btn } from '../components/ui';
 import { localDateStr } from '../utils/dates';
 import useFxRate from '../utils/useFxRate';
+import { TNG_QR, TNG_NAME } from '../utils/tngPayment';
 
 // ─── PayNow QR (base64) ──────────────────────────────────────────
 // Trimmed placeholder — your actual QR is huge; we keep the original value from the file.
@@ -332,7 +333,11 @@ export default function EventSale() {
 
         <Card title="PAYMENT">
           {market === 'MY' ? (
-            <div style={{padding:'14px 16px',fontSize:12,color:'var(--cream-60)',textAlign:'center'}}>Malaysia payment (Touch 'n Go) details will be added here — PayNow is for SG only.</div>
+            <div style={{padding:'14px 16px',display:'flex',flexDirection:'column',alignItems:'center',gap:10}}>
+              <img src={TNG_QR} alt="Touch 'n Go QR" style={{width:200,maxWidth:'100%',borderRadius:10}}/>
+              <div style={{fontSize:11,color:'var(--cream)',fontWeight:600}}>{TNG_NAME}</div>
+              <div style={{fontSize:10,color:'var(--cream-30)',textAlign:'center'}}>Scan QR to pay via Touch 'n Go.<br/>Show payment confirmation to staff.</div>
+            </div>
           ) : (<div style={{padding:'14px 16px',display:'flex',flexDirection:'column',alignItems:'center',gap:12}}>
             {QR_CODE && (
               <img src={QR_CODE} alt="PayNow QR"
