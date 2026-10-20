@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Trash2 } from 'lucide-react';
 import { costsApi } from '../api';
-import { Page, Table, Badge, Btn, Modal, FormRow, Input, Select, KpiCard, fmt } from '../components/ui';
+import { Page, Table, Badge, Btn, Modal, FormRow, Input, Select, KpiCard, fmt, MarketBadge } from '../components/ui';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, CartesianGrid } from 'recharts';
 import { currentMonthRange, localDateStr } from '../utils/dates';
 
@@ -58,7 +58,7 @@ export default function Costs() {
   const cols=[
     {key:'date',label:'Date',render:v=>fmt.date(v)},
     {key:'category',label:'Category',render:v=><Badge color={CAT_C[v]||'#888'}>{v}</Badge>},
-    {key:'description',label:'Description'},{key:'market',label:'Mkt'},
+    {key:'description',label:'Description'},{key:'market',label:'Mkt',render:v=><MarketBadge market={v}/>},
     {key:'receipt_ref',label:'Ref',render:v=>v||'—'},
     {key:'amount',label:'Amount',align:'right',render:(v,row)=><span style={{fontWeight:700,color:'#f87171'}}>{row.market==='MY'?'MYR':'SGD'} {parseFloat(v).toFixed(2)}</span>},
     {key:'actions',label:'',align:'right',render:(_,row)=>(

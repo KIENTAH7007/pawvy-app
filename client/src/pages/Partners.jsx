@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { partnersApi, partnerAddressesApi, brandsApi } from '../api';
-import { Page, Badge, Btn, Modal, FormRow, Input, Select } from '../components/ui';
+import { Page, Badge, Btn, Modal, FormRow, Input, Select, MarketBadge, MARKET_COLORS } from '../components/ui';
 
 const MODEL_COLORS  = { Inventory:'#f36f4a', Consignment:'#378ADD', Commission:'#7F77DD', None:'#555', Pickup:'#1D9E75' };
 const TIER_CONFIG   = {
@@ -35,6 +35,7 @@ export default function Partners() {
   const [search,   setSearch]   = useState('');
   const [filterModel, setFM]    = useState('');
   const [filterTier,  setFT]    = useState('');
+  const [filterMkt,   setFMkt]  = useState(''); // '' = all, 'SG', 'MY'
   const [modal,    setModal]    = useState(false);
   const [form,     setForm]     = useState({ market:'SG', discount_type:'standard_rebate', discount_value:0, discount_threshold:0, tier:'Active', brand_ids:[], is_stockist:1 });
   const [saving,   setSaving]   = useState(false);
@@ -76,8 +77,9 @@ export default function Partners() {
   const visible = partners.filter(p => {
     const matchSearch = !search || p.company_name.toLowerCase().includes(search.toLowerCase());
     const matchModel  = !filterModel || p.model === filterModel;
+    const matchMkt    = !filterMkt   || (p.market||'SG') === filterMkt;
     const matchTier   = !filterTier  || (p.tier||'Active') === filterTier;
-    return matchSearch && matchModel && matchTier;
+    return matchSearch && matchModel && matchTier && matchMkt;
   });
 
   // Count by tier for the filter pills
@@ -103,6 +105,24 @@ export default function Partners() {
           <option value="">All models</option>
           {['Inventory','Consignment','Commission','Pickup','None'].map(m=><option key={m} value={m}>{m}</option>)}
         </Select>
+
+        {/* Market toggle */}
+        <div style={{display:'flex',flexDirection:'column',gap:4}}>
+          <div style={{fontSize:11,fontWeight:600,color:'var(--cream-60)',letterSpacing:.5,textTransform:'uppercase'}}>Market</div>
+          <div style={{display:'flex',gap:5}}>
+            {[['','All'],['SG','SG'],['MY','MY']].map(([val,label])=>{
+              const on = filterMkt===val; const col = MARKET_COLORS[val] || 'var(--orange)';
+              const n = val ? partners.filter(p=>(p.market||'SG')===val).length : partners.length;
+              return (
+                <button key={val} onClick={()=>setFMkt(val)}
+                  style={{padding:'5px 12px',borderRadius:20,fontSize:11,fontWeight:700,cursor:'pointer',
+                    border:`1px solid ${on?col:'var(--border)'}`,background:on?col+'22':'transparent',color:on?col:'var(--cream-60)'}}>
+                  {label}<span style={{marginLeft:4,opacity:.6}}>({n})</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
         {/* Tier filter pills */}
         <div style={{display:'flex',flexDirection:'column',gap:4}}>
@@ -157,7 +177,7 @@ export default function Partners() {
                       {DISCOUNT_LABELS[p.discount_type||'standard_rebate'] || p.discount_type}
                       {p.discount_value > 0 ? ` (${p.discount_value}%)` : ''}
                     </td>
-                    <td style={{padding:'9px 12px',color:'var(--cream-60)'}}>{p.market}</td>
+                    <td style={{padding:'9px 12px'}}><MarketBadge market={p.market}/></td>
                     <td style={{padding:'9px 12px',color:p.region?'var(--cream-60)':'#f59e0b',fontSize:11}}>{p.region||'Not set'}</td>
                     <td style={{padding:'9px 12px',color:(p.brands?.length)?'var(--cream-60)':'#f59e0b',fontSize:11}}>
                       {p.brands?.length ? `${p.brands.length} brand${p.brands.length>1?'s':''}` : 'None set'}

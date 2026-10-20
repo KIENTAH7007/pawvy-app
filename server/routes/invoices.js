@@ -150,6 +150,10 @@ module.exports = function(db) {
     `, [...sale_ids, partner_id]);
 
     if (sales.length === 0) return res.status(400).json({ error: 'No eligible sales found (already invoiced or mismatched partner)' });
+    // SG sales are in SGD and MY sales in MYR — one invoice can only carry one currency.
+    if (new Set(sales.map(r => r.market || 'SG')).size > 1) {
+      return res.status(400).json({ error: 'These sales are from both SG (SGD) and MY (MYR). Generate a separate invoice for each market.' });
+    }
 
     const subtotal = sales.reduce((s, row) => s + row.qty * row.unit_price, 0);
     const discount = sales.reduce((s, row) => s + (row.platform_fee_amt || 0), 0);

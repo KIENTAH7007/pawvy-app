@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, salesApi, brandsApi, partnersApi } from '../api';
-import { Page, Select, Input, Badge, Btn, Modal, fmt } from '../components/ui';
+import { Page, Select, Input, Badge, Btn, Modal, fmt, MarketBadge, MARKET_COLORS } from '../components/ui';
 import { Ban, Mail, Pencil, FileText } from 'lucide-react';
 import { currentMonthRange, localDateStr } from '../utils/dates';
 
@@ -114,8 +114,8 @@ export default function Sales() {
   const totals = sales.reduce((a, s) => ({ ...a, q: a.q + s.qty }), { q:0 });
   const totalsByCur = sales.reduce((m, s) => {
     const c = s.currency || 'SGD';
-    m[c] = m[c] || { r:0, p:0 };
-    m[c].r += (s.revenue||0); m[c].p += (s.profit||0);
+    m[c] = m[c] || { r:0, p:0, q:0 };
+    m[c].r += (s.revenue||0); m[c].p += (s.profit||0); m[c].q += s.qty;
     return m;
   }, {});
 
@@ -216,14 +216,18 @@ export default function Sales() {
 
       {/* Totals bar */}
       {!loading && sales.length > 0 && (
-        <div style={{display:'flex',gap:24,background:'var(--navy)',border:'1px solid var(--border)',borderRadius:8,padding:'9px 16px',fontSize:12}}>
-          <span style={{color:'var(--cream-30)'}}>Units: <strong style={{color:'var(--cream)'}}>{totals.q}</strong></span>
-          {Object.entries(totalsByCur).map(([c, t]) => (
-            <React.Fragment key={c}>
-              <span style={{color:'var(--cream-30)'}}>Revenue: <strong style={{color:'var(--cream)'}}>{c} {t.r.toFixed(2)}</strong></span>
-              <span style={{color:'var(--cream-30)'}}>Gross Profit: <strong style={{color:'#7fc93e'}}>{c} {t.p.toFixed(2)}</strong></span>
-            </React.Fragment>
-          ))}
+        <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
+          {[['SGD','SG'],['MYR','MY']].filter(([c]) => totalsByCur[c]).map(([c, mk]) => {
+            const t = totalsByCur[c];
+            return (
+              <div key={c} style={{flex:'1 1 280px',display:'flex',alignItems:'center',gap:20,background:'var(--navy)',border:'1px solid var(--border)',borderLeft:`4px solid ${MARKET_COLORS[mk]}`,borderRadius:8,padding:'10px 16px',fontSize:12}}>
+                <MarketBadge market={mk}/>
+                <span style={{color:'var(--cream-30)'}}>Units: <strong style={{color:'var(--cream)'}}>{t.q}</strong></span>
+                <span style={{color:'var(--cream-30)'}}>Revenue: <strong style={{color:'var(--cream)'}}>{c} {t.r.toFixed(2)}</strong></span>
+                <span style={{color:'var(--cream-30)'}}>Gross Profit: <strong style={{color:'#7fc93e'}}>{c} {t.p.toFixed(2)}</strong></span>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -465,7 +469,7 @@ export default function Sales() {
                           </td>
                           <td style={{padding:'8px 10px',color:'var(--cream-60)',whiteSpace:'nowrap'}}>{s.channel}</td>
                           <td style={{padding:'8px 10px',color:'var(--cream-60)',maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.partner_name||'—'}</td>
-                          <td style={{padding:'8px 10px',color:'var(--cream-30)'}}>{s.market}</td>
+                          <td style={{padding:'8px 10px'}}><MarketBadge market={s.market}/></td>
                           <td style={{padding:'8px 10px',textAlign:'right',color:'var(--cream)'}}>{s.qty}</td>
                           <td style={{padding:'8px 10px',textAlign:'right',color:'var(--cream-60)'}}>{fmt.money(s.unit_price, s.currency)}</td>
                           <td style={{padding:'8px 10px',textAlign:'right'}}>

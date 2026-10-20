@@ -3,6 +3,7 @@ import { CheckCircle, Plus, Trash2 } from 'lucide-react';
 import { brandsApi, productsApi, salesApi } from '../api';
 import { Page, Card, Input, Select, Btn } from '../components/ui';
 import { localDateStr } from '../utils/dates';
+import useFxRate from '../utils/useFxRate';
 
 // ─── PayNow QR (base64) ──────────────────────────────────────────
 // Trimmed placeholder — your actual QR is huge; we keep the original value from the file.
@@ -17,7 +18,6 @@ const PAYMENT = {
 };
 
 const EMPTY = { brand_id:'', product_id:'', qty:'', unit_price:'', discount_pct:'0', _unit_cost:0 };
-const sgd = v => `SGD ${parseFloat(v||0).toFixed(2)}`;
 const CHANNEL_OPTIONS = ['Event Sale', 'Direct Online Sale', 'Direct Offline Sale'];
 
 function useIsMobile() {
@@ -33,6 +33,9 @@ function useIsMobile() {
 export default function EventSale() {
   const [date,   setDate]  = useState(localDateStr());
   const [channel, setChannel] = useState('Event Sale');
+  const [market,  setMarket]  = useState('SG');
+  const cur = market === 'MY' ? 'MYR' : 'SGD';
+  const sgd = v => `${cur} ${parseFloat(v||0).toFixed(2)}`;   // (name kept) money in the selected market's currency
   const [lines,  setLines] = useState([{ ...EMPTY }]);
   const [notes,  setNotes] = useState('');
   const [brands, setBrands]= useState([]);
@@ -46,6 +49,17 @@ export default function EventSale() {
   const isMobile = useIsMobile();
 
   useEffect(() => { brandsApi.getAll().then(setBrands); }, []);
+  // Product cost is held in SGD; a MY sale shows profit using cost × the rate for the sale date.
+  const fxRate = useFxRate(date);
+  const costX = market === 'MY' && fxRate ? fxRate : 1;
+  const priceFor = (prod) => market === 'MY' ? (prod.price_rrp_my || prod.price_wholesale_my || '') : (prod.price_rrp_sg || prod.price_wholesale_sg || '');
+  // switching market re-prices lines already picked
+  useEffect(() => {
+    setLines(prev => prev.map(l => {
+      const prod = (pbb[l.brand_id] || []).find(p => String(p.id) === String(l.product_id));
+      return prod ? { ...l, unit_price: priceFor(prod) } : l;
+    }));
+  }, [market]);
 
   async function ensureProducts(brand_id) {
     if (!brand_id || pbb[brand_id]) return;
@@ -60,7 +74,7 @@ export default function EventSale() {
         const prods = pbb[next[idx].brand_id] || [];
         const prod  = prods.find(p => String(p.id) === String(val));
         if (prod) {
-          next[idx].unit_price = prod.price_rrp_sg || prod.price_wholesale_sg || '';
+          next[idx].unit_price = priceFor(prod);
           next[idx]._unit_cost = prod.unit_cost || 0;
         }
       }
@@ -75,7 +89,7 @@ export default function EventSale() {
     const qty   = parseFloat(l.qty)          || 0;
     const price = parseFloat(l.unit_price)   || 0;
     const disc  = parseFloat(l.discount_pct) || 0;
-    const cost  = parseFloat(l._unit_cost)   || 0;
+    const cost  = (parseFloat(l._unit_cost) || 0) * costX;
     const discAmt  = parseFloat((price * disc / 100).toFixed(2));
     const netPrice = parseFloat((price - discAmt).toFixed(2));
     return {
@@ -116,9 +130,9 @@ export default function EventSale() {
         const lineFeeAmt = isFirst ? parseFloat((itemDiscAmt + processingFeeAmt).toFixed(2)) : itemDiscAmt;
         await salesApi.create({
           date, product_id: l.product_id, partner_id: null,
-          channel, market: 'SG',
+          channel, market,
           qty:              parseInt(l.qty),
-          unit_cost:        c.cost,
+          unit_cost:        parseFloat(l._unit_cost) || 0,   // always SGD; the server saves the MYR rate on MY sales
           unit_price:       c.price,                              // full RRP, not net
           platform_fee_pct: c.disc,                                // discount % for display
           platform_fee_amt: lineFeeAmt,
@@ -126,9 +140,9 @@ export default function EventSale() {
           shipping_cost:    isFirst ? shipCost    : 0,
           notes: [
             notes || null,
-            c.disc > 0 ? `Event discount ${c.disc}% off RRP SGD ${c.price.toFixed(2)}` : null,
-            isFirst && shipCharged > 0 ? `Shipping: charged $${shipCharged.toFixed(2)}, cost $${shipCost.toFixed(2)}` : null,
-            isFirst && processingFeeAmt > 0 ? `Processing fee: $${processingFeeAmt.toFixed(2)}` : null,
+            c.disc > 0 ? `Event discount ${c.disc}% off RRP ${cur} ${c.price.toFixed(2)}` : null,
+            isFirst && shipCharged > 0 ? `Shipping: charged ${cur} ${shipCharged.toFixed(2)}, cost ${cur} ${shipCost.toFixed(2)}` : null,
+            isFirst && processingFeeAmt > 0 ? `Processing fee: ${cur} ${processingFeeAmt.toFixed(2)}` : null,
           ].filter(Boolean).join(' | ') || null,
         });
       }
@@ -145,6 +159,9 @@ export default function EventSale() {
         <Card>
           <div style={{padding:'12px 16px',display:'flex',alignItems:'center',gap:16,flexWrap:isMobile?'wrap':'nowrap'}}>
             <Input label="Date" type="date" value={date} onChange={e=>setDate(e.target.value)} style={{width:170}}/>
+            <Select label="Market" value={market} onChange={e=>setMarket(e.target.value)} style={{width:110}}>
+              {['SG','MY'].map(m => <option key={m} value={m}>{m}</option>)}
+            </Select>
             <Select label="Channel" value={channel} onChange={e=>setChannel(e.target.value)} style={{width:200}}>
               {CHANNEL_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
             </Select>
@@ -183,7 +200,7 @@ export default function EventSale() {
                     </Select>
                     <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
                       <Input label="Qty" type="number" min="1" value={line.qty} onChange={e=>updateLine(idx,'qty',e.target.value)} placeholder="0"/>
-                      <Input label="RRP (SGD)" type="number" step="0.01" value={line.unit_price} onChange={e=>updateLine(idx,'unit_price',e.target.value)} placeholder="0.00"/>
+                      <Input label={`RRP (${cur})`} type="number" step="0.01" value={line.unit_price} onChange={e=>updateLine(idx,'unit_price',e.target.value)} placeholder="0.00"/>
                       <Input label="Disc %" type="number" min="0" max="100" value={line.discount_pct} onChange={e=>updateLine(idx,'discount_pct',e.target.value)} placeholder="0"/>
                     </div>
                     {c.lineTotal > 0 && (
@@ -238,14 +255,14 @@ export default function EventSale() {
         <Card title="SHIPPING (OPTIONAL)">
           <div style={{padding:'12px 16px',display:'grid',gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',gap:12}}>
             <Input
-              label="Shipping Charged to Customer (SGD)"
+              label={`Shipping Charged to Customer (${cur})`}
               type="number" step="0.01"
               value={shippingCharged}
               onChange={e => setShippingCharged(e.target.value)}
               placeholder="0.00"
             />
             <Input
-              label="Actual Shipping Cost (SGD)"
+              label={`Actual Shipping Cost (${cur})`}
               type="number" step="0.01"
               value={shippingCost}
               onChange={e => setShippingCost(e.target.value)}
@@ -254,7 +271,7 @@ export default function EventSale() {
           </div>
           {shipCharged > 0 && (
             <div style={{padding:'0 16px 12px',fontSize:11,color:'#7fc93e'}}>
-              Shipping profit: SGD {shipProfit.toFixed(2)} (charged SGD {shipCharged.toFixed(2)} − cost SGD {shipCost.toFixed(2)})
+              Shipping profit: {cur} {shipProfit.toFixed(2)} (charged {cur} {shipCharged.toFixed(2)} − cost {cur} {shipCost.toFixed(2)})
             </div>
           )}
         </Card>
@@ -262,7 +279,7 @@ export default function EventSale() {
         <Card title="PROCESSING FEE (OPTIONAL)">
           <div style={{padding:'12px 16px'}}>
             <Input
-              label="Processing Fee (SGD)"
+              label={`Processing Fee (${cur})`}
               type="number" step="0.01"
               value={processingFee}
               onChange={e => setProcessingFee(e.target.value)}
@@ -314,7 +331,9 @@ export default function EventSale() {
         </Card>
 
         <Card title="PAYMENT">
-          <div style={{padding:'14px 16px',display:'flex',flexDirection:'column',alignItems:'center',gap:12}}>
+          {market === 'MY' ? (
+            <div style={{padding:'14px 16px',fontSize:12,color:'var(--cream-60)',textAlign:'center'}}>Malaysia payment (Touch 'n Go) details will be added here — PayNow is for SG only.</div>
+          ) : (<div style={{padding:'14px 16px',display:'flex',flexDirection:'column',alignItems:'center',gap:12}}>
             {QR_CODE && (
               <img src={QR_CODE} alt="PayNow QR"
                 style={{width:168,height:168,borderRadius:10,border:'2px solid rgba(245,242,235,.12)',objectFit:'contain'}}/>
@@ -335,7 +354,7 @@ export default function EventSale() {
             <div style={{fontSize:10,color:'var(--cream-30)',textAlign:'center',lineHeight:1.7,paddingTop:4,borderTop:'1px solid var(--border)',width:'100%',maxWidth:320,margin:'0 auto'}}>
               Scan QR to pay via PayNow.<br/>Show payment confirmation to staff.
             </div>
-          </div>
+          </div>)}
         </Card>
       </div>
     </Page>

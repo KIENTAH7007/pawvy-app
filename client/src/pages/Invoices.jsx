@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { FileText, Truck, FileSpreadsheet, AlertCircle, CheckCircle, Clock, Trash2, Printer } from 'lucide-react';
 import { invoicesApi, consignmentApi, partnersApi, partnerAddressesApi } from '../api';
-import { Page, Card, Select, Input, Btn, Badge, Modal } from '../components/ui';
-import { sgd, pawvyHeaderHtml, pawvyAddressBlockHtml, pawvyFooterHtml, pawvyPaymentInstructionsHtml, openPdfWindow } from '../utils/pawvyPdf';
+import { Page, Card, Select, Input, Btn, Badge, Modal, MarketBadge } from '../components/ui';
+import { sgd, money, pawvyHeaderHtml, pawvyAddressBlockHtml, pawvyFooterHtml, pawvyPaymentInstructionsHtml, openPdfWindow } from '../utils/pawvyPdf';
 import { localDateStr, localMonthStr } from '../utils/dates';
 
 const today = () => localDateStr();
@@ -22,6 +22,8 @@ function localDocNum(prefix) {
 
 // ── PDF: Invoice ──────────────────────────────────────────────────
 function generateInvoicePDF(invoice) {
+  const C = invoice.currency || (invoice.market === 'MY' ? 'MYR' : 'SGD');
+  const sgd = v => money(v, C);
   const date = new Date(invoice.date).toLocaleDateString('en-SG', { day:'numeric', month:'long', year:'numeric' });
 
   // Whether ANY line on this invoice used KT's special discount — drives
@@ -116,7 +118,7 @@ function generateInvoicePDF(invoice) {
     </div>
   </div>
 
-  ${pawvyPaymentInstructionsHtml()}
+  ${pawvyPaymentInstructionsHtml(C)}
 
   ${pawvyFooterHtml()}
   </body></html>`;
@@ -125,6 +127,8 @@ function generateInvoicePDF(invoice) {
 
 // ── PDF: Delivery Order (no pricing shown) ──────────────────────────
 function generateDOPDF(doc) {
+  const C = doc.currency || (doc.market === 'MY' ? 'MYR' : 'SGD');
+  const sgd = v => money(v, C);
   const date = new Date(doc.date).toLocaleDateString('en-SG', { day:'numeric', month:'long', year:'numeric' });
   const rows = (doc.items||[]).map((it, idx) => {
     const brand = it.brand_name || '—';
@@ -176,6 +180,8 @@ function generateDOPDF(doc) {
 
 // ── PDF: SOA ─────────────────────────────────────────────────────
 function generateSOAPDF(soa) {
+  const C = soa.currency || (soa.market === 'MY' ? 'MYR' : 'SGD');
+  const sgd = v => money(v, C);
   const periodLabel = `${new Date(soa.period_start).toLocaleDateString('en-SG',{day:'numeric',month:'short'})} – ${new Date(soa.period_end).toLocaleDateString('en-SG',{day:'numeric',month:'short',year:'numeric'})}`;
   const rows = (soa.items||[]).map((it, idx) => `
     <tr style="background:${idx%2===0?'#fff':'#f8f9fc'}">
@@ -217,7 +223,7 @@ function generateSOAPDF(soa) {
     </div>
   </div>
 
-  ${pawvyPaymentInstructionsHtml()}
+  ${pawvyPaymentInstructionsHtml(C)}
 
   ${pawvyFooterHtml()}
   </body></html>`;
@@ -241,6 +247,8 @@ function GenerateInvoiceModal({ open, onClose, partners, onGenerated }) {
   const [saving, setSaving]       = useState(false);
   const [error, setError]         = useState('');
   const [result, setResult]       = useState(null);
+  const cur = partners.find(p => String(p.id) === String(partnerId))?.market === 'MY' ? 'MYR' : 'SGD';
+  const sgd = v => money(v, cur);
 
   useEffect(() => {
     if (open) { setPartnerId(''); setSales([]); setSelected(new Set()); setNotes(''); setError(''); setResult(null); setDateFrom(''); setDateTo(today()); setInvoiceDate(today()); setOutletId(''); setOutlets([]); }
@@ -563,6 +571,8 @@ function GenerateSOAModal({ open, onClose, partners, onGenerated }) {
   const [saving, setSaving]       = useState(false);
   const [error, setError]         = useState('');
   const [result, setResult]       = useState(null);
+  const cur = partners.find(p => String(p.id) === String(partnerId))?.market === 'MY' ? 'MYR' : 'SGD';
+  const sgd = v => money(v, cur);
 
   const soaPartners = partners.filter(p => p.billing_cycle === 'soa');
 
@@ -658,7 +668,7 @@ function GenerateSOAModal({ open, onClose, partners, onGenerated }) {
               <div style={{background:'rgba(127,201,62,.1)',border:'1px solid rgba(127,201,62,.3)',borderRadius:8,padding:'10px 14px',fontSize:12,color:'#7fc93e'}}>
                 {preview.cn.manual
                   ? <>Credit Note: <strong>− {sgd(preview.cn.amount)}</strong> (manual entry, first line credit)</>
-                  : <>Credit Note: {preview.cn.pct}% on prior month total (SGD {preview.cn.subtotal.toFixed(2)}) = <strong>− {sgd(preview.cn.amount)}</strong> (first line credit)</>}
+                  : <>Credit Note: {preview.cn.pct}% on prior month total ({cur} {preview.cn.subtotal.toFixed(2)}) = <strong>− {sgd(preview.cn.amount)}</strong> (first line credit)</>}
               </div>
             )}
             <div style={{overflowX:'auto',border:'1px solid var(--border)',borderRadius:8}}>
@@ -673,9 +683,9 @@ function GenerateSOAModal({ open, onClose, partners, onGenerated }) {
                     ? <tr><td colSpan={3} style={{padding:20,textAlign:'center',color:'var(--cream-30)'}}>No invoices found in this period</td></tr>
                     : preview.invoices.map(inv=>(
                       <tr key={inv.id} style={{borderTop:'1px solid rgba(245,242,235,.04)'}}>
-                        <td style={{padding:'8px 10px',color:'var(--cream)',fontFamily:'monospace',fontSize:11}}>{inv.invoice_number}</td>
+                        <td style={{padding:'8px 10px',color:'var(--cream)',fontFamily:'monospace',fontSize:11}}>{inv.invoice_number} <MarketBadge market={inv.market}/></td>
                         <td style={{padding:'8px 10px',color:'var(--cream-60)'}}>{inv.date}</td>
-                        <td style={{padding:'8px 10px',textAlign:'right',color:'var(--cream)'}}>{sgd(inv.total)}</td>
+                        <td style={{padding:'8px 10px',textAlign:'right',color:'var(--cream)'}}>{money(inv.total, inv.currency)}</td>
                       </tr>
                     ))
                   }
@@ -826,7 +836,7 @@ export default function Invoices() {
                             )}
                           </td>
                           <td style={{padding:'9px 12px',textAlign:'right',fontWeight:700,color:'var(--cream)'}}>
-                            {doc.type==='Delivery Order' ? '—' : sgd(doc.total)}
+                            {doc.type==='Delivery Order' ? '—' : money(doc.total, doc.currency)}
                           </td>
                           <td style={{padding:'9px 12px',display:'flex',gap:6}}>
                             <button onClick={()=>printDoc(doc)} title="Print" style={{background:'none',border:'none',color:'var(--cream-30)',cursor:'pointer',padding:4}}>
@@ -879,7 +889,7 @@ export default function Invoices() {
                         <td style={{padding:'8px 12px',textAlign:'right',color:inv.is_overdue?'#f87171':'var(--cream-30)',fontWeight:inv.is_overdue?700:400}}>
                           {inv.status==='Paid'?'—':inv.is_overdue?`${inv.days_overdue}d`:'—'}
                         </td>
-                        <td style={{padding:'8px 12px',textAlign:'right',fontWeight:700,color:'var(--cream)'}}>{sgd(inv.total)}</td>
+                        <td style={{padding:'8px 12px',textAlign:'right',fontWeight:700,color:'var(--cream)'}}>{money(inv.total, inv.currency)}</td>
                         <td style={{padding:'8px 12px'}}>
                           <button onClick={()=>togglePaid(inv)} style={{background:'none',border:'none',cursor:'pointer',padding:0}}>
                             <Badge color={inv.status==='Paid'?'#7fc93e':inv.is_overdue?'#f87171':'#fbbf24'}>
@@ -928,7 +938,7 @@ export default function Invoices() {
                               <td style={{padding:'8px 12px',textAlign:'right',color:s.is_overdue?'#f87171':'var(--cream-30)',fontWeight:s.is_overdue?700:400}}>
                                 {s.status==='Paid'?'—':s.is_overdue?`${s.days_overdue}d`:'—'}
                               </td>
-                              <td style={{padding:'8px 12px',textAlign:'right',fontWeight:700,color:'var(--cream)'}}>{sgd(s.total)}</td>
+                              <td style={{padding:'8px 12px',textAlign:'right',fontWeight:700,color:'var(--cream)'}}>{money(s.total, s.currency)}</td>
                               <td style={{padding:'8px 12px'}}>
                                 <button onClick={()=>togglePaid(s)} style={{background:'none',border:'none',cursor:'pointer',padding:0}}>
                                   <Badge color={s.status==='Paid'?'#7fc93e':s.is_overdue?'#f87171':'#fbbf24'}>

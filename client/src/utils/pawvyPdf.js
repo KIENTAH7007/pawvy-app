@@ -19,6 +19,8 @@ export const PAWVY = {
 };
 
 export const sgd = v => `SGD ${parseFloat(v||0).toFixed(2)}`;
+// Money in any currency code (MY documents use MYR)
+export const money = (v, c = 'SGD') => `${c} ${parseFloat(v||0).toFixed(2)}`;
 
 /**
  * Renders the shared Pawvy document header (logo + title + date) used by
@@ -79,7 +81,16 @@ export function pawvyFooterHtml(message) {
  * Payment instructions block with PayNow QR — matches the reference template:
  * underlined heading, two-column label:value rows, QR code below.
  */
-export function pawvyPaymentInstructionsHtml() {
+export function pawvyPaymentInstructionsHtml(currency = 'SGD') {
+  // PayNow / the UOB SGD account only work for SGD payments. MY (MYR) documents point to Pawvy
+  // for payment details until the Malaysia payment details are set up.
+  if (currency === 'MYR') {
+    return `
+  <div style="padding:0 32px 24px">
+    <div style="font-size:13px;font-weight:700;color:#14213d;text-decoration:underline;margin-bottom:10px">Payment Instructions:</div>
+    <div style="font-size:12px;color:#222">Amount is payable in MYR. Please contact Pawvy for payment details: ${PAWVY.email || 'janicelee@pawvy.co'}</div>
+  </div>`;
+  }
   return `
   <div style="padding:0 32px 24px">
     <div style="font-size:13px;font-weight:700;color:#14213d;text-decoration:underline;margin-bottom:10px">Payment Instructions:</div>

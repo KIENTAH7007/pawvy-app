@@ -74,6 +74,17 @@ export function Badge({ children, color = '#888', textColor }) {
   );
 }
 
+/* ── Market colours — one look for SG vs MY everywhere in the app ── */
+export const MARKET_COLORS = { SG: '#4aa3ff', MY: '#f5b942' };
+export function MarketBadge({ market }) {
+  const m = market || 'SG';
+  const c = MARKET_COLORS[m] || '#888';
+  return (
+    <span style={{ display:'inline-block', padding:'2px 9px', borderRadius:12, fontSize:10, fontWeight:800,
+      letterSpacing:.8, background:c+'22', color:c, border:`1px solid ${c}66` }}>{m}</span>
+  );
+}
+
 /* ── Input ─────────────────────────────────────────────────────── */
 export function Input({ label, error, style, ...props }) {
   return (

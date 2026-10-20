@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { myShippingReminder } from '../utils/myShipping';
+import useFxRate from '../utils/useFxRate';
 import { useNavigate } from 'react-router-dom';
 import { CheckCircle, Plus, Trash2, Eye, EyeOff } from 'lucide-react';
 import { brandsApi, productsApi, partnersApi, salesApi } from '../api';
@@ -94,6 +95,11 @@ export default function RecordSale() {
   const [market,    setMarket]    = useState('SG');
   const cur   = market === 'MY' ? 'MYR' : 'SGD';
   const money = (v) => fmt.money(v, cur);
+  // Product cost is held in SGD. For a MY sale the screen shows it in MYR (× the rate for the sale date)
+  // so the profit preview matches what the ledger will show; the SGD cost is what gets saved.
+  const fxRate = useFxRate(date);
+  const costX   = market === 'MY' && fxRate ? fxRate : 1;
+  const costShown = (v) => { const n = parseFloat(v); return market === 'MY' && fxRate && !isNaN(n) ? (n * fxRate).toFixed(3) : v; };
   const [channel,   setChannel]   = useState('');
   const [partnerId, setPartnerId] = useState('');
   const [notes,     setNotes]     = useState('');
@@ -112,7 +118,13 @@ export default function RecordSale() {
 
   useEffect(() => { brandsApi.getAll().then(setBrands); partnersApi.getAll({ active_only:'true' }).then(setPartners); }, []);
 
-  const selectedPartner = partners.find(p => String(p.id) === String(partnerId));
+  // The SALE's market decides the rules, not the partner's registered market (e.g. an SG-registered
+  // partner can also buy for Malaysia). MY has no rebate rules yet, so SGD tiers are switched off for MY sales.
+  const rawPartner = partners.find(p => String(p.id) === String(partnerId));
+  const selectedPartner = rawPartner ? {
+    ...rawPartner, market,
+    ...(market === 'MY' && !['fixed_pct','threshold_pct'].includes(rawPartner.discount_type) ? { discount_type: 'none' } : {}),
+  } : undefined;
   const partnerModel    = selectedPartner?.model || '';
 
   function getPriceForProduct(prod, ch, mkt, pModel) {
@@ -163,7 +175,7 @@ export default function RecordSale() {
 
   const lineCalcs  = lines.map(l => ({
     qty:     parseFloat(l.qty)               || 0,
-    cost:    parseFloat(l.unit_cost)         || 0,
+    cost:    (parseFloat(l.unit_cost) || 0) * costX,
     price:   parseFloat(l.unit_price)        || 0,
     discPct: parseFloat(l.item_discount_pct) || 0,
     get discAmt()    { return parseFloat((this.price * this.discPct / 100).toFixed(2)); },
@@ -408,7 +420,7 @@ export default function RecordSale() {
                       </Select>
                       <div style={{display:'grid',gridTemplateColumns: hideConfidential ? '1fr 1fr' : '1fr 1fr 1fr',gap:8}}>
                         <Input label="Qty" type="number" min="1" value={line.qty} onChange={e=>updateLine(idx,'qty',e.target.value)} placeholder="0"/>
-                        {!hideConfidential && <Input label="Unit Cost" type="number" step="0.01" value={line.unit_cost} onChange={e=>updateLine(idx,'unit_cost',e.target.value)} placeholder="0.00"/>}
+                        {!hideConfidential && <Input label={`Unit Cost (${cur})`} type="number" step="0.01" readOnly={market==='MY'} value={costShown(line.unit_cost)} onChange={e=>updateLine(idx,'unit_cost',e.target.value)} placeholder="0.00"/>}
                         <Input label="Sale Price" type="number" step="0.01" value={line.unit_price} onChange={e=>updateLine(idx,'unit_price',e.target.value)} placeholder="0.00"/>
                       </div>
                       <div style={{display:'flex',gap:8,alignItems:'center'}}>
@@ -432,7 +444,7 @@ export default function RecordSale() {
             ) : (
               <>
                 <div style={{ display: 'grid', gridTemplateColumns: hideConfidential ? '1fr 2fr 60px 90px 60px 90px 36px' : '1fr 2fr 60px 90px 90px 60px 90px 36px', gap: 8, padding: '7px 16px 3px', fontSize: 9.5, fontWeight: 700, letterSpacing: .8, textTransform: 'uppercase', color: 'var(--cream-30)' }}>
-                  <span>Brand</span><span>Product / SKU</span><span>Qty</span>{!hideConfidential && <span>Unit Cost</span>}<span>Sale Price</span><span>Disc %</span><span style={{ textAlign: 'right' }}>Line Total</span><span />
+                  <span>Brand</span><span>Product / SKU</span><span>Qty</span>{!hideConfidential && <span>{`Unit Cost (${cur})`}</span>}<span>Sale Price</span><span>Disc %</span><span style={{ textAlign: 'right' }}>Line Total</span><span />
                 </div>
                 {lines.map((line, idx) => {
                   const prods = productsByBrand[line.brand_id] || [];
@@ -448,7 +460,7 @@ export default function RecordSale() {
                         {prods.map(p => <option key={p.id} value={p.id}>{p.item_series}{p.variation ? ' · ' + p.variation : ''}</option>)}
                       </Select>
                       <Input type="number" min="1" value={line.qty}        onChange={e => updateLine(idx, 'qty',        e.target.value)} placeholder="0" />
-                      {!hideConfidential && <Input type="number" step="0.01" value={line.unit_cost}  onChange={e => updateLine(idx, 'unit_cost',  e.target.value)} placeholder="0.00" />}
+                      {!hideConfidential && <Input type="number" step="0.01" readOnly={market==='MY'} value={costShown(line.unit_cost)}  onChange={e => updateLine(idx, 'unit_cost',  e.target.value)} placeholder="0.00" />}
                       <Input type="number" step="0.01" value={line.unit_price} onChange={e => updateLine(idx, 'unit_price', e.target.value)} placeholder="0.00" />
                       <Input type="number" min="0" max="100" step="1" value={line.item_discount_pct||''} onChange={e => updateLine(idx, 'item_discount_pct', e.target.value)} placeholder="0%" title="Item discount %" />
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', flexDirection: 'column', gap: 1 }}>
@@ -563,7 +575,7 @@ export default function RecordSale() {
           </Card>
 
           {/* Rebate tiers */}
-          {IS_B2B(channel) && channel === 'Wholesale Order' && (!selectedPartner || selectedPartner.discount_type === 'standard_rebate') && (
+          {IS_B2B(channel) && channel === 'Wholesale Order' && market !== 'MY' && (!selectedPartner || selectedPartner.discount_type === 'standard_rebate') && (
             <Card title="REBATE TIERS">
               <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 5 }}>
                 {STANDARD_REBATE_TIERS.map((tier, i) => {
