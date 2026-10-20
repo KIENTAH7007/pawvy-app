@@ -1,25 +1,16 @@
-# Pawvy App - MY Touch 'n Go Payment
+# Pawvy App - MY Touch n Go QR Fix
 
-MYR payments now use Touch 'n Go (Malaysia National QR, recipient GOH KIEN TAH). SG stays on PayNow.
+Re-cropped the Touch 'n Go QR so the pink frame is tight with even edges (no uneven white margin) in POS MY, Event Sale (MY), and Invoice/SOA.
 
-Where it shows:
-- POS MY (/pos/my): QR + name at checkout
-- App > Event Sale, when market = MY: PAYMENT card
-- MY Invoice and SOA PDFs (DO has no payment block, same as SG)
-- Not added to the Order Portal MY (as requested)
-
-Files (copy the code files only, NOT this README or the zip):
+Copy these 2 code files only (NOT this README or the zip):
 - pos/src/paymentInfo.js
-- client/src/pages/EventSale.jsx
-- client/src/utils/pawvyPdf.js
-- client/src/utils/tngPayment.js (new)
+- client/src/utils/tngPayment.js
 
 ```
 git checkout staging
 git pull origin staging
-# copy the 4 files above into the repo, same paths
+# copy the 2 files above into the repo, same paths
 git add -A
-git commit -m "MY: Touch 'n Go payment (POS, Event Sale, Invoice/SOA)"
+git commit -m "MY: tighter Touch 'n Go QR crop"
 git push origin staging
 ```
-Test on staging, then merge staging to main when ready.
