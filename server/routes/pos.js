@@ -3,6 +3,11 @@ const { localDateStr } = require('../utils/dates');
 const { upsertCustomerFromSignup } = require('../lib/customers');
 const { recordPosCheckoutButtons, getActiveMultiplierDetail } = require('../lib/buttons');
 const { withEffectivePrice } = require('../lib/pricing');
+const fxLib = require('../lib/fx');
+
+// Two links, one POS: /pos = Singapore (SGD, PayNow), /pos/my = Malaysia (MYR RRP, Touch 'n Go).
+// MY has no BUTTONS / customer-account signup for now (per KT), so MY checkouts never touch customers.
+const marketOf = (v) => (String(v || '').toUpperCase() === 'MY' ? 'MY' : 'SG');
 
 // Pawvy POS System — a separate public portal (like the Order Portal) used
 // at physical events, so staff never need to open the internal app in front
@@ -32,6 +37,7 @@ module.exports = function(db, inventoryRouter) {
   // birthday bonus (that's per-customer, not something to show on a
   // general storefront badge) — only a real active campaign.
   router.get('/active-campaign', (req, res) => {
+    if (marketOf(req.query.market) === 'MY') return res.json({ active: false, multiplier: 1, name: null });
     const detail = getActiveMultiplierDetail(db, { channel: 'pos' });
     res.json({
       active: detail.source === 'campaign',
@@ -42,10 +48,11 @@ module.exports = function(db, inventoryRouter) {
 
   // GET /api/pos/catalogue — RRP only, includes barcode for scan-to-add.
   router.get('/catalogue', (req, res) => {
+    const mk = marketOf(req.query.market);
     const rows = db.query(`
       SELECT
         p.id, p.item_series, p.variation, p.image_url, p.barcode,
-        p.price_rrp_sg, p.is_new, p.new_until,
+        p.price_rrp_sg, p.price_rrp_my, p.is_new, p.new_until,
         b.id AS brand_id, b.name AS brand_name, b.color AS brand_color,
         COALESCE(mega.qty, 0)    AS mega_qty,
         COALESCE(hougang.qty, 0) AS hougang_qty
@@ -53,7 +60,7 @@ module.exports = function(db, inventoryRouter) {
       JOIN brands b ON b.id = p.brand_id
       LEFT JOIN inventory_levels mega    ON mega.product_id = p.id    AND mega.location    = 'Mega'
       LEFT JOIN inventory_levels hougang ON hougang.product_id = p.id AND hougang.location = 'Hougang'
-      WHERE p.is_active = 1
+      WHERE p.is_active = 1 ${mk === 'MY' ? 'AND COALESCE(p.price_rrp_my,0) > 0' : ''}
       -- Aug 2026 (per KT): stock status is now the TOP-level sort key
       -- (was brand-first) — matches routes/shop.js and routes/portal.js,
       -- kept consistent across Website, POS, and Order Portal per KT's
@@ -74,6 +81,8 @@ module.exports = function(db, inventoryRouter) {
       barcode: r.barcode,
       image_url: r.image_url || null,
       price_rrp_sg: r.price_rrp_sg,
+      price_rrp: mk === 'MY' ? r.price_rrp_my : r.price_rrp_sg,
+      currency: mk === 'MY' ? 'MYR' : 'SGD',
       is_new_active: withEffectivePrice(r).is_new_active,
       stock_status: stockStatus(r.mega_qty + r.hougang_qty),
     }));
@@ -88,6 +97,7 @@ module.exports = function(db, inventoryRouter) {
   // no notification — this is meant to feel instant at a live event.
   router.post('/checkout', (req, res) => {
     const { items, shipping_charged, shipping_cost, notes, mailing_name, mailing_address, mailing_phone, shipping_channel, customer_email, pdpa_consent, pdpa_consent_text } = req.body;
+    const mk = marketOf(req.body.market);
 
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'Cart is empty.' });
@@ -105,7 +115,7 @@ module.exports = function(db, inventoryRouter) {
     // If an email is being collected, PDPA consent must be given for it —
     // defense-in-depth in case a future caller (e.g. the new website) skips
     // the frontend checkbox validation. No email, no consent needed.
-    if (customer_email && customer_email.trim() && !pdpa_consent) {
+    if (mk === 'SG' && customer_email && customer_email.trim() && !pdpa_consent) {
       return res.status(400).json({ error: 'PDPA consent is required to save a customer email.' });
     }
 
@@ -116,7 +126,7 @@ module.exports = function(db, inventoryRouter) {
         return res.status(400).json({ error: 'Each item needs a valid product and quantity.' });
       }
       const product = db.queryOne(`
-        SELECT p.id, p.is_active, p.item_series, p.variation, p.unit_cost, p.price_rrp_sg,
+        SELECT p.id, p.is_active, p.item_series, p.variation, p.unit_cost, p.price_rrp_sg, p.price_rrp_my,
           COALESCE(mega.qty, 0) + COALESCE(hougang.qty, 0) AS total_qty
         FROM products p
         LEFT JOIN inventory_levels mega    ON mega.product_id = p.id    AND mega.location    = 'Mega'
@@ -133,10 +143,13 @@ module.exports = function(db, inventoryRouter) {
     }
 
     const today = localDateStr();
+    // MY: the rate for today is saved on every sale row (no rate yet → clear error, nothing is written)
+    let st;
+    try { st = fxLib.stamp(db, mk, today); } catch (e) { return res.status(e.status || 500).json({ error: e.message }); }
     const shipCharged = parseFloat(shipping_charged) || 0;
     const shipCost = parseFloat(shipping_cost) || 0;
     const hasMailing = !!(mailing_name || mailing_address || mailing_phone);
-    const hasConsentedEmail = !!(customer_email && customer_email.trim() && pdpa_consent);
+    const hasConsentedEmail = mk === 'SG' && !!(customer_email && customer_email.trim() && pdpa_consent);
     const consentTimestamp = hasConsentedEmail ? new Date().toISOString() : null;
 
     // Turn a consented POS email into a real customer account (creates a
@@ -170,13 +183,13 @@ module.exports = function(db, inventoryRouter) {
 
     items.forEach((line, i) => {
       const qty = parseInt(line.qty);
-      const product = db.queryOne('SELECT unit_cost, price_rrp_sg FROM products WHERE id = ?', [line.product_id]);
+      const product = db.queryOne('SELECT unit_cost, price_rrp_sg, price_rrp_my FROM products WHERE id = ?', [line.product_id]);
       const unitCost = product?.unit_cost || 0;
       // unit_price may arrive already net of a staff-applied discount (per-item
       // or universal, computed client-side in the Review Order screen). Fall
       // back to catalogue RRP if not supplied or not a sane number.
       const parsedPrice = parseFloat(line.unit_price);
-      const unitPrice = Number.isFinite(parsedPrice) && parsedPrice >= 0 ? parsedPrice : (product?.price_rrp_sg || 0);
+      const unitPrice = Number.isFinite(parsedPrice) && parsedPrice >= 0 ? parsedPrice : (mk === 'MY' ? (product?.price_rrp_my || 0) : (product?.price_rrp_sg || 0));
       const isFirst = i === 0;
       const lineNotes = [notes || null, line.line_note || null].filter(Boolean).join(' | ') || null;
 
@@ -185,10 +198,10 @@ module.exports = function(db, inventoryRouter) {
           (date, product_id, partner_id, channel, market, qty, unit_cost, unit_price,
            platform_fee_pct, platform_fee_amt, shipping_charged, shipping_cost, notes,
            mailing_name, mailing_address, mailing_phone, shipping_channel, mailing_required,
-           customer_email, pdpa_consent, pdpa_consent_text, pdpa_consent_at)
-        VALUES (?,?,?,?,?,?,?,?,0,0,?,?,?,?,?,?,?,?,?,?,?,?)
+           customer_email, pdpa_consent, pdpa_consent_text, pdpa_consent_at, currency, fx_rate)
+        VALUES (?,?,?,?,?,?,?,?,0,0,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
       `, [
-        today, line.product_id, null, 'Event Sale', 'SG', qty, unitCost, unitPrice,
+        today, line.product_id, null, 'Event Sale', mk, qty, unitCost, unitPrice,
         isFirst ? shipCharged : 0,
         isFirst ? shipCost : 0,
         lineNotes,
@@ -204,6 +217,7 @@ module.exports = function(db, inventoryRouter) {
         hasConsentedEmail ? 1 : 0,
         hasConsentedEmail ? (pdpa_consent_text || null) : null,
         consentTimestamp,
+        st.currency, st.fx_rate,
       ]);
       saleIds.push(result.lastID);
 

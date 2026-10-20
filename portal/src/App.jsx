@@ -218,7 +218,6 @@ export default function App() {
                     <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 4 }}>
                       <li style={{ fontSize: 12, color: 'rgba(245,242,235,.75)' }}>West Malaysia: order above MYR 600 — free delivery</li>
                       <li style={{ fontSize: 12, color: 'rgba(245,242,235,.75)' }}>West Malaysia: order below MYR 600 — MYR 25 delivery fee</li>
-                      <li style={{ fontSize: 12, color: 'rgba(245,242,235,.75)' }}>East Malaysia: delivery charge confirmed case by case</li>
                     </ul>
                     <div style={{ fontSize: 10.5, color: 'rgba(245,242,235,.35)', marginTop: 8 }}>
                       *Final delivery arrangement will be reflected in the invoice.

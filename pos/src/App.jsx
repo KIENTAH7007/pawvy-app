@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { Search, ShoppingCart, ArrowLeft, CheckCircle2, Loader2, ImageOff, ScanLine } from 'lucide-react'
-import { posApi } from './api.js'
+import { posApi, MARKET, CURRENCY } from './api.js'
 import { PAWVY_LOGO_WHITE } from './pawvyLogo.js'
-import { QR_CODE, PAYMENT } from './paymentInfo.js'
+import { QR_CODE, PAYMENT, TNG } from './paymentInfo.js'
 import ProductCard from './ProductCard.jsx'
 import QtyStepper from './QtyStepper.jsx'
 
@@ -128,7 +128,7 @@ export default function App() {
   }
 
   const lineCalcs = cartLines.map(l => {
-    const price = parseFloat(l.product.price_rrp_sg) || 0;
+    const price = parseFloat(l.product.price_rrp) || 0;
     if (discountMode === 'manual_price') {
       const raw = itemPrices[l.product.id];
       const netPrice = (raw !== undefined && raw !== '') ? (parseFloat(raw) || 0) : price;
@@ -209,9 +209,9 @@ export default function App() {
           const calc = lineCalcs[i];
           let lineNote = null;
           if (discountMode === 'manual_price' && calc.discAmt !== 0) {
-            lineNote = `Sale price set to SGD ${calc.netPrice.toFixed(2)} (RRP SGD ${calc.price.toFixed(2)})`;
+            lineNote = `Sale price set to ${CURRENCY} ${calc.netPrice.toFixed(2)} (RRP ${CURRENCY} ${calc.price.toFixed(2)})`;
           } else if (discountMode !== 'manual_price' && calc.discPct > 0) {
-            lineNote = `Item disc ${calc.discPct}% off SGD ${calc.price.toFixed(2)}`;
+            lineNote = `Item disc ${calc.discPct}% off ${CURRENCY} ${calc.price.toFixed(2)}`;
           }
           return {
             product_id: l.product.id,
@@ -325,10 +325,10 @@ export default function App() {
                     {l.product.variation && <span style={{ color: 'rgba(245,242,235,.5)' }}> · {l.product.variation}</span>}
                     <div style={{ fontSize: 11, color: 'rgba(245,242,235,.4)', fontWeight: 400, marginTop: 2 }}>
                       {calc.discAmt !== 0 && (
-                        <span style={{ textDecoration: 'line-through', marginRight: 6 }}>SGD {calc.price.toFixed(2)}</span>
+                        <span style={{ textDecoration: 'line-through', marginRight: 6 }}>{CURRENCY} {calc.price.toFixed(2)}</span>
                       )}
                       <span style={calc.discAmt !== 0 ? { color: '#fbbf24', fontWeight: 600 } : undefined}>
-                        SGD {calc.netPrice.toFixed(2)} / unit
+                        {CURRENCY} {calc.netPrice.toFixed(2)} / unit
                       </span>
                     </div>
                   </div>
@@ -366,7 +366,7 @@ export default function App() {
                         onChange={e => setItemPrice(l.product.id, e.target.value)}
                         style={{ ...fieldInputStyle, height: 30, width: 90, fontSize: 12, padding: '0 8px' }}
                       />
-                      <span style={{ fontSize: 10, color: 'rgba(245,242,235,.3)' }}>RRP SGD {calc.price.toFixed(2)}</span>
+                      <span style={{ fontSize: 10, color: 'rgba(245,242,235,.3)' }}>RRP {CURRENCY} {calc.price.toFixed(2)}</span>
                     </div>
                   )}
                 </div>
@@ -417,23 +417,23 @@ export default function App() {
 
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'rgba(245,242,235,.6)', padding: '8px 4px' }}>
                 <span>Subtotal</span>
-                <strong style={{ color: 'var(--cream)' }}>SGD {cartSubtotal.toFixed(2)}</strong>
+                <strong style={{ color: 'var(--cream)' }}>{CURRENCY} {cartSubtotal.toFixed(2)}</strong>
               </div>
               {itemDiscountTotal !== 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: itemDiscountTotal > 0 ? '#fbbf24' : '#f87171', padding: '0 4px' }}>
                   <span>{itemDiscountTotal > 0 ? 'Discount' : 'Markup'}</span>
-                  <strong>{itemDiscountTotal > 0 ? '−' : '+'} SGD {Math.abs(itemDiscountTotal).toFixed(2)}</strong>
+                  <strong>{itemDiscountTotal > 0 ? '−' : '+'} {CURRENCY} {Math.abs(itemDiscountTotal).toFixed(2)}</strong>
                 </div>
               )}
               {shipAmt > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'rgba(245,242,235,.6)', padding: '0 4px' }}>
                   <span>Shipping</span>
-                  <strong style={{ color: 'var(--cream)' }}>SGD {shipAmt.toFixed(2)}</strong>
+                  <strong style={{ color: 'var(--cream)' }}>{CURRENCY} {shipAmt.toFixed(2)}</strong>
                 </div>
               )}
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 15, padding: '8px 4px', borderTop: '1px solid rgba(245,242,235,.1)', marginTop: 4 }}>
                 <strong style={{ color: 'var(--cream)' }}>Total</strong>
-                <strong style={{ color: 'var(--orange)' }}>SGD {cartTotal.toFixed(2)}</strong>
+                <strong style={{ color: 'var(--orange)' }}>{CURRENCY} {cartTotal.toFixed(2)}</strong>
               </div>
 
               {/* Payment Instructions — replaces the Order Portal's Delivery card here,
@@ -443,6 +443,24 @@ export default function App() {
                 border: '1px solid rgba(245,242,235,.1)', borderRadius: 10, background: 'rgba(245,242,235,.03)',
                 display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 16, alignItems: isMobile ? 'stretch' : 'center',
               }}>
+                {MARKET === 'MY' ? (
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--cream)', marginBottom: 8 }}>Payment Instructions</div>
+                    {TNG.qr ? (
+                      <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexDirection: isMobile ? 'column' : 'row' }}>
+                        <img src={TNG.qr} alt="Touch 'n Go QR" style={{ width: isMobile ? '100%' : 150, maxWidth: 200, borderRadius: 8 }} />
+                        <div>
+                          {TNG.name && <PayRow label="Name" value={TNG.name} />}
+                          <div style={{ fontSize: 10.5, color: 'rgba(245,242,235,.35)', marginTop: 8 }}>
+                            Scan QR to pay via Touch 'n Go. Show payment confirmation to staff.
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 12, color: '#fbbf24' }}>Touch 'n Go QR is not set up yet — ask the owner before taking payment.</div>
+                    )}
+                  </div>
+                ) : (<>
                 <img src={QR_CODE} alt="PayNow QR" style={{ width: isMobile ? '100%' : 130, maxWidth: 180, borderRadius: 8, alignSelf: 'center' }} />
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--cream)', marginBottom: 8 }}>Payment Instructions</div>
@@ -454,6 +472,7 @@ export default function App() {
                     Scan QR to pay via PayNow. Show payment confirmation to staff.
                   </div>
                 </div>
+                </>)}
               </div>
 
               <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -490,7 +509,7 @@ export default function App() {
               <div style={{ marginTop: 4 }}>
                 <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--cream)', marginBottom: 3 }}>Customer Details (optional)</div>
                 <div style={{ fontSize: 11, color: 'rgba(245,242,235,.4)', marginBottom: 10, lineHeight: 1.4 }}>
-                  Only needed if this needs to be mailed, or the customer wants to sign up for Pawvy rewards.
+                  {MARKET === 'MY' ? 'Only needed if this needs to be mailed.' : 'Only needed if this needs to be mailed, or the customer wants to sign up for Pawvy rewards.'}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   <Field label="Pawrent Name">
@@ -502,6 +521,7 @@ export default function App() {
                   <Field label="Contact Number">
                     <input value={mailingPhone} onChange={e => setMailingPhone(e.target.value)} placeholder="For delivery coordination" style={fieldInputStyle} />
                   </Field>
+                  {MARKET !== 'MY' && (<>
                   <Field label="Email">
                     <input
                       type="email"
@@ -520,6 +540,7 @@ export default function App() {
                     />
                     <span>{PDPA_CONSENT_TEXT}</span>
                   </label>
+                  </>)}
                   <Field label="Shipping Channel">
                     <input
                       value={shippingChannel}

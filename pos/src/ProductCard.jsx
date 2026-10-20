@@ -8,7 +8,8 @@ const STOCK_LABEL = {
   out_of_stock: { text: 'Out of Stock', color: '#f87171' },
 };
 
-const sgd = v => `SGD ${parseFloat(v || 0).toFixed(2)}`;
+import { CURRENCY } from './api.js';
+const sgd = v => `${CURRENCY} ${parseFloat(v || 0).toFixed(2)}`;
 
 // Same layout as the Order Portal's ProductCard, with one deliberate
 // difference: only RRP is ever shown here. This is a customer-facing
@@ -65,7 +66,7 @@ export default function ProductCard({ product, cartQty, onAdd, onUpdateQty, onRe
         </div>
 
         <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--orange)', marginTop: 2 }}>
-          {sgd(product.price_rrp_sg)}
+          {sgd(product.price_rrp)}
         </div>
 
         <div style={{ fontSize: 10.5, fontWeight: 600, color: stock.color, display: 'flex', alignItems: 'center', gap: 4 }}>
