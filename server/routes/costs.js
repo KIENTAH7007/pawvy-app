@@ -1,5 +1,8 @@
 // costs.js
 const { Router } = require('express');
+const money = require('../lib/money');
+const fxLib = require('../lib/fx');
+
 module.exports = function costsRouter(db) {
   const router = Router();
 
@@ -23,21 +26,26 @@ module.exports = function costsRouter(db) {
     if (date_to)   { where += ' AND date <= ?'; params.push(date_to); }
     if (market)    { where += ' AND market = ?'; params.push(market); }
 
-    const total  = db.queryOne(`SELECT ROUND(COALESCE(SUM(amount),0),2) AS total FROM operating_costs ${where}`, params);
-    const byCat  = db.query(`SELECT category, ROUND(SUM(amount),2) AS total FROM operating_costs ${where} GROUP BY category ORDER BY total DESC`, params);
-    res.json({ total: total.total, byCategory: byCat });
+    // One market → its own currency; All → SGD equivalent (MY ÷ the rate saved on each cost)
+    const OPEX = money.opex(money.modeFor(req.query));
+    const total  = db.queryOne(`SELECT ROUND(COALESCE(SUM(${OPEX}),0),2) AS total FROM operating_costs ${where}`, params);
+    const byCat  = db.query(`SELECT category, ROUND(SUM(${OPEX}),2) AS total FROM operating_costs ${where} GROUP BY category ORDER BY total DESC`, params);
+    res.json({ total: total.total, byCategory: byCat, currency: money.currencyFor(req.query) });
   });
 
   // Monthly totals for the trend chart — defaults to the trailing 12 months.
   router.get('/trend', (req, res) => {
     const months = parseInt(req.query.months) || 12;
+    const OPEX = money.opex(money.modeFor(req.query));
+    const mkt = req.query.market;
     const rows = db.query(`
-      SELECT strftime('%Y-%m', date) AS month, ROUND(SUM(amount), 2) AS total
+      SELECT strftime('%Y-%m', date) AS month, ROUND(SUM(${OPEX}), 2) AS total
       FROM operating_costs
+      ${mkt ? 'WHERE market = ?' : ''}
       GROUP BY month
       ORDER BY month DESC
       LIMIT ?
-    `, [months]);
+    `, mkt ? [mkt, months] : [months]);
     res.json(rows.reverse()); // chronological order for charting
   });
 
@@ -46,17 +54,29 @@ module.exports = function costsRouter(db) {
     if (!date || !category || !description || !amount) {
       return res.status(400).json({ error: 'date, category, description, amount are required' });
     }
+    // MY costs are typed in MYR; the rate for the cost's own date is saved on the row.
+    const mkt = market || 'SG';
+    let st;
+    try { st = fxLib.stamp(db, mkt, date); } catch (e) { return res.status(e.status || 500).json({ error: e.message }); }
     const result = db.run(
-      'INSERT INTO operating_costs (date, category, description, amount, market, receipt_ref) VALUES (?,?,?,?,?,?)',
-      [date, category, description, amount, market||'SG', receipt_ref||null]
+      'INSERT INTO operating_costs (date, category, description, amount, market, receipt_ref, currency, fx_rate) VALUES (?,?,?,?,?,?,?,?)',
+      [date, category, description, amount, mkt, receipt_ref||null, st.currency, st.fx_rate]
     );
     res.status(201).json(db.queryOne('SELECT * FROM operating_costs WHERE id = ?', [result.lastID]));
   });
 
   router.put('/:id', (req, res) => {
     const { date, category, description, amount, market, receipt_ref } = req.body;
-    db.run('UPDATE operating_costs SET date=?,category=?,description=?,amount=?,market=?,receipt_ref=? WHERE id=?',
-      [date, category, description, amount, market, receipt_ref, req.params.id]);
+    const mkt = market || 'SG';
+    const old = db.queryOne('SELECT market, date, fx_rate FROM operating_costs WHERE id=?', [req.params.id]);
+    let st;
+    try {
+      st = (old && old.market === mkt && old.date === date && (mkt !== 'MY' || old.fx_rate))
+        ? { currency: mkt === 'MY' ? 'MYR' : 'SGD', fx_rate: mkt === 'MY' ? old.fx_rate : null }
+        : fxLib.stamp(db, mkt, date);
+    } catch (e) { return res.status(e.status || 500).json({ error: e.message }); }
+    db.run('UPDATE operating_costs SET date=?,category=?,description=?,amount=?,market=?,receipt_ref=?,currency=?,fx_rate=? WHERE id=?',
+      [date, category, description, amount, mkt, receipt_ref, st.currency, st.fx_rate, req.params.id]);
     res.json(db.queryOne('SELECT * FROM operating_costs WHERE id = ?', [req.params.id]));
   });
 

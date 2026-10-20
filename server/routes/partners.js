@@ -47,19 +47,22 @@ module.exports = function(db) {
     const {
       company_name, pic_name, business_type, model, market,
       address, phone, email, notes, brand_ids, region, is_stockist,
-      discount_type, discount_value, discount_threshold, billing_cycle, tier, credit_term_days
+      discount_type, discount_value, discount_threshold, billing_cycle, tier, credit_term_days, shipping_zone
     } = req.body;
     if (!company_name) return res.status(400).json({ error: 'Company name is required' });
 
     const result = db.run(
       `INSERT INTO partners
         (company_name, pic_name, business_type, model, market, address, phone, email, notes, region, is_stockist,
-         discount_type, discount_value, discount_threshold, billing_cycle, tier, credit_term_days)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         discount_type, discount_value, discount_threshold, billing_cycle, tier, credit_term_days, shipping_zone)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [company_name, pic_name||null, business_type||null, model||null, market||'SG',
        address||null, phone||null, email||null, notes||null, region||null, is_stockist ?? 1,
-       discount_type||'standard_rebate', discount_value||0, discount_threshold||0,
-       billing_cycle||'per_invoice', tier||'Active', parseInt(credit_term_days)||7]
+       // MY partners default to "No discount" (no MY rebate rules yet — the standard
+       // rebate tiers are SGD-based and must not silently apply to MYR orders).
+       discount_type || (market === 'MY' ? 'none' : 'standard_rebate'), discount_value||0, discount_threshold||0,
+       billing_cycle||'per_invoice', tier||'Active', parseInt(credit_term_days)||7,
+       market === 'MY' ? (shipping_zone || 'West') : null]
     );
 
     if (brand_ids?.length) {
@@ -75,19 +78,20 @@ module.exports = function(db) {
     const {
       company_name, pic_name, business_type, model, market,
       address, phone, email, notes, is_active, brand_ids, region, is_stockist,
-      discount_type, discount_value, discount_threshold, billing_cycle, tier, credit_term_days
+      discount_type, discount_value, discount_threshold, billing_cycle, tier, credit_term_days, shipping_zone
     } = req.body;
 
     db.run(
       `UPDATE partners SET
         company_name=?, pic_name=?, business_type=?, model=?, market=?,
         address=?, phone=?, email=?, notes=?, is_active=?, region=?, is_stockist=?,
-        discount_type=?, discount_value=?, discount_threshold=?, billing_cycle=?, tier=?, credit_term_days=?
+        discount_type=?, discount_value=?, discount_threshold=?, billing_cycle=?, tier=?, credit_term_days=?, shipping_zone=?
        WHERE id=?`,
       [company_name, pic_name||null, business_type||null, model||null, market||'SG',
        address||null, phone||null, email||null, notes||null, is_active ?? 1, region||null, is_stockist ?? 1,
-       discount_type||'standard_rebate', discount_value||0, discount_threshold||0,
+       discount_type || (market === 'MY' ? 'none' : 'standard_rebate'), discount_value||0, discount_threshold||0,
        billing_cycle||'per_invoice', tier||'Active', parseInt(credit_term_days)||7,
+       market === 'MY' ? (shipping_zone || 'West') : null,
        req.params.id]
     );
 

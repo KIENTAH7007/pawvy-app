@@ -34,13 +34,13 @@ const Tip = ({ active, payload, label, prefix = 'SGD ' }) => {
 };
 
 /* ── Brand Drill-Down Panel ───────────────────────────────────── */
-function BrandDetail({ brand, year, onClose }) {
+function BrandDetail({ brand, year, market, cur, onClose }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    brandSkuApi.detail({ brand_id: brand.id, year }).then(d => { setData(d); setLoading(false); });
-  }, [brand.id, year]);
+    brandSkuApi.detail({ brand_id: brand.id, year, ...(market ? { market } : {}) }).then(d => { setData(d); setLoading(false); });
+  }, [brand.id, year, market]);
 
   const trendData = (data?.monthlyTrend || []).map(r => ({
     month: MONTH_LABELS[parseInt(r.month?.slice(5) || '0')],
@@ -72,7 +72,7 @@ function BrandDetail({ brand, year, onClose }) {
                 <BarChart data={trendData} margin={{top:0,right:8,left:0,bottom:0}}>
                   <XAxis dataKey="month" tick={{fill:'rgba(245,242,235,.4)',fontSize:10}} axisLine={false} tickLine={false}/>
                   <YAxis tick={{fill:'rgba(245,242,235,.4)',fontSize:9}} axisLine={false} tickLine={false} tickFormatter={v=>`$${v>=1000?(v/1000).toFixed(0)+'k':v}`}/>
-                  <Tooltip content={<Tip/>}/>
+                  <Tooltip content={<Tip prefix={cur+' '}/>}/>
                   <Bar dataKey="profit" name="Profit" radius={[3,3,0,0]}>
                     {trendData.map((_,i) => (
                       <Cell key={i} fill={brand.color} fillOpacity={i===trendData.length-1?1:.55}/>
@@ -91,7 +91,7 @@ function BrandDetail({ brand, year, onClose }) {
                 {data.channels.map(c => (
                   <div key={c.channel} style={{background:'rgba(245,242,235,.06)',borderRadius:6,padding:'4px 10px',fontSize:11}}>
                     <span style={{color:'var(--cream-60)'}}>{c.channel}</span>
-                    <span style={{color:'#7fc93e',fontWeight:700,marginLeft:8}}>SGD {parseFloat(c.profit).toFixed(0)}</span>
+                    <span style={{color:'#7fc93e',fontWeight:700,marginLeft:8}}>{cur} {parseFloat(c.profit).toFixed(0)}</span>
                   </div>
                 ))}
               </div>
@@ -120,8 +120,8 @@ function BrandDetail({ brand, year, onClose }) {
                         {s.variation && <div style={{fontSize:10,color:'var(--cream-30)',marginTop:1}}>{s.variation}</div>}
                       </td>
                       <td style={{padding:'8px 10px',textAlign:'right',color:'var(--cream)'}}>{s.units}</td>
-                      <td style={{padding:'8px 10px',textAlign:'right',color:'var(--cream)',fontWeight:600}}>{fmt.sgd(s.revenue)}</td>
-                      <td style={{padding:'8px 10px',textAlign:'right',fontWeight:700,color:'#7fc93e'}}>{fmt.sgd(s.profit)}</td>
+                      <td style={{padding:'8px 10px',textAlign:'right',color:'var(--cream)',fontWeight:600}}>{cur} {parseFloat(s.revenue||0).toFixed(2)}</td>
+                      <td style={{padding:'8px 10px',textAlign:'right',fontWeight:700,color:'#7fc93e'}}>{cur} {parseFloat(s.profit||0).toFixed(2)}</td>
                       <td style={{padding:'8px 10px',textAlign:'right',color:'var(--cream-30)',fontSize:10}}>{fmt.date(s.last_sale)}</td>
                       <td style={{padding:'8px 10px',textAlign:'right',color:'var(--cream-30)'}}>{s.sale_days}d</td>
                     </tr>
@@ -147,6 +147,10 @@ export default function Dashboard() {
   const [brands,      setBrands]      = useState([]);
   const [selectedBrand, setSelected] = useState(null); // { id, name, color }
   const [loading,     setLoading]     = useState(true);
+  // Market view: SG (default) · MY · ALL (SGD equivalent). Money labels follow it.
+  const [dmarket, setDmarket] = useState('SG');
+  const mq  = dmarket === 'ALL' ? {} : { market: dmarket };
+  const cur = dmarket === 'MY' ? 'MYR' : 'SGD';
   const [upsell,      setUpsell]      = useState(null);
   const [upsellDetailModal, setUpsellDetailModal] = useState(null); // { source, rows, loading }
   const [perfChannel, setPerfChannel] = useState('Event Sale');
@@ -170,8 +174,8 @@ export default function Dashboard() {
   function runPartnersRange() {
     setPartnersLoading(true);
     Promise.all([
-      partnerReportApi.top({ date_from: partnersFrom, date_to: partnersTo, limit: 10 }),
-      reportsApi.allChannels({ date_from: partnersFrom, date_to: partnersTo }),
+      partnerReportApi.top({ date_from: partnersFrom, date_to: partnersTo, limit: 10, ...mq }),
+      reportsApi.allChannels({ date_from: partnersFrom, date_to: partnersTo, ...mq }),
     ]).then(([pts, ac]) => {
       setPartners(pts); setAllChannels(ac); setPartnersLoading(false);
     }).catch(() => setPartnersLoading(false));
@@ -182,8 +186,8 @@ export default function Dashboard() {
     setPartnersTo(year.to);
     setPartnersLoading(true);
     Promise.all([
-      partnerReportApi.top({ date_from: year.from, date_to: year.to, limit: 10 }),
-      reportsApi.allChannels({ date_from: year.from, date_to: year.to }),
+      partnerReportApi.top({ date_from: year.from, date_to: year.to, limit: 10, ...mq }),
+      reportsApi.allChannels({ date_from: year.from, date_to: year.to, ...mq }),
     ]).then(([pts, ac]) => {
       setPartners(pts); setAllChannels(ac); setPartnersLoading(false);
     }).catch(() => setPartnersLoading(false));
@@ -191,16 +195,18 @@ export default function Dashboard() {
 
   useEffect(() => {
     Promise.all([
-      salesApi.summary({ date_from:period.from, date_to:period.to }),
-      reportsApi.trend({ year: curYear }),
-      partnerReportApi.top({ date_from:year.from, date_to:year.to, limit:10 }),
+      salesApi.summary({ date_from:period.from, date_to:period.to, ...mq }),
+      reportsApi.trend({ year: curYear, ...mq }),
+      partnerReportApi.top({ date_from:year.from, date_to:year.to, limit:10, ...mq }),
       brandsApi.getAll(),
-      reportsApi.allChannels({ date_from:year.from, date_to:year.to }),
+      reportsApi.allChannels({ date_from:year.from, date_to:year.to, ...mq }),
     ]).then(([sum, tr, pts, br, ac]) => {
       setSummary(sum); setTrend(tr); setPartners(pts); setBrands(br); setAllChannels(ac); setLoading(false);
+      setPartnersFrom(year.from); setPartnersTo(year.to);
     }).catch(() => setLoading(false));
-    reportsApi.upsell().then(setUpsell).catch(() => {});
-  }, []);
+  }, [dmarket]);
+
+  useEffect(() => { reportsApi.upsell().then(setUpsell).catch(() => {}); }, []);
 
   function openUpsellDetail(source) {
     setUpsellDetailModal({ source, rows: null, loading: true });
@@ -212,7 +218,7 @@ export default function Dashboard() {
   function runPerfQuery() {
     if (!perfFrom || !perfTo) return;
     setPerfLoading(true); setPerfError('');
-    reportsApi.channelPerformance({ channel: perfChannel, date_from: perfFrom, date_to: perfTo })
+    reportsApi.channelPerformance({ channel: perfChannel, date_from: perfFrom, date_to: perfTo, ...mq })
       .then(setPerfResult)
       .catch(e => setPerfError(e.message))
       .finally(() => setPerfLoading(false));
@@ -230,7 +236,14 @@ export default function Dashboard() {
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
         <div>
           <h1 style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:28,letterSpacing:1.5,color:'var(--cream)'}}>DASHBOARD</h1>
-          <div style={{fontSize:11,color:'var(--cream-30)',marginTop:3}}>{period.label} · Singapore</div>
+          <div style={{fontSize:11,color:'var(--cream-30)',marginTop:3}}>{period.label} · {dmarket==='SG'?'Singapore (SGD)':dmarket==='MY'?'Malaysia (MYR)':'All markets · SGD equivalent'}</div>
+          <div style={{display:'flex',gap:4,marginTop:8}}>
+            {[['SG','SG'],['MY','MY'],['ALL','All markets']].map(([k,l])=>(
+              <button key={k} onClick={()=>{setLoading(true);setSelected(null);setDmarket(k);}}
+                style={{padding:'4px 12px',borderRadius:20,border:'1px solid var(--border)',cursor:'pointer',fontSize:11,fontWeight:700,
+                  background:dmarket===k?'var(--cream)':'transparent',color:dmarket===k?'var(--navy)':'var(--cream-60)'}}>{l}</button>
+            ))}
+          </div>
         </div>
         <Btn onClick={()=>nav('/sales/record')} size="md"><PlusCircle size={14}/> Record Sale</Btn>
       </div>
@@ -238,10 +251,10 @@ export default function Dashboard() {
       {/* KPIs */}
       <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10}}>
         <KpiCard label={`${period.label} Profit`} featured
-          value={loading?'…':`SGD ${parseFloat(summary?.totals?.profit||0).toFixed(2)}`}
+          value={loading?'…':`${cur} ${parseFloat(summary?.totals?.profit||0).toFixed(2)}`}
           sub="gross, excl. operating costs"/>
         <KpiCard label="Revenue (month)"
-          value={loading?'…':`SGD ${parseFloat(summary?.totals?.revenue||0).toFixed(2)}`}
+          value={loading?'…':`${cur} ${parseFloat(summary?.totals?.revenue||0).toFixed(2)}`}
           sub={`${summary?.totals?.transactions||0} transactions`}/>
         <KpiCard label="Units Sold (month)"
           value={loading?'…':String(summary?.totals?.units_sold||0)}
@@ -272,7 +285,7 @@ export default function Dashboard() {
 
       {/* Brand drill-down OR overview */}
       {selectedBrand ? (
-        <BrandDetail brand={selectedBrand} year={curYear} onClose={()=>setSelected(null)}/>
+        <BrandDetail brand={selectedBrand} year={curYear} market={dmarket==='ALL'?'':dmarket} cur={cur} onClose={()=>setSelected(null)}/>
       ) : (
         <>
           {/* Overview: trend + brand bars */}
@@ -291,7 +304,7 @@ export default function Dashboard() {
                     <BarChart data={trendData} margin={{top:0,right:16,left:0,bottom:0}}>
                       <XAxis dataKey="month" tick={{fill:'rgba(245,242,235,.4)',fontSize:11}} axisLine={false} tickLine={false}/>
                       <YAxis tick={{fill:'rgba(245,242,235,.4)',fontSize:10}} axisLine={false} tickLine={false} tickFormatter={v=>`$${v>=1000?(v/1000).toFixed(0)+'k':v}`}/>
-                      <Tooltip content={<Tip/>}/>
+                      <Tooltip content={<Tip prefix={cur+" "}/>}/>
                       <Bar dataKey="profit" name="Profit" radius={[4,4,0,0]}>
                         {trendData.map((_,i) => (
                           <Cell key={i} fill={i===trendData.length-1?'#f36f4a':'rgba(243,111,74,.45)'}/>
@@ -326,7 +339,7 @@ export default function Dashboard() {
                             {b.name}
                           </span>
                           <span style={{fontSize:10,color:'var(--cream-30)',display:'flex',alignItems:'center',gap:6}}>
-                            SGD {parseFloat(b.profit||0).toFixed(2)} · {b.units}u
+                            {cur} {parseFloat(b.profit||0).toFixed(2)} · {b.units}u
                             <ChevronRight size={11} style={{color:'var(--cream-30)'}}/>
                           </span>
                         </div>
@@ -392,8 +405,8 @@ export default function Dashboard() {
                             }
                           </td>
                           <td style={{padding:'9px 14px',color:'var(--cream)',textAlign:'right'}}>{p.units}</td>
-                          <td style={{padding:'9px 14px',color:'var(--cream)',textAlign:'right',fontWeight:600}}>SGD {parseFloat(p.revenue||0).toFixed(2)}</td>
-                          <td style={{padding:'9px 14px',color:'#7fc93e',textAlign:'right',fontWeight:700}}>SGD {parseFloat(p.profit||0).toFixed(2)}</td>
+                          <td style={{padding:'9px 14px',color:'var(--cream)',textAlign:'right',fontWeight:600}}>{cur} {parseFloat(p.revenue||0).toFixed(2)}</td>
+                          <td style={{padding:'9px 14px',color:'#7fc93e',textAlign:'right',fontWeight:700}}>{cur} {parseFloat(p.profit||0).toFixed(2)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -498,8 +511,8 @@ export default function Dashboard() {
             {perfResult && (
               <div style={{padding:'0 16px 16px'}}>
                 <div style={{display:'grid',gridTemplateColumns:'repeat(4, 1fr)',gap:10,marginBottom:16}}>
-                  <MiniStat label="Revenue" value={`SGD ${perfResult.totals.revenue.toFixed(2)}`} />
-                  <MiniStat label="Profit" value={`SGD ${perfResult.totals.profit.toFixed(2)}`} color={perfResult.totals.profit>=0?'#7fc93e':'#f87171'} />
+                  <MiniStat label="Revenue" value={`${cur} ${perfResult.totals.revenue.toFixed(2)}`} />
+                  <MiniStat label="Profit" value={`${cur} ${perfResult.totals.profit.toFixed(2)}`} color={perfResult.totals.profit>=0?'#7fc93e':'#f87171'} />
                   <MiniStat label="Units Sold" value={perfResult.totals.units} />
                   <MiniStat label="Transactions" value={perfResult.totals.transactions} />
                 </div>
@@ -516,8 +529,8 @@ export default function Dashboard() {
                         </div>
                         <div style={{display:'flex',gap:16,fontSize:12}}>
                           <span style={{color:'var(--cream-30)'}}>{b.units}u</span>
-                          <span style={{color:'var(--cream-60)'}}>SGD {b.revenue.toFixed(2)}</span>
-                          <strong style={{color:b.profit>=0?'#7fc93e':'#f87171'}}>SGD {b.profit.toFixed(2)}</strong>
+                          <span style={{color:'var(--cream-60)'}}>{cur} {b.revenue.toFixed(2)}</span>
+                          <strong style={{color:b.profit>=0?'#7fc93e':'#f87171'}}>{cur} {b.profit.toFixed(2)}</strong>
                         </div>
                       </div>
                     ))}

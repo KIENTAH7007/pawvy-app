@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { myShippingReminder } from '../utils/myShipping';
 import { useNavigate } from 'react-router-dom';
 import { CheckCircle, Plus, Trash2, Eye, EyeOff } from 'lucide-react';
 import { brandsApi, productsApi, partnersApi, salesApi } from '../api';
@@ -25,7 +26,10 @@ function useIsMobile() {
 // Fix #4: Vanillapup CN is monthly — no per-order amount, just informational label.
 function calcDiscount(partner, subtotal) {
   if (!partner || !IS_B2B) return { amount: 0, label: null, type: 'none' };
-  const dt = partner.discount_type || 'standard_rebate';
+  let dt = partner.discount_type || 'standard_rebate';
+  // MY has no rebate rules yet: the SGD-based tiers (standard rebate, hybrid's flat
+  // sub-tier, credit-note tiers) must never apply to MYR orders. Plain % discounts still work.
+  if (partner.market === 'MY' && !['fixed_pct','threshold_pct'].includes(dt)) dt = 'none';
   const dv = parseFloat(partner.discount_value) || 0;
   const thresh = parseFloat(partner.discount_threshold) || 0;
 
@@ -68,6 +72,7 @@ function calcDiscount(partner, subtotal) {
 
 function getDelivery(partner, subtotal, channel) {
   if (channel !== 'Wholesale Order') return null;
+  if (partner?.market === 'MY') return null; // MY: reminder label only, see utils/myShipping.js
   const dt = partner?.discount_type || 'standard_rebate';
   if (dt !== 'standard_rebate' && dt !== 'hybrid') return null;
   return subtotal >= 200 ? { free: true } : { free: false };
@@ -87,6 +92,8 @@ export default function RecordSale() {
   const isMobile = useIsMobile();
   const [date,      setDate]      = useState(localDateStr());
   const [market,    setMarket]    = useState('SG');
+  const cur   = market === 'MY' ? 'MYR' : 'SGD';
+  const money = (v) => fmt.money(v, cur);
   const [channel,   setChannel]   = useState('');
   const [partnerId, setPartnerId] = useState('');
   const [notes,     setNotes]     = useState('');
@@ -295,7 +302,7 @@ export default function RecordSale() {
         // Only first line gets the shipping amount (it's per-order)
         const isFirst = (i === 0);
         const itemDiscNote = lc.discPct > 0
-          ? `Item disc ${lc.discPct}% off SGD ${lc.price.toFixed(2)}`
+          ? `Item disc ${lc.discPct}% off ${cur} ${lc.price.toFixed(2)}`
           : null;
 
         await salesApi.create({
@@ -409,13 +416,13 @@ export default function RecordSale() {
                         <div style={{width:90}}>
                           <Input type="number" min="0" max="100" step="1" value={line.item_discount_pct||''} onChange={e=>updateLine(idx,'item_discount_pct',e.target.value)} placeholder="0 = no disc"/>
                         </div>
-                        {lc.discPct > 0 && <span style={{fontSize:11,color:'#fbbf24',whiteSpace:'nowrap'}}>− {fmt.sgd(lc.discAmt)} /u</span>}
+                        {lc.discPct > 0 && <span style={{fontSize:11,color:'#fbbf24',whiteSpace:'nowrap'}}>− {money(lc.discAmt)} /u</span>}
                       </div>
                       {lc.revenue > 0 && (
                         <div style={{textAlign:'right',fontSize:13,fontWeight:700,color: hideConfidential ? 'var(--cream)' : (lc.lineProfit>=0?'#7fc93e':'#f87171')}}>
-                          {lc.discPct > 0 && <span style={{fontSize:10,color:'var(--cream-30)',marginRight:6,textDecoration:'line-through'}}>{fmt.sgd(lc.qty * lc.price)}</span>}
-                          {fmt.sgd(lc.revenue)}
-                          {!hideConfidential && <span style={{fontSize:10,color:'var(--cream-30)',marginLeft:6}}>profit {fmt.sgd(lc.lineProfit)}</span>}
+                          {lc.discPct > 0 && <span style={{fontSize:10,color:'var(--cream-30)',marginRight:6,textDecoration:'line-through'}}>{money(lc.qty * lc.price)}</span>}
+                          {money(lc.revenue)}
+                          {!hideConfidential && <span style={{fontSize:10,color:'var(--cream-30)',marginLeft:6}}>profit {money(lc.lineProfit)}</span>}
                         </div>
                       )}
                     </div>
@@ -445,8 +452,8 @@ export default function RecordSale() {
                       <Input type="number" step="0.01" value={line.unit_price} onChange={e => updateLine(idx, 'unit_price', e.target.value)} placeholder="0.00" />
                       <Input type="number" min="0" max="100" step="1" value={line.item_discount_pct||''} onChange={e => updateLine(idx, 'item_discount_pct', e.target.value)} placeholder="0%" title="Item discount %" />
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', flexDirection: 'column', gap: 1 }}>
-                        {lc.discPct > 0 && <span style={{ fontSize: 9, color: 'var(--cream-30)', textDecoration: 'line-through' }}>{fmt.sgd(lc.qty * lc.price)}</span>}
-                        <span style={{ fontWeight: 600, color: hideConfidential ? 'var(--cream)' : (lc.lineProfit >= 0 ? '#7fc93e' : '#f87171'), fontSize: 12 }}>{lc.revenue > 0 ? fmt.sgd(lc.revenue) : '—'}</span>
+                        {lc.discPct > 0 && <span style={{ fontSize: 9, color: 'var(--cream-30)', textDecoration: 'line-through' }}>{money(lc.qty * lc.price)}</span>}
+                        <span style={{ fontWeight: 600, color: hideConfidential ? 'var(--cream)' : (lc.lineProfit >= 0 ? '#7fc93e' : '#f87171'), fontSize: 12 }}>{lc.revenue > 0 ? money(lc.revenue) : '—'}</span>
                       </div>
                       <button onClick={() => removeLine(idx)} disabled={lines.length === 1}
                         style={{ background: 'none', border: 'none', color: 'rgba(248,113,113,.6)', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}>
@@ -467,23 +474,26 @@ export default function RecordSale() {
             <Card title="SHIPPING (OPTIONAL)">
               <div style={{padding:'12px 16px',display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
                 <Input
-                  label="Shipping Charged to Partner (SGD)"
+                  label={`Shipping Charged to Partner (${cur})`}
                   type="number" step="0.01"
                   value={shippingCharged}
                   onChange={e => setShippingCharged(e.target.value)}
                   placeholder="0.00"
                 />
                 <Input
-                  label="Actual Shipping Cost (SGD)"
+                  label={`Actual Shipping Cost (${cur})`}
                   type="number" step="0.01"
                   value={shippingCost}
                   onChange={e => setShippingCost(e.target.value)}
                   placeholder="0.00"
                 />
               </div>
+              {myShippingReminder(selectedPartner) && (
+                <div style={{padding:'0 16px 10px',fontSize:11,color:'var(--cream-60)'}}>Reminder: {myShippingReminder(selectedPartner)}</div>
+              )}
               {shipCharged > 0 && (
                 <div style={{padding:'0 16px 12px',fontSize:11,color:'#7fc93e'}}>
-                  Shipping profit: SGD {shipProfit.toFixed(2)} (charged SGD {shipCharged.toFixed(2)} − cost SGD {shipCost.toFixed(2)})
+                  Shipping profit: {cur} {shipProfit.toFixed(2)} (charged {cur} {shipCharged.toFixed(2)} − cost {cur} {shipCost.toFixed(2)})
                 </div>
               )}
             </Card>
@@ -502,19 +512,19 @@ export default function RecordSale() {
           </Card>
           <Card title="ORDER SUMMARY">
             <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 9 }}>
-              {itemDiscountTotal > 0 && <Row label={`Catalog Subtotal`} value={fmt.sgd(catalogSubtotal)} muted />}
-              {itemDiscountTotal > 0 && <Row label={`Item Discounts`} value={`− ${fmt.sgd(itemDiscountTotal)}`} style={{color:'#fbbf24'}} />}
-              <Row label={`${itemDiscountTotal > 0 ? 'Net ' : ''}Subtotal (${lines.filter(l=>l.qty).length} line${lines.filter(l=>l.qty).length !== 1 ? 's' : ''})`} value={fmt.sgd(subtotal)} />
+              {itemDiscountTotal > 0 && <Row label={`Catalog Subtotal`} value={money(catalogSubtotal)} muted />}
+              {itemDiscountTotal > 0 && <Row label={`Item Discounts`} value={`− ${money(itemDiscountTotal)}`} style={{color:'#fbbf24'}} />}
+              <Row label={`${itemDiscountTotal > 0 ? 'Net ' : ''}Subtotal (${lines.filter(l=>l.qty).length} line${lines.filter(l=>l.qty).length !== 1 ? 's' : ''})`} value={money(subtotal)} />
 
               {IS_MARKETPLACE(channel) && mktFeeAmt > 0 && (
-                <Row label={`Marketplace fee (${feePct}%)`} value={`− ${fmt.sgd(mktFeeAmt)}`} muted />
+                <Row label={`Marketplace fee (${feePct}%)`} value={`− ${money(mktFeeAmt)}`} muted />
               )}
 
               {IS_B2B(channel) && discount.label && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                   <span style={{ fontSize: 11, color: discount.amount > 0 ? '#fbbf24' : 'var(--cream-30)', flex: 1, lineHeight: 1.4 }}>{discount.label}</span>
                   <span style={{ fontSize: 12, fontWeight: 700, color: discount.amount > 0 ? '#fbbf24' : 'var(--cream-30)', whiteSpace: 'nowrap' }}>
-                    {discount.amount > 0 && discountAffectsProfit ? `− ${fmt.sgd(discount.amount)}` : discount.amount > 0 ? 'Deferred' : '—'}
+                    {discount.amount > 0 && discountAffectsProfit ? `− ${money(discount.amount)}` : discount.amount > 0 ? 'Deferred' : '—'}
                   </span>
                 </div>
               )}
@@ -533,20 +543,20 @@ export default function RecordSale() {
               )}
 
               {shipCharged > 0 && (
-                <Row label={`Shipping charged`} value={`+ ${fmt.sgd(shipCharged)}`} />
+                <Row label={`Shipping charged`} value={`+ ${money(shipCharged)}`} />
               )}
 
               <div style={{ height: 1, background: 'var(--border)', margin: '2px 0' }} />
               {!hideConfidential && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--cream)' }}>Net Profit (Pawvy)</span>
-                  <span style={{ fontSize: 22, fontFamily: "'Bebas Neue',sans-serif", color: netProfit >= 0 ? '#7fc93e' : '#f87171', letterSpacing: 1 }}>{fmt.sgd(netProfit)}</span>
+                  <span style={{ fontSize: 22, fontFamily: "'Bebas Neue',sans-serif", color: netProfit >= 0 ? '#7fc93e' : '#f87171', letterSpacing: 1 }}>{money(netProfit)}</span>
                 </div>
               )}
               {invoiceTotal !== null && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 4, borderTop: '1px solid var(--border)', marginTop: 2 }}>
                   <span style={{ fontSize: 11, color: 'var(--cream-60)' }}>Invoice to partner</span>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--orange)' }}>{fmt.sgd(invoiceTotal)}</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--orange)' }}>{money(invoiceTotal)}</span>
                 </div>
               )}
             </div>

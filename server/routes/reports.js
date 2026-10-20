@@ -1,13 +1,20 @@
 const { Router } = require('express');
 
-// Shared SQL helpers — channel-aware revenue & consistent profit formula
-const REVENUE_SQL = `CASE WHEN s.channel IN ('Shopee','Lazada','Amazon','TikTok Shop')
-  THEN s.qty * s.unit_price + COALESCE(s.shipping_charged,0)
-  ELSE s.qty * s.unit_price - s.platform_fee_amt + COALESCE(s.shipping_charged,0)
-END`;
+const money = require('../lib/money');
 
-const PROFIT_SQL = `s.qty * (s.unit_price - s.unit_cost) - s.platform_fee_amt
-  + COALESCE(s.shipping_charged,0) - COALESCE(s.shipping_cost,0) - COALESCE(s.stripe_fee_amt,0)`;
+// Currency-aware revenue / COGS / profit (see lib/money.js). One market selected
+// → that market's own currency (SG→SGD, MY→MYR with SGD cost converted at the
+// rate saved on each sale). No market ("All") → SGD equivalent. as=sgd forces
+// SGD equivalent for a single market (used by Compare's "MY in SGD").
+function ctx(req) {
+  const mode = money.modeFor(req.query);
+  return {
+    mode, currency: money.currencyFor(req.query),
+    REVENUE_SQL: money.revenue(mode), PROFIT_SQL: money.profit(mode), COGS_SQL: money.cogs(mode),
+  };
+}
+// One order ≈ one date + partner + channel (+ website/POS reference) — sales are stored per line.
+const ORDER_KEY = `(s.date || '|' || COALESCE(s.partner_id,'') || '|' || s.channel || '|' || COALESCE(s.website_order_id,'') || '|' || COALESCE(s.pos_checkout_ref,''))`;
 
 const VOIDED_FILTER = `COALESCE(s.voided,0) = 0`;
 
@@ -16,6 +23,7 @@ function reportsRouter(db) {
 
   /* ── P&L ─────────────────────────────────────────────────────── */
   router.get('/pnl', (req, res) => {
+    const { mode, currency, REVENUE_SQL, PROFIT_SQL, COGS_SQL } = ctx(req);
     const { date_from, date_to, market } = req.query;
     if (!date_from || !date_to) return res.status(400).json({ error: 'date_from and date_to required' });
     const sw = `WHERE ${VOIDED_FILTER} AND s.date BETWEEN ? AND ? ${market ? 'AND s.market=?' : ''}`;
@@ -25,16 +33,21 @@ function reportsRouter(db) {
 
     const sales = db.queryOne(`
       SELECT ROUND(COALESCE(SUM(${REVENUE_SQL}),0),2)  AS revenue,
-             ROUND(COALESCE(SUM(s.qty*s.unit_cost),0),2) AS cogs,
+             ROUND(COALESCE(SUM(${COGS_SQL}),0),2) AS cogs,
              ROUND(COALESCE(SUM(${PROFIT_SQL}),0),2)    AS gross_profit,
-             COALESCE(SUM(s.qty),0) AS units_sold, COUNT(*) AS transactions
+             COALESCE(SUM(s.qty),0) AS units_sold, COUNT(*) AS transactions,
+             COUNT(DISTINCT ${ORDER_KEY}) AS orders
       FROM sales s JOIN products p ON p.id=s.product_id ${sw}
     `, sp);
 
-    const opCosts  = db.queryOne(`SELECT ROUND(COALESCE(SUM(amount),0),2) AS total FROM operating_costs ${cw}`, cp);
-    const writeoffs= db.queryOne(`SELECT ROUND(COALESCE(SUM(cost_impact),0),2) AS total FROM inventory_adjustments WHERE date BETWEEN ? AND ? AND type='Write-off'`, [date_from,date_to]);
-    const opBreak  = db.query(`SELECT category, ROUND(SUM(amount),2) AS total FROM operating_costs ${cw} GROUP BY category ORDER BY total DESC`, cp);
-    const writeoffBreak = db.query(`
+    const OPEX = money.opex(mode);
+    const opCosts  = db.queryOne(`SELECT ROUND(COALESCE(SUM(${OPEX}),0),2) AS total FROM operating_costs ${cw}`, cp);
+    // Write-offs and shipment cost variance are SGD, stock-side and not split by market:
+    // per KT they sit in the SG P&L (and All markets) — never in MY.
+    const includeStockSide = market !== 'MY';
+    const writeoffs= !includeStockSide ? { total: 0 } : db.queryOne(`SELECT ROUND(COALESCE(SUM(cost_impact),0),2) AS total FROM inventory_adjustments WHERE date BETWEEN ? AND ? AND type='Write-off'`, [date_from,date_to]);
+    const opBreak  = db.query(`SELECT category, ROUND(SUM(${OPEX}),2) AS total FROM operating_costs ${cw} GROUP BY category ORDER BY total DESC`, cp);
+    const writeoffBreak = !includeStockSide ? [] : db.query(`
       SELECT COALESCE(reason,'Other') AS reason, ROUND(SUM(cost_impact),2) AS total, SUM(-qty_change) AS units
       FROM inventory_adjustments
       WHERE date BETWEEN ? AND ? AND type='Write-off'
@@ -51,7 +64,7 @@ function reportsRouter(db) {
     // exclusion is really just future-proofing). Not market-segmented —
     // shipments/procurement aren't split by market yet, since Pawvy's
     // sourcing isn't market-specific the way sales are.
-    const costVariance = db.queryOne(`
+    const costVariance = !includeStockSide ? { total: 0 } : db.queryOne(`
       SELECT ROUND(COALESCE(SUM(v.variance_total),0),2) AS total
       FROM cost_variance_ledger v
       JOIN shipments s ON s.id = v.shipment_id
@@ -69,7 +82,12 @@ function reportsRouter(db) {
 
     const net = parseFloat(((sales.gross_profit||0) - (opCosts.total||0) - (writeoffs.total||0) + (costVariance.total||0)).toFixed(2));
     res.json({
-      period: { from:date_from, to:date_to, market:market||'All' },
+      period: { from:date_from, to:date_to, market:market||'All' }, currency, mode,
+      fx_note: mode === 'sgd' && !market ? 'All markets shown in SGD equivalent (MY converted at each sale\'s own saved rate)' : null,
+      avg_order_value: sales.orders ? parseFloat((sales.revenue / sales.orders).toFixed(2)) : 0,
+      gross_margin_pct: sales.revenue ? parseFloat((sales.gross_profit / sales.revenue * 100).toFixed(1)) : 0,
+      net_margin_pct: sales.revenue ? parseFloat((net / sales.revenue * 100).toFixed(1)) : 0,
+      orders: sales.orders,
       revenue:sales.revenue, cogs:sales.cogs, gross_profit:sales.gross_profit,
       operating_costs:opCosts.total, writeoffs:writeoffs.total, cost_variance:costVariance.total, net_profit:net,
       units_sold:sales.units_sold, transactions:sales.transactions,
@@ -79,6 +97,7 @@ function reportsRouter(db) {
 
   /* ── Monthly trend ────────────────────────────────────────────── */
   router.get('/trend', (req, res) => {
+    const { mode, currency, REVENUE_SQL, PROFIT_SQL, COGS_SQL } = ctx(req);
     const { year, market, brand_id } = req.query;
     const y = year || new Date().getFullYear();
     const params = [`${y}-01-01`, `${y}-12-31`];
@@ -101,26 +120,28 @@ function reportsRouter(db) {
 
   /* ── Brand SKU detail ─────────────────────────────────────────── */
   router.get('/brand-sku', (req, res) => {
-    const { brand_id, date_from, date_to, year } = req.query;
+    const { mode, currency, REVENUE_SQL, PROFIT_SQL, COGS_SQL } = ctx(req);
+    const { brand_id, date_from, date_to, year, market } = req.query;
     if (!brand_id) return res.status(400).json({ error: 'brand_id required' });
     const y  = year || new Date().getFullYear();
     const df = date_from || `${y}-01-01`;
     const dt = date_to   || `${y}-12-31`;
-    const vf = `AND ${VOIDED_FILTER}`;
+    const vf = `AND ${VOIDED_FILTER}` + (market ? ' AND s.market = ?' : '');
+    const mp = market ? [market] : [];
 
     const skus = db.query(`
       SELECT p.id, p.item_series, p.variation, p.unit_cost,
         SUM(s.qty) AS units,
         ROUND(SUM(${REVENUE_SQL}),2) AS revenue,
         ROUND(SUM(${PROFIT_SQL}),2) AS profit,
-        ROUND(AVG(s.unit_price),2) AS avg_price,
+        ROUND(AVG(${mode === 'sgd' ? 's.unit_price / ' + money.FX : 's.unit_price'}),2) AS avg_price,
         MAX(s.date) AS last_sale,
         COUNT(DISTINCT s.date) AS sale_days
       FROM products p
       JOIN sales s ON s.product_id = p.id
       WHERE p.brand_id = ? AND s.date BETWEEN ? AND ? ${vf}
       GROUP BY p.id ORDER BY profit DESC
-    `, [brand_id, df, dt]);
+    `, [brand_id, df, dt, ...mp]);
 
     const monthlyTrend = db.query(`
       SELECT strftime('%Y-%m', s.date) AS month,
@@ -130,7 +151,7 @@ function reportsRouter(db) {
       FROM sales s JOIN products p ON p.id=s.product_id
       WHERE p.brand_id = ? AND s.date BETWEEN ? AND ? ${vf}
       GROUP BY month ORDER BY month
-    `, [brand_id, df, dt]);
+    `, [brand_id, df, dt, ...mp]);
 
     const channels = db.query(`
       SELECT s.channel, SUM(s.qty) AS units,
@@ -138,13 +159,14 @@ function reportsRouter(db) {
       FROM sales s JOIN products p ON p.id=s.product_id
       WHERE p.brand_id = ? AND s.date BETWEEN ? AND ? ${vf}
       GROUP BY s.channel ORDER BY profit DESC LIMIT 8
-    `, [brand_id, df, dt]);
+    `, [brand_id, df, dt, ...mp]);
 
-    res.json({ skus, monthlyTrend, channels, period: { from: df, to: dt } });
+    res.json({ skus, monthlyTrend, channels, currency, period: { from: df, to: dt } });
   });
 
   /* ── Top partners ─────────────────────────────────────────────── */
   router.get('/partners', (req, res) => {
+    const { mode, currency, REVENUE_SQL, PROFIT_SQL, COGS_SQL } = ctx(req);
     const { date_from, date_to, market, limit } = req.query;
     const lim = parseInt(limit) || 15;
     let where = `WHERE s.partner_id IS NOT NULL AND ${VOIDED_FILTER}`;
@@ -163,8 +185,28 @@ function reportsRouter(db) {
     `, [...p, lim]));
   });
 
+  /* ── Top products (Compare view: per market, side by side) ───── */
+  router.get('/top-products', (req, res) => {
+    const { mode, currency, REVENUE_SQL, PROFIT_SQL } = ctx(req);
+    const { date_from, date_to, market, limit } = req.query;
+    if (!date_from || !date_to) return res.status(400).json({ error: 'date_from and date_to required' });
+    const p = [date_from, date_to]; let mf = '';
+    if (market) { mf = ' AND s.market = ?'; p.push(market); }
+    const rows = db.query(`
+      SELECT p.id, p.item_series, p.variation, b.name AS brand_name,
+        SUM(s.qty) AS units,
+        ROUND(SUM(${REVENUE_SQL}),2) AS revenue,
+        ROUND(SUM(${PROFIT_SQL}),2) AS profit
+      FROM sales s JOIN products p ON p.id=s.product_id JOIN brands b ON b.id=p.brand_id
+      WHERE ${VOIDED_FILTER} AND s.date BETWEEN ? AND ?${mf}
+      GROUP BY p.id ORDER BY units DESC, revenue DESC LIMIT ?
+    `, [...p, parseInt(limit) || 10]);
+    res.json({ currency, rows });
+  });
+
   /* ── All channels (partners + B2C) for Dashboard toggle ─────── */
   router.get('/all-channels', (req, res) => {
+    const { mode, currency, REVENUE_SQL, PROFIT_SQL, COGS_SQL } = ctx(req);
     const { date_from, date_to, market } = req.query;
     let where = `WHERE ${VOIDED_FILTER}`;
     const p = [];
@@ -266,7 +308,10 @@ function reportsRouter(db) {
   // any channel — same underlying revenue/profit formulas as the rest of
   // Reports & P&L, so the numbers are consistent with everything else.
   router.get('/channel-performance', (req, res) => {
-    const { channel, date_from, date_to } = req.query;
+    const { mode, currency, REVENUE_SQL, PROFIT_SQL, COGS_SQL } = ctx(req);
+    const { channel, date_from, date_to, market } = req.query;
+    const mf = market ? ' AND s.market = ?' : '';
+    const mp = market ? [market] : [];
     if (!channel || !date_from || !date_to) {
       return res.status(400).json({ error: 'channel, date_from, date_to are required' });
     }
@@ -278,8 +323,8 @@ function reportsRouter(db) {
         ROUND(COALESCE(SUM(${PROFIT_SQL}), 0), 2) AS profit,
         COUNT(*) AS transactions
       FROM sales s
-      WHERE s.channel = ? AND s.date BETWEEN ? AND ? AND ${VOIDED_FILTER}
-    `, [channel, date_from, date_to]);
+      WHERE s.channel = ? AND s.date BETWEEN ? AND ? AND ${VOIDED_FILTER}${mf}
+    `, [channel, date_from, date_to, ...mp]);
 
     const byBrand = db.query(`
       SELECT b.id AS brand_id, b.name AS brand_name, b.color AS brand_color,
@@ -294,7 +339,7 @@ function reportsRouter(db) {
     `, [channel, date_from, date_to]);
 
     res.json({
-      channel, period: { from: date_from, to: date_to },
+      channel, currency, period: { from: date_from, to: date_to },
       totals: {
         units: totals?.units || 0,
         revenue: totals?.revenue || 0,

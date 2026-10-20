@@ -190,7 +190,13 @@ export default function Partners() {
               <option value="">—</option>
               {['Inventory','Consignment','Commission','Pickup','None'].map(m=><option key={m} value={m}>{m}</option>)}
             </Select>
-            <Select label="Market" value={form.market||'SG'} onChange={e=>sf('market',e.target.value)}>
+            <Select label="Market" value={form.market||'SG'} onChange={e=>{
+                const m=e.target.value;
+                // MY has no rebate rules yet → default to "No discount" (and West Malaysia zone)
+                setForm(f=>({...f,market:m,
+                  ...(m==='MY'&&(f.discount_type||'standard_rebate')==='standard_rebate'?{discount_type:'none'}:{}),
+                  ...(m==='MY'&&!f.shipping_zone?{shipping_zone:'West'}:{})}));
+              }}>
               {['SG','MY'].map(m=><option key={m} value={m}>{m}</option>)}
             </Select>
           </FormRow>
@@ -199,6 +205,12 @@ export default function Partners() {
             <Input label="Email" value={form.email||''} onChange={e=>sf('email',e.target.value)}/>
           </FormRow>
           <Input label="Address" value={form.address||''} onChange={e=>sf('address',e.target.value)}/>
+          {form.market==='MY' && (
+            <Select label="Malaysia delivery zone (shows the right free-delivery reminder on orders)" value={form.shipping_zone||'West'} onChange={e=>sf('shipping_zone',e.target.value)}>
+              <option value="West">West Malaysia — ≥ MYR 600 free, below that MYR 25</option>
+              <option value="East">East Malaysia — case by case</option>
+            </Select>
+          )}
           {outlets.length === 0 ? (
             <Select label="Region (for the public Stockist page filter)" value={form.region||''} onChange={e=>sf('region',e.target.value)}>
               <option value="">—</option>

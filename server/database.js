@@ -1230,6 +1230,36 @@ function createSchema() {
   // client/src/pages/Sales.jsx.
   try { db.run("ALTER TABLE sales ADD COLUMN mailing_required INTEGER DEFAULT 0"); } catch(e) {}
 
+  // ── Malaysia market (Oct 2026, per KT) — ADDITIVE ONLY ─────────────
+  // MY sales/costs/invoices are recorded in MYR; product unit_cost stays
+  // in SGD everywhere. `currency` is simply the market's currency
+  // ('SGD' for SG, 'MYR' for MY) and `fx_rate` is MYR per 1 SGD, saved on
+  // the row at the time it is recorded (looked up for the row's own date),
+  // so past records are set in stone — later rate changes never touch
+  // them. fx_rate is NULL on every SG row, and every report treats NULL as
+  // 1, so existing SG numbers are unchanged. MY profit =
+  // MYR revenue − (SGD unit_cost × fx_rate). See lib/money.js + lib/fx.js.
+  try { db.run("ALTER TABLE sales ADD COLUMN currency TEXT DEFAULT 'SGD'"); } catch(e) {}
+  try { db.run("ALTER TABLE sales ADD COLUMN fx_rate REAL"); } catch(e) {}
+  try { db.run("ALTER TABLE operating_costs ADD COLUMN currency TEXT DEFAULT 'SGD'"); } catch(e) {}
+  try { db.run("ALTER TABLE operating_costs ADD COLUMN fx_rate REAL"); } catch(e) {}
+  // West / East Malaysia — shipping zone for MY partners (shows the right
+  // free-delivery reminder in Pending Orders). Separate from partners.region,
+  // which is the SG region tag for the public Stockist page.
+  try { db.run("ALTER TABLE partners ADD COLUMN shipping_zone TEXT"); } catch(e) {}
+  // One row per day: MYR per 1 SGD. source = 'auto:<provider>' or 'manual'
+  // (a manual row for a date is never overwritten by the daily auto-fetch).
+  db.run(`CREATE TABLE IF NOT EXISTS fx_rates (
+    date TEXT PRIMARY KEY,
+    myr_per_sgd REAL NOT NULL,
+    source TEXT NOT NULL DEFAULT 'auto',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+  // Any pre-existing MY rows get the right currency label (their fx_rate is
+  // back-filled from the rate table once rates exist — see lib/fx.js).
+  try { db.run("UPDATE sales SET currency='MYR' WHERE market='MY' AND (currency IS NULL OR currency='SGD')"); } catch(e) {}
+  try { db.run("UPDATE operating_costs SET currency='MYR' WHERE market='MY' AND (currency IS NULL OR currency='SGD')"); } catch(e) {}
+
   // Warehouse rename (Sep 2026, per KT) — Storhub (pure warehouse) moved
   // and is now called Hougang; Home (operational hub — where sales, POS,
   // and consignment placements deduct from) is now called Mega, since

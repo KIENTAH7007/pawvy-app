@@ -117,6 +117,16 @@ module.exports = function(db, inventoryRouter) {
 
     const today = localDateStr();
     const saleIds = [];
+
+    // Market (and so currency) comes from the partner — never from the typed
+    // company name. MY partner → MY sale in MYR with today's rate saved on it.
+    const ptr = db.queryOne('SELECT market FROM partners WHERE id = ?', [partner_id]);
+    const mkt = ptr?.market === 'MY' ? 'MY' : 'SG';
+    // Portal prices are still SG until the Malaysia Order Portal (Phase 2) brings MYR wholesale
+    // prices — approving here would record SGD prices as MYR, so it is blocked for now.
+    if (mkt === 'MY') return res.status(400).json({ error: 'Approving orders for Malaysia partners is switched on with the Malaysia Order Portal (next phase). Until then, record MY orders via Record Sale.' });
+    let st;
+    try { st = require('../lib/fx').stamp(db, mkt, today); } catch (e) { return res.status(e.status || 500).json({ error: e.message }); }
     const shipCharged = parseFloat(shipping_charged) || 0;
     const shipCost    = parseFloat(shipping_cost)    || 0;
 
@@ -145,13 +155,13 @@ module.exports = function(db, inventoryRouter) {
       const result = db.run(`
         INSERT INTO sales
           (date, product_id, partner_id, channel, market, qty, unit_cost, unit_price,
-           platform_fee_pct, platform_fee_amt, special_discount_amt, shipping_charged, shipping_cost, notes)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+           platform_fee_pct, platform_fee_amt, special_discount_amt, shipping_charged, shipping_cost, notes, currency, fx_rate)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
       `, [
-        today, line.product_id, partner_id || null, 'Wholesale Order', 'SG',
+        today, line.product_id, partner_id || null, 'Wholesale Order', mkt,
         qty, cost, line.unit_price, fee_pct, fee_amt, special_amt,
         isFirst ? shipCharged : 0, isFirst ? shipCost : 0,
-        `Order Portal — ${order.company_name}`
+        `Order Portal — ${order.company_name}`, st.currency, st.fx_rate
       ]);
 
       saleIds.push(result.lastID);

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { myShippingReminder } from '../utils/myShipping';
 import { CheckCircle, XCircle, Trash2, Plus, ChevronDown, ChevronUp, Clock } from 'lucide-react';
 import { partnersApi, brandsApi, productsApi, ordersApi } from '../api';
 import { Page, Card, Input, Select, Btn, fmt } from '../components/ui';
@@ -10,7 +11,10 @@ import { Page, Card, Input, Select, Btn, fmt } from '../components/ui';
 // if the discount models ever change.
 function calcDiscount(partner, subtotal) {
   if (!partner) return { amount: 0, label: null, type: 'none' };
-  const dt = partner.discount_type || 'standard_rebate';
+  let dt = partner.discount_type || 'standard_rebate';
+  // MY has no rebate rules yet: the SGD-based tiers (standard rebate, hybrid's flat
+  // sub-tier, credit-note tiers) must never apply to MYR orders. Plain % discounts still work.
+  if (partner.market === 'MY' && !['fixed_pct','threshold_pct'].includes(dt)) dt = 'none';
   const dv = parseFloat(partner.discount_value) || 0;
   const thresh = parseFloat(partner.discount_threshold) || 0;
 
@@ -549,45 +553,48 @@ export default function PendingOrders() {
                         SHIPPING (OPTIONAL)
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, paddingTop: 10 }}>
-                        <Input label="Shipping Charged to Partner (SGD)" type="number" step="0.01" placeholder="0.00"
+                        <Input label={`Shipping Charged to Partner (${totals?.partner?.market === 'MY' ? 'MYR' : 'SGD'})`} type="number" step="0.01" placeholder="0.00"
                           value={es.shippingCharged}
                           onChange={e => updateEdit(order.id, prev => ({ ...prev, shippingCharged: e.target.value }))}/>
-                        <Input label="Actual Shipping Cost (SGD)" type="number" step="0.01" placeholder="0.00"
+                        <Input label={`Actual Shipping Cost (${totals?.partner?.market === 'MY' ? 'MYR' : 'SGD'})`} type="number" step="0.01" placeholder="0.00"
                           value={es.shippingCost}
                           onChange={e => updateEdit(order.id, prev => ({ ...prev, shippingCost: e.target.value }))}/>
                       </div>
+                      {totals?.partner && myShippingReminder(totals.partner) && (
+                        <div style={{ fontSize: 11, color: 'var(--cream-60)', paddingTop: 8 }}>Reminder: {myShippingReminder(totals.partner)}</div>
+                      )}
                     </div>
 
                     {totals && totals.partner && (
                       <div style={{ marginTop: 14, padding: 12, background: 'rgba(245,242,235,.03)', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
                           <span style={{ color: 'var(--cream-60)' }}>Subtotal</span>
-                          <span style={{ color: 'var(--cream)' }}>{fmt.sgd(totals.rawSubtotal)}</span>
+                          <span style={{ color: 'var(--cream)' }}>{fmt.money(totals.rawSubtotal, totals.partner?.market === 'MY' ? 'MYR' : 'SGD')}</span>
                         </div>
                         {totals.specialDiscountTotal > 0 && (
                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
                             <span style={{ color: '#e0a458' }}>Special discount</span>
-                            <span style={{ color: '#e0a458', fontWeight: 700 }}>− {fmt.sgd(totals.specialDiscountTotal)}</span>
+                            <span style={{ color: '#e0a458', fontWeight: 700 }}>− {fmt.money(totals.specialDiscountTotal, totals.partner?.market === 'MY' ? 'MYR' : 'SGD')}</span>
                           </div>
                         )}
                         {totals.discount.label && (
                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
                             <span style={{ color: '#7fc93e' }}>{totals.discount.label}</span>
                             {totals.discountAffectsTotal && totals.discount.amount > 0 && (
-                              <span style={{ color: '#7fc93e', fontWeight: 700 }}>− {fmt.sgd(totals.discount.amount)}</span>
+                              <span style={{ color: '#7fc93e', fontWeight: 700 }}>− {fmt.money(totals.discount.amount, totals.partner?.market === 'MY' ? 'MYR' : 'SGD')}</span>
                             )}
                           </div>
                         )}
                         {totals.shipCharged > 0 && (
                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
                             <span style={{ color: 'var(--cream-60)' }}>Shipping charged</span>
-                            <span style={{ color: 'var(--cream)' }}>+ {fmt.sgd(totals.shipCharged)}</span>
+                            <span style={{ color: 'var(--cream)' }}>+ {fmt.money(totals.shipCharged, totals.partner?.market === 'MY' ? 'MYR' : 'SGD')}</span>
                           </div>
                         )}
                         <div style={{ height: 1, background: 'var(--border)', margin: '2px 0' }}/>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, fontWeight: 700 }}>
                           <span style={{ color: 'var(--cream)' }}>Net Total</span>
-                          <span style={{ color: 'var(--orange)' }}>{fmt.sgd(totals.netTotal)}</span>
+                          <span style={{ color: 'var(--orange)' }}>{fmt.money(totals.netTotal, totals.partner?.market === 'MY' ? 'MYR' : 'SGD')}</span>
                         </div>
                       </div>
                     )}

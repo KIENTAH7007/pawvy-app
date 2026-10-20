@@ -109,9 +109,15 @@ export default function Sales() {
   const hasFilter = filters.brand_id || filters.partner_id || filters.market;
   const isCurrentMonthOnly = filters.date_from === defaultRange.from && filters.date_to === defaultRange.to;
 
-  const totals = sales.reduce((a, s) => ({
-    r: a.r + (s.revenue||0), p: a.p + (s.profit||0), q: a.q + s.qty
-  }), { r:0, p:0, q:0 });
+  // Each sale is in its own market's currency — never add SGD and MYR together.
+  // Totals are therefore kept per currency (one line each when "All" is chosen).
+  const totals = sales.reduce((a, s) => ({ ...a, q: a.q + s.qty }), { q:0 });
+  const totalsByCur = sales.reduce((m, s) => {
+    const c = s.currency || 'SGD';
+    m[c] = m[c] || { r:0, p:0 };
+    m[c].r += (s.revenue||0); m[c].p += (s.profit||0);
+    return m;
+  }, {});
 
   async function handleVoid(id) {
     await salesApi.void(id);
@@ -152,7 +158,7 @@ export default function Sales() {
     const isMarket = MARKETPLACE.includes(s.channel);
     return {
       label: isMarket ? `Fee ${parseFloat(s.platform_fee_pct||0).toFixed(0)}%` : `Disc${s.platform_fee_pct ? ` ${parseFloat(s.platform_fee_pct).toFixed(0)}%` : ''}`,
-      text: `− ${fmt.sgd(discAmt)}`,
+      text: `− ${fmt.money(discAmt, s.currency)}`,
       color: isMarket ? 'var(--cream-30)' : '#fbbf24',
     };
   }
@@ -165,8 +171,8 @@ export default function Sales() {
     const shipCost = parseFloat(s.shipping_cost || 0);
     const shipProfit = shipCharged - shipCost;
     return {
-      text: shipCharged > 0 ? `+ ${fmt.sgd(shipCharged)}` : null,
-      sub: shipCharged > 0 && shipCost > 0 ? `net ${fmt.sgd(shipProfit)}` : null,
+      text: shipCharged > 0 ? `+ ${fmt.money(shipCharged, s.currency)}` : null,
+      sub: shipCharged > 0 && shipCost > 0 ? `net ${fmt.money(shipProfit, s.currency)}` : null,
       channel: channel || null,
       color: '#7fc93e',
     };
@@ -212,8 +218,12 @@ export default function Sales() {
       {!loading && sales.length > 0 && (
         <div style={{display:'flex',gap:24,background:'var(--navy)',border:'1px solid var(--border)',borderRadius:8,padding:'9px 16px',fontSize:12}}>
           <span style={{color:'var(--cream-30)'}}>Units: <strong style={{color:'var(--cream)'}}>{totals.q}</strong></span>
-          <span style={{color:'var(--cream-30)'}}>Revenue: <strong style={{color:'var(--cream)'}}>SGD {totals.r.toFixed(2)}</strong></span>
-          <span style={{color:'var(--cream-30)'}}>Gross Profit: <strong style={{color:'#7fc93e'}}>SGD {totals.p.toFixed(2)}</strong></span>
+          {Object.entries(totalsByCur).map(([c, t]) => (
+            <React.Fragment key={c}>
+              <span style={{color:'var(--cream-30)'}}>Revenue: <strong style={{color:'var(--cream)'}}>{c} {t.r.toFixed(2)}</strong></span>
+              <span style={{color:'var(--cream-30)'}}>Gross Profit: <strong style={{color:'#7fc93e'}}>{c} {t.p.toFixed(2)}</strong></span>
+            </React.Fragment>
+          ))}
         </div>
       )}
 
@@ -361,7 +371,7 @@ export default function Sales() {
             </div>
             {editModal.website_order_id && (
               <div>
-                <Input label="Stripe Fee (SGD)" type="number" step="0.01"
+                <Input label={`Stripe Fee (${editModal.currency || 'SGD'})`} type="number" step="0.01"
                   value={editForm.stripe_fee_amt} onChange={e=>setEditForm(f=>({...f,stripe_fee_amt:e.target.value}))}
                   placeholder="Leave blank if not fetched yet" />
                 <div style={{fontSize:10,color:'var(--cream-30)',marginTop:4}}>
@@ -373,9 +383,9 @@ export default function Sales() {
               </div>
             )}
             <div style={{display:'flex',gap:10}}>
-              <Input label="Shipping Charged (SGD)" type="number" step="0.01"
+              <Input label={`Shipping Charged (${editModal.currency || 'SGD'})`} type="number" step="0.01"
                 value={editForm.shipping_charged} onChange={e=>setEditForm(f=>({...f,shipping_charged:e.target.value}))} />
-              <Input label="Shipping Cost (actual, SGD)" type="number" step="0.01"
+              <Input label={`Shipping Cost (actual, ${editModal.currency || 'SGD'})`} type="number" step="0.01"
                 value={editForm.shipping_cost} onChange={e=>setEditForm(f=>({...f,shipping_cost:e.target.value}))} />
             </div>
             <Input label="Shipping Channel" value={editForm.shipping_channel}
@@ -457,7 +467,7 @@ export default function Sales() {
                           <td style={{padding:'8px 10px',color:'var(--cream-60)',maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.partner_name||'—'}</td>
                           <td style={{padding:'8px 10px',color:'var(--cream-30)'}}>{s.market}</td>
                           <td style={{padding:'8px 10px',textAlign:'right',color:'var(--cream)'}}>{s.qty}</td>
-                          <td style={{padding:'8px 10px',textAlign:'right',color:'var(--cream-60)'}}>{fmt.sgd(s.unit_price)}</td>
+                          <td style={{padding:'8px 10px',textAlign:'right',color:'var(--cream-60)'}}>{fmt.money(s.unit_price, s.currency)}</td>
                           <td style={{padding:'8px 10px',textAlign:'right'}}>
                             {(() => {
                               const d = discountCell(s);
@@ -483,13 +493,13 @@ export default function Sales() {
                               );
                             })()}
                           </td>
-                          <td style={{padding:'8px 10px',textAlign:'right',fontWeight:600,color:'var(--cream)'}}>{fmt.sgd(s.revenue)}</td>
+                          <td style={{padding:'8px 10px',textAlign:'right',fontWeight:600,color:'var(--cream)'}}>{fmt.money(s.revenue, s.currency)}</td>
                           <td style={{padding:'8px 10px',textAlign:'right',fontWeight:700,color:s.profit>=0?'#7fc93e':'#f87171'}}>
                             <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end'}}>
-                              <span>{fmt.sgd(s.profit)}</span>
+                              <span>{fmt.money(s.profit, s.currency)}</span>
                               {parseFloat(s.stripe_fee_amt || 0) > 0 && (
                                 <span style={{fontSize:9,fontWeight:400,color:'var(--cream-30)'}}>
-                                  − {fmt.sgd(s.stripe_fee_amt)} Stripe fee
+                                  − {fmt.money(s.stripe_fee_amt, s.currency)} Stripe fee
                                 </span>
                               )}
                             </div>

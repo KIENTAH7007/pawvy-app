@@ -91,6 +91,7 @@ async function startServer() {
   app.use('/api/inventory',   inventoryRouter);
   app.use('/api/forecast',    require('./routes/forecast')(db));
   app.use('/api/costs',       require('./routes/costs')(db));
+  app.use('/api/fx',          require('./routes/fx')(db));
   app.use('/api/reports',     require('./routes/reports')(db));
   app.use('/api/adjustments', adj(db));
   app.use('/api/invoices',    require('./routes/invoices')(db));
@@ -184,6 +185,15 @@ async function startServer() {
   });
 
   // ── Scheduled jobs (Singapore time, DST-free so a fixed cron is safe) ──
+  // Daily MYR-per-SGD rate (Malaysia market). Runs at startup too, so a fresh
+  // deploy has a rate straight away; failures just keep the last known rate.
+  const fxLib = require('./lib/fx');
+  fxLib.backfillMissing(db);
+  fxLib.fetchAndStore(db).then(r => console.log('💱 FX:', JSON.stringify(r))).catch(() => {});
+  cron.schedule('30 0 * * *', () => {
+    fxLib.fetchAndStore(db).then(r => console.log('💱 FX:', JSON.stringify(r))).catch(err => console.error('⚠️  FX fetch failed:', err.message));
+  }, { timezone: 'Asia/Singapore' });
+
   cron.schedule('0 9 * * *', () => {
     console.log('⏰ Running daily digest…');
     runDailyDigest(db).catch(err => console.error('⚠️  Daily digest failed:', err.message));

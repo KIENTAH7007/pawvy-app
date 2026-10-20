@@ -1,6 +1,8 @@
 const { Router } = require('express');
 const { localDateStr } = require('../utils/dates');
 const { voidPendingButtons } = require('../lib/buttons');
+const money = require('../lib/money');
+const fxLib = require('../lib/fx');
 
 const MARKETPLACE_CHANNELS = ['Shopee', 'Lazada', 'Amazon', 'TikTok Shop'];
 
@@ -15,13 +17,10 @@ END`;
 // Profit is consistent: gross margin minus fees/discounts plus shipping net,
 // minus Stripe's real processing fee (Patch 122 — website orders only,
 // defaults to 0 for every other channel so nothing else changes)
-const PROFIT_EXPR = `ROUND(
-  s.qty * (s.unit_price - s.unit_cost)
-  - s.platform_fee_amt
-  + COALESCE(s.shipping_charged,0)
-  - COALESCE(s.shipping_cost,0)
-  - COALESCE(s.stripe_fee_amt,0),
-2)`;
+// Row-level profit in the SALE'S OWN currency (SGD for SG; MYR for MY with the
+// SGD product cost converted at the rate saved on that sale) — see lib/money.js.
+const PROFIT_EXPR = `ROUND(${money.profit('native')}, 2)`;
+const COGS_EXPR = `ROUND(${money.cogs('native')}, 2)`;
 
 // Same formula, without the outer ROUND — for use inside SUM() aggregates
 // (rounding once after summing exact values is more correct than summing
@@ -34,11 +33,7 @@ const PROFIT_EXPR = `ROUND(
 // fees while the ledger and monthly trend chart (which used the correct,
 // up-to-date formula) did not — always reference this constant instead of
 // writing the formula out again.
-const PROFIT_RAW_EXPR = `s.qty * (s.unit_price - s.unit_cost)
-  - s.platform_fee_amt
-  + COALESCE(s.shipping_charged,0)
-  - COALESCE(s.shipping_cost,0)
-  - COALESCE(s.stripe_fee_amt,0)`;
+const PROFIT_RAW_EXPR = money.profit('native');
 
 module.exports = function(db, inventoryRouter) {
   const router = Router();
@@ -55,9 +50,9 @@ module.exports = function(db, inventoryRouter) {
         b.id AS brand_id, b.name AS brand_name, b.color AS brand_color,
         pt.company_name AS partner_name,
         ${REVENUE_EXPR} AS revenue,
-        ROUND(s.qty * s.unit_cost, 2) AS cogs,
+        ${COGS_EXPR} AS cogs,
         ${PROFIT_EXPR} AS profit,
-        ROUND((s.unit_price - s.unit_cost) / CASE WHEN s.unit_price=0 THEN 1 ELSE s.unit_price END * 100, 1) AS margin_pct
+        ROUND((s.unit_price - s.unit_cost * ${money.FX}) / CASE WHEN s.unit_price=0 THEN 1 ELSE s.unit_price END * 100, 1) AS margin_pct
       FROM sales s
       JOIN products  p  ON p.id  = s.product_id
       JOIN brands    b  ON b.id  = p.brand_id
@@ -85,24 +80,24 @@ module.exports = function(db, inventoryRouter) {
   // GET summary totals (for dashboard)
   router.get('/summary', (req, res) => {
     const { market, date_from, date_to } = req.query;
+    // One market → that market's currency; All → SGD equivalent (see lib/money.js)
+    const mode = money.modeFor(req.query);
+    const currency = money.currencyFor(req.query);
     let where = "WHERE COALESCE(s.voided,0) = 0";
     const params = [];
     if (market)    { where += ' AND s.market = ?';  params.push(market); }
     if (date_from) { where += ' AND s.date >= ?';   params.push(date_from); }
     if (date_to)   { where += ' AND s.date <= ?';   params.push(date_to); }
 
-    const revenueExpr = `SUM(CASE WHEN s.channel IN ('Shopee','Lazada','Amazon','TikTok Shop')
-      THEN s.qty * s.unit_price + COALESCE(s.shipping_charged,0)
-      ELSE s.qty * s.unit_price - s.platform_fee_amt + COALESCE(s.shipping_charged,0)
-    END)`;
-    const profitExpr = `SUM(${PROFIT_RAW_EXPR})`;
+    const revenueExpr = `SUM(${money.revenue(mode)})`;
+    const profitExpr = `SUM(${money.profit(mode)})`;
 
     const totals = db.queryOne(`
       SELECT
         COUNT(*)                                                AS transactions,
         COALESCE(SUM(s.qty), 0)                               AS units_sold,
         ROUND(COALESCE(${revenueExpr}, 0), 2)                 AS revenue,
-        ROUND(COALESCE(SUM(s.qty * s.unit_cost), 0), 2)       AS cogs,
+        ROUND(COALESCE(SUM(${money.cogs(mode)}), 0), 2)       AS cogs,
         ROUND(COALESCE(${profitExpr}, 0), 2)                  AS profit
       FROM sales s
       JOIN products p ON p.id = s.product_id
@@ -113,7 +108,7 @@ module.exports = function(db, inventoryRouter) {
     const byBrand = db.query(`
       SELECT
         b.id, b.name, b.color,
-        ROUND(SUM(${PROFIT_RAW_EXPR}), 2) AS profit,
+        ROUND(SUM(${money.profit(mode)}), 2) AS profit,
         SUM(s.qty) AS units
       FROM sales s
       JOIN products p ON p.id = s.product_id
@@ -126,18 +121,15 @@ module.exports = function(db, inventoryRouter) {
     const byMonth = db.query(`
       SELECT
         strftime('%Y-%m', s.date) AS month,
-        ROUND(SUM(${PROFIT_RAW_EXPR}), 2) AS profit,
-        ROUND(SUM(CASE WHEN s.channel IN ('Shopee','Lazada','Amazon','TikTok Shop')
-          THEN s.qty * s.unit_price + COALESCE(s.shipping_charged,0)
-          ELSE s.qty * s.unit_price - s.platform_fee_amt + COALESCE(s.shipping_charged,0)
-        END), 2) AS revenue
+        ROUND(SUM(${money.profit(mode)}), 2) AS profit,
+        ROUND(SUM(${money.revenue(mode)}), 2) AS revenue
       FROM sales s
       JOIN products p ON p.id = s.product_id
       ${where}
       GROUP BY month ORDER BY month DESC LIMIT 12
     `, params);
 
-    res.json({ totals, byBrand, byMonth });
+    res.json({ totals, byBrand, byMonth, currency });
   });
 
   // GET available channels (for dropdowns)
@@ -219,22 +211,28 @@ module.exports = function(db, inventoryRouter) {
     const fee_amt = platform_fee_amt !== undefined ? parseFloat(platform_fee_amt) :
                     parseFloat(((qty * unit_price) * (fee_pct / 100)).toFixed(2));
 
+    // MY sales are recorded in MYR with the rate for the sale's own date saved
+    // on the row; SG stays SGD (fx_rate NULL). No rate yet → clear 400.
+    const mkt = market || 'SG';
+    let st;
+    try { st = fxLib.stamp(db, mkt, date); } catch (e) { return res.status(e.status || 500).json({ error: e.message }); }
+
     const result = db.run(`
       INSERT INTO sales
         (date, product_id, partner_id, channel, market, qty, unit_cost, unit_price,
-         platform_fee_pct, platform_fee_amt, shipping_charged, shipping_cost, notes)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+         platform_fee_pct, platform_fee_amt, shipping_charged, shipping_cost, notes, currency, fx_rate)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     `, [
-      date, product_id, partner_id || null, channel, market || 'SG',
+      date, product_id, partner_id || null, channel, mkt,
       qty, cost, unit_price, fee_pct, fee_amt,
       shipping_charged || 0, shipping_cost || 0,
-      notes || null
+      notes || null, st.currency, st.fx_rate
     ]);
 
     const sale = db.queryOne(`
       SELECT s.*, p.item_series, p.variation, b.name AS brand_name, b.color AS brand_color,
         ${REVENUE_EXPR} AS revenue,
-        ROUND(s.qty * s.unit_cost, 2) AS cogs,
+        ${COGS_EXPR} AS cogs,
         ${PROFIT_EXPR} AS profit
       FROM sales s JOIN products p ON p.id=s.product_id JOIN brands b ON b.id=p.brand_id
       WHERE s.id = ?
@@ -257,14 +255,25 @@ module.exports = function(db, inventoryRouter) {
     const fee_amt = platform_fee_amt !== undefined ? parseFloat(platform_fee_amt) :
                     parseFloat(((qty * unit_price) * (fee_pct / 100)).toFixed(2));
 
+    // Keep the rate already saved on the row unless the market or date changed
+    // (then re-stamp for the new date) — editing a note never re-rates a sale.
+    const mkt = market || 'SG';
+    const old = db.queryOne('SELECT market, date, fx_rate FROM sales WHERE id=?', [req.params.id]);
+    let st;
+    try {
+      st = (old && old.market === mkt && old.date === date && (mkt !== 'MY' || old.fx_rate))
+        ? { currency: mkt === 'MY' ? 'MYR' : 'SGD', fx_rate: mkt === 'MY' ? old.fx_rate : null }
+        : fxLib.stamp(db, mkt, date);
+    } catch (e) { return res.status(e.status || 500).json({ error: e.message }); }
+
     db.run(`
       UPDATE sales SET date=?, product_id=?, partner_id=?, channel=?, market=?,
         qty=?, unit_cost=?, unit_price=?, platform_fee_pct=?, platform_fee_amt=?,
         shipping_charged=?, shipping_cost=?,
-        notes=?, updated_at=CURRENT_TIMESTAMP
+        notes=?, currency=?, fx_rate=?, updated_at=CURRENT_TIMESTAMP
       WHERE id=?
-    `, [date, product_id, partner_id||null, channel, market||'SG', qty, unit_cost, unit_price,
-        fee_pct, fee_amt, shipping_charged||0, shipping_cost||0, notes||null, req.params.id]);
+    `, [date, product_id, partner_id||null, channel, mkt, qty, unit_cost, unit_price,
+        fee_pct, fee_amt, shipping_charged||0, shipping_cost||0, notes||null, st.currency, st.fx_rate, req.params.id]);
 
     const sale = db.queryOne(`
       SELECT s.*, p.item_series, p.variation, b.name AS brand_name, b.color AS brand_color,

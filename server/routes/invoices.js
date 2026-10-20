@@ -166,7 +166,7 @@ module.exports = function(db) {
     const result = db.run(`
       INSERT INTO invoices (invoice_number, type, partner_id, date, due_date, market, currency, subtotal, discount, special_discount, shipping, total, status, notes, outlet_address_id)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-    `, [invoice_number, 'Invoice', partner_id, issueDate, due_date, sales[0].market||'SG', 'SGD',
+    `, [invoice_number, 'Invoice', partner_id, issueDate, due_date, sales[0].market||'SG', (sales[0].market==='MY'?'MYR':'SGD'),
         parseFloat(subtotal.toFixed(2)), parseFloat(discount.toFixed(2)), parseFloat(specialDiscount.toFixed(2)), parseFloat(shipping.toFixed(2)), total, 'Unpaid', notes||null, outlet_address_id||null]);
 
     const invoiceId = result.lastID;
@@ -201,7 +201,7 @@ module.exports = function(db) {
     const result = db.run(`
       INSERT INTO invoices (invoice_number, type, partner_id, date, market, currency, subtotal, discount, shipping, total, status, notes, outlet_address_id)
       VALUES (?,?,?,?,?,?,0,0,0,0,?,?,?)
-    `, [do_number, 'Delivery Order', partner_id, issueDate, sales[0].market||'SG', 'SGD', 'Issued', notes||null, outlet_address_id||null]);
+    `, [do_number, 'Delivery Order', partner_id, issueDate, sales[0].market||'SG', (sales[0].market==='MY'?'MYR':'SGD'), 'Issued', notes||null, outlet_address_id||null]);
 
     const doId = result.lastID;
 
@@ -287,7 +287,7 @@ module.exports = function(db) {
     const result = db.run(`
       INSERT INTO invoices (invoice_number, type, partner_id, date, due_date, market, currency, subtotal, discount, shipping, total, status, notes, period_start, period_end)
       VALUES (?,?,?,?,?,?,?,?,?,0,?,?,?,?,?)
-    `, [soa_number, 'SOA', partner_id, issueDate, due_date, partner.market||'SG', 'SGD',
+    `, [soa_number, 'SOA', partner_id, issueDate, due_date, partner.market||'SG', (partner.market==='MY'?'MYR':'SGD'),
         subtotal, cn.amount, total, 'Unpaid', notes||null, period_start, period_end]);
 
     const soaId = result.lastID;
@@ -296,7 +296,7 @@ module.exports = function(db) {
     if (cn.amount > 0) {
       const cnDescription = cn.manual
         ? `Credit Note — manual entry (prior to Pawvy App)`
-        : `Credit Note — ${cn.pct}% on prior month orders (SGD ${cn.subtotal.toFixed(2)})`;
+        : `Credit Note — ${cn.pct}% on prior month orders (${partner.market==='MY'?'MYR':'SGD'} ${cn.subtotal.toFixed(2)})`;
       db.run(
         'INSERT INTO invoice_items (invoice_id, product_id, description, qty, unit_price, line_total) VALUES (?,?,?,?,?,?)',
         [soaId, null, cnDescription, 1, -cn.amount, -cn.amount]

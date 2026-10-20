@@ -13,7 +13,7 @@ const TrendTip = ({ active, payload, label }) => {
   return (
     <div style={{ background: '#14213d', border: '1px solid rgba(245,242,235,.15)', borderRadius: 8, padding: '10px 14px', fontSize: 12 }}>
       <div style={{ color: 'var(--cream-60)', marginBottom: 4 }}>{label}</div>
-      <div style={{ color: '#f36f4a', fontWeight: 600 }}>SGD {parseFloat(payload[0].value || 0).toFixed(2)}</div>
+      <div style={{ color: '#f36f4a', fontWeight: 600 }}>{payload[0]?.payload?.cur || 'SGD'} {parseFloat(payload[0].value || 0).toFixed(2)}</div>
     </div>
   );
 };
@@ -27,23 +27,27 @@ export default function Costs() {
   const defaultRange = currentMonthRange();
   const [dateFrom, setDateFrom] = useState(defaultRange.from);
   const [dateTo, setDateTo] = useState(defaultRange.to);
+  // SG (default) / MY / All (All = SGD equivalent). MY costs are typed and shown in MYR.
+  const [mkt,setMkt]=useState('SG');
+  const cur = mkt==='MY' ? 'MYR' : 'SGD';
   const isCurrentMonthOnly = dateFrom === defaultRange.from && dateTo === defaultRange.to;
 
   const load = () => {
     const q = {};
     if (dateFrom) q.date_from = dateFrom;
     if (dateTo)   q.date_to   = dateTo;
+    if (mkt !== 'ALL') q.market = mkt;
     costsApi.getAll(q).then(setCosts);
     costsApi.summary(q).then(setSum);
   };
-  useEffect(()=>{load();},[dateFrom, dateTo]);
-  useEffect(()=>{costsApi.trend({months:12}).then(setTrend);},[]);
+  useEffect(()=>{load();},[dateFrom, dateTo, mkt]);
+  useEffect(()=>{costsApi.trend({months:12, ...(mkt!=='ALL'?{market:mkt}:{})}).then(rows=>setTrend(rows.map(r=>({...r,cur}))));},[mkt]);
 
   const sf=(k,v)=>setForm(f=>({...f,[k]:v}));
   async function save(){
     if(!form.date||!form.category||!form.description||!form.amount)return;
     setSaving(true);
-    try{await costsApi.create(form);load();setModal(false);setForm({date:localDateStr(),market:'SG'});}
+    try{await costsApi.create(form);load();setModal(false);setForm({date:localDateStr(),market:mkt==='MY'?'MY':'SG'});}
     finally{setSaving(false);}
   }
   async function remove(id){
@@ -56,7 +60,7 @@ export default function Costs() {
     {key:'category',label:'Category',render:v=><Badge color={CAT_C[v]||'#888'}>{v}</Badge>},
     {key:'description',label:'Description'},{key:'market',label:'Mkt'},
     {key:'receipt_ref',label:'Ref',render:v=>v||'—'},
-    {key:'amount',label:'Amount',align:'right',render:v=><span style={{fontWeight:700,color:'#f87171'}}>SGD {parseFloat(v).toFixed(2)}</span>},
+    {key:'amount',label:'Amount',align:'right',render:(v,row)=><span style={{fontWeight:700,color:'#f87171'}}>{row.market==='MY'?'MYR':'SGD'} {parseFloat(v).toFixed(2)}</span>},
     {key:'actions',label:'',align:'right',render:(_,row)=>(
       <button onClick={e=>{e.stopPropagation();remove(row.id);}} title="Delete"
         style={{background:'none',border:'none',color:'rgba(248,113,113,.5)',cursor:'pointer',padding:4,display:'inline-flex',alignItems:'center'}}
@@ -96,10 +100,19 @@ export default function Costs() {
         </div>
       )}
 
+      <div style={{display:'flex',gap:4,marginBottom:10,alignItems:'center'}}>
+        {[['SG','SG'],['MY','MY'],['ALL','All markets']].map(([k,l])=>(
+          <button key={k} onClick={()=>setMkt(k)}
+            style={{padding:'5px 14px',borderRadius:20,border:'1px solid var(--border)',cursor:'pointer',fontSize:11,fontWeight:700,
+              background:mkt===k?'var(--cream)':'transparent',color:mkt===k?'var(--navy)':'var(--cream-60)'}}>{l}</button>
+        ))}
+        {mkt==='ALL'&&<span style={{fontSize:11,color:'var(--cream-30)',marginLeft:8}}>Totals in SGD equivalent (each MY cost converted at the rate saved when it was entered)</span>}
+      </div>
+
       <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10}}>
-        <KpiCard label={isCurrentMonthOnly ? "Total This Month" : "Total (Filtered)"} value={sum?`SGD ${parseFloat(sum.total||0).toFixed(2)}`:'…'}/>
+        <KpiCard label={isCurrentMonthOnly ? "Total This Month" : "Total (Filtered)"} value={sum?`${sum.currency||cur} ${parseFloat(sum.total||0).toFixed(2)}`:'…'}/>
         {(sum?.byCategory||[]).slice(0,3).map(c=>(
-          <KpiCard key={c.category} label={c.category} value={`SGD ${parseFloat(c.total).toFixed(2)}`}/>
+          <KpiCard key={c.category} label={c.category} value={`${sum.currency||cur} ${parseFloat(c.total).toFixed(2)}`}/>
         ))}
       </div>
 
@@ -110,7 +123,7 @@ export default function Costs() {
         {trend.length > 1 ? (
           <>
             <div style={{ fontSize: 11, color: 'var(--cream-30)', marginBottom: 10 }}>
-              Dashed reference line = average + 1 standard deviation (SGD {referenceLine.toFixed(2)}) — a month crossing this line is
+              Dashed reference line = average + 1 standard deviation ({cur} {referenceLine.toFixed(2)}) — a month crossing this line is
               notably higher than your typical spend, not just "above average" (which about half of all months would be anyway).
             </div>
             <ResponsiveContainer width="100%" height={220}>
@@ -147,7 +160,7 @@ export default function Costs() {
           </FormRow>
           <Input label="Description *" value={form.description||''} onChange={e=>sf('description',e.target.value)} placeholder="e.g. Hougang July rental"/>
           <FormRow cols={3}>
-            <Input label="Amount (SGD) *" type="number" step="0.01" value={form.amount||''} onChange={e=>sf('amount',e.target.value)}/>
+            <Input label={`Amount (${form.market==='MY'?'MYR':'SGD'}) *`} type="number" step="0.01" value={form.amount||''} onChange={e=>sf('amount',e.target.value)}/>
             <Select label="Market" value={form.market||'SG'} onChange={e=>sf('market',e.target.value)}>
               {['SG','MY'].map(m=><option key={m} value={m}>{m}</option>)}
             </Select>
