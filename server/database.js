@@ -1249,6 +1249,16 @@ function createSchema() {
   // free-delivery reminder in Pending Orders). Separate from partners.region,
   // which is the SG region tag for the public Stockist page.
   try { db.run("ALTER TABLE partners ADD COLUMN shipping_zone TEXT"); } catch(e) {}
+  // Special ambassadors: no BUTTONS redemption cap, custom referral code, referral report.
+  // referral_code_used = the exact code a new customer signed up with (an ambassador's
+  // old code stays valid via referral_code_aliases after they change it).
+  try { db.run("ALTER TABLE customers ADD COLUMN is_ambassador INTEGER DEFAULT 0"); } catch(e) {}
+  try { db.run("ALTER TABLE customers ADD COLUMN referral_code_used TEXT"); } catch(e) {}
+  db.run(`CREATE TABLE IF NOT EXISTS referral_code_aliases (
+    code TEXT PRIMARY KEY,
+    customer_id INTEGER NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
   // One row per day: MYR per 1 SGD. source = 'auto:<provider>' or 'manual'
   // (a manual row for a date is never overwritten by the daily auto-fetch).
   db.run(`CREATE TABLE IF NOT EXISTS fx_rates (

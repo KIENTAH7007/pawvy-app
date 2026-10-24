@@ -159,6 +159,9 @@ export const customerAdminApi = {
   awardStamp: (id, body) => api.post(`/customer-admin/customers/${id}/stamp`, body),
   setActive: (id, is_active) => api.patch(`/customer-admin/customers/${id}/active`, { is_active }),
   delete: (id) => api.delete(`/customer-admin/customers/${id}`),
+  setAmbassador: (id, is_ambassador) => api.patch(`/customer-admin/customers/${id}/ambassador`, { is_ambassador }),
+  checkReferralCode: (code, customer_id) => api.get(`/customer-admin/referral-code-check?${new URLSearchParams({ code, customer_id })}`),
+  setReferralCode: (id, code) => api.patch(`/customer-admin/customers/${id}/referral-code`, { code }),
 };
 export const campaignsApi = {
   getAll: () => api.get('/campaigns'),

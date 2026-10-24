@@ -1,5 +1,5 @@
 const { Router } = require('express');
-const { generateToken, customerButtonsBalance, VERIFY_TOKEN_TTL_MS } = require('../lib/customers');
+const { generateToken, customerButtonsBalance, VERIFY_TOKEN_TTL_MS, validateCustomCode, setCustomReferralCode, getReferralReport } = require('../lib/customers');
 const { sendCustomerEmail, sendTestEmail } = require('../utils/notify');
 const { baseUrl, buildVerifyEmail } = require('../lib/customerEmails');
 const { awardStamp, getStampCount } = require('../lib/stampCard');
@@ -29,7 +29,7 @@ module.exports = function(db) {
   router.get('/customers', (req, res) => {
     const { active } = req.query;
     let sql = `
-      SELECT id, name, email, phone, address, account_status, referral_code,
+      SELECT id, name, email, phone, address, account_status, referral_code, is_ambassador,
              referred_by_customer_id, signup_source, created_at, profile_bonus_claimed, is_active
       FROM customers
     `;
@@ -87,7 +87,35 @@ module.exports = function(db) {
       pet: pet || null,
       pending_token: pendingToken || null,
       buttons_ledger: buttonsLedger,
+      // Ambassadors only: who signed up with their code, who has purchased, referral B earned.
+      referral_report: customer.is_ambassador ? getReferralReport(db, customer.id) : null,
     });
+  });
+
+  // PATCH /api/customer-admin/customers/:id/ambassador { is_ambassador: bool }
+  // Ticks/unticks "Special ambassador": no BUTTONS redemption cap, custom code,
+  // referral report. Unticking keeps their code and past referrals.
+  router.patch('/customers/:id/ambassador', (req, res) => {
+    const customer = db.queryOne('SELECT id FROM customers WHERE id = ?', [req.params.id]);
+    if (!customer) return res.status(404).json({ error: 'Customer not found.' });
+    const on = req.body && req.body.is_ambassador ? 1 : 0;
+    db.run('UPDATE customers SET is_ambassador = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [on, customer.id]);
+    res.json({ ok: true, is_ambassador: !!on });
+  });
+
+  // GET /api/customer-admin/referral-code-check?code=...&customer_id=... —
+  // live validation for the code editor (same rules the save enforces).
+  router.get('/referral-code-check', (req, res) => {
+    const v = validateCustomCode(db, req.query.code, parseInt(req.query.customer_id) || 0);
+    res.json({ ok: v.ok, code: v.code, error: v.ok ? null : v.error });
+  });
+
+  // PATCH /api/customer-admin/customers/:id/referral-code { code } — ambassadors only.
+  // The old code keeps working (alias) so links/posts already shared still count.
+  router.patch('/customers/:id/referral-code', (req, res) => {
+    const result = setCustomReferralCode(db, parseInt(req.params.id), req.body && req.body.code);
+    if (!result.ok) return res.status(400).json({ error: result.error });
+    res.json({ ok: true, code: result.code, old_code: result.old_code || null, unchanged: !!result.unchanged });
   });
 
   // POST /api/customer-admin/customers/:id/resend-verify — issues a fresh

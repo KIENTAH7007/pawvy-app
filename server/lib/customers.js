@@ -45,7 +45,8 @@ function generateReferralCode(db) {
   for (let attempt = 0; attempt < 10; attempt++) {
     let code = '';
     for (let i = 0; i < 6; i++) code += REFERRAL_CODE_CHARS[Math.floor(Math.random() * REFERRAL_CODE_CHARS.length)];
-    if (!db.queryOne('SELECT id FROM customers WHERE referral_code = ?', [code])) return code;
+    if (!db.queryOne('SELECT id FROM customers WHERE referral_code = ?', [code])
+        && !db.queryOne('SELECT code FROM referral_code_aliases WHERE code = ?', [code])) return code;
   }
   throw new Error('Could not generate a unique referral code after 10 attempts.');
 }
@@ -68,6 +69,96 @@ function creditButtons(db, { customer_id, amount, source, source_type = null, so
   return result.lastID;
 }
 
+// ── Referral codes: lookup, custom-code rules, ambassador report ──────────
+const CODE_MIN = 4, CODE_MAX = 12;
+// Exact-match reserved words (staff/brand/promo words nobody should own).
+const RESERVED_CODES = new Set(['PAWVY', 'PAWVYSG', 'PAWVYCO', 'ADMIN', 'STAFF', 'SUPPORT', 'TEST', 'TESTING', 'FREE', 'PROMO',
+  'BUTTONS', 'BUTTON', 'DISCOUNT', 'NULL', 'NONE', 'UNDEFINED', 'JOIN', 'SIGNUP', 'LOGIN', 'SHOP', 'CART', 'ACCOUNT']);
+// Clearly offensive fragments — refused anywhere inside a code.
+const BLOCKED_FRAGMENTS = ['FUCK', 'SHIT', 'CUNT', 'DICK', 'NIGG', 'PORN', 'RAPE', 'BITCH', 'WHORE', 'ASSHOLE', 'PUSSY'];
+
+function normalizeCode(code) { return String(code || '').trim().toUpperCase(); }
+
+// Current code OR an old code kept as an alias after an ambassador changed theirs.
+function findReferrerByCode(db, code) {
+  const c = normalizeCode(code);
+  if (!c) return null;
+  const direct = db.queryOne('SELECT id, name, is_ambassador FROM customers WHERE referral_code = ?', [c]);
+  if (direct) return direct;
+  const alias = db.queryOne('SELECT customer_id FROM referral_code_aliases WHERE code = ?', [c]);
+  if (alias) return db.queryOne('SELECT id, name, is_ambassador FROM customers WHERE id = ?', [alias.customer_id]);
+  return null;
+}
+
+// Rules for a CUSTOM code. customerId = the ambassador being edited (their own
+// current code / old aliases don't count as "taken").
+function validateCustomCode(db, rawCode, customerId) {
+  const code = normalizeCode(rawCode);
+  if (code.length < CODE_MIN || code.length > CODE_MAX) return { ok: false, code, error: `Code must be ${CODE_MIN}–${CODE_MAX} characters.` };
+  if (!/^[A-Z0-9]+$/.test(code)) return { ok: false, code, error: 'Letters and numbers only – no spaces or symbols.' };
+  if (RESERVED_CODES.has(code) || BLOCKED_FRAGMENTS.some(f => code.includes(f))) return { ok: false, code, error: 'That word is reserved. Please choose another.' };
+  const clash = db.queryOne('SELECT id FROM customers WHERE referral_code = ? AND id != ?', [code, customerId || 0]);
+  if (clash) return { ok: false, code, error: 'Already used by another customer.' };
+  const aliasClash = db.queryOne('SELECT customer_id FROM referral_code_aliases WHERE code = ? AND customer_id != ?', [code, customerId || 0]);
+  if (aliasClash) return { ok: false, code, error: 'Already used by another customer (old code).' };
+  return { ok: true, code };
+}
+
+// Changes an ambassador's code. The old code is kept as an alias so links and
+// posts already shared keep working. Returns { ok, code } or { ok:false, error }.
+function setCustomReferralCode(db, customerId, rawCode) {
+  const customer = db.queryOne('SELECT id, referral_code, is_ambassador FROM customers WHERE id = ?', [customerId]);
+  if (!customer) return { ok: false, error: 'Customer not found.' };
+  if (!customer.is_ambassador) return { ok: false, error: 'Only special ambassadors can have a custom code.' };
+  const v = validateCustomCode(db, rawCode, customerId);
+  if (!v.ok) return v;
+  if (v.code === customer.referral_code) return { ok: true, code: v.code, unchanged: true };
+  try {
+    db.run('DELETE FROM referral_code_aliases WHERE code = ? AND customer_id = ?', [v.code, customerId]); // reclaiming one of their own old codes
+    if (customer.referral_code) {
+      db.run('INSERT OR IGNORE INTO referral_code_aliases (code, customer_id) VALUES (?, ?)', [customer.referral_code, customerId]);
+    }
+    db.run('UPDATE customers SET referral_code = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [v.code, customerId]);
+  } catch (err) {
+    return { ok: false, error: 'Could not save that code (already in use). Please try another.' };
+  }
+  return { ok: true, code: v.code, old_code: customer.referral_code };
+}
+
+// Ambassador performance: everyone who signed up with their code/link, whether
+// they've made a first purchase, and the referral BUTTONS earned. The first
+// purchase is detected by the referee's own 'referral' BUTTONS batch.
+function getReferralReport(db, customerId) {
+  const rows = db.query(`
+    SELECT id, name, email, created_at, referral_code_used
+    FROM customers WHERE referred_by_customer_id = ? ORDER BY created_at DESC
+  `, [customerId]);
+  const referrals = rows.map(r => {
+    const b = db.queryOne(`
+      SELECT status, earned_at, credited_at FROM buttons_batches
+      WHERE customer_id = ? AND source = 'referral' AND status != 'voided' ORDER BY id ASC LIMIT 1
+    `, [r.id]);
+    return {
+      id: r.id, name: r.name, email: r.email, signed_up_at: r.created_at, code_used: r.referral_code_used || null,
+      purchased: !!b, purchased_at: b ? b.earned_at : null, bonus_status: b ? b.status : null,
+    };
+  });
+  const earned = db.queryOne(`
+    SELECT COALESCE(SUM(amount), 0) AS total FROM buttons_batches
+    WHERE customer_id = ? AND source = 'referral' AND status != 'voided'
+  `, [customerId]).total;
+  return {
+    summary: { signed_up: referrals.length, purchased: referrals.filter(r => r.purchased).length, buttons_earned: earned },
+    referrals,
+  };
+}
+
+function isAmbassador(db, customerId) {
+  if (!customerId) return false;
+  const c = db.queryOne('SELECT is_ambassador FROM customers WHERE id = ?', [customerId]);
+  return !!(c && c.is_ambassador);
+}
+
 // Creates a new customer account, or — if the email already has one —
 // refreshes basic contact details without touching verification status or
 // re-issuing the signup bonus. Called from:
@@ -78,6 +169,7 @@ function creditButtons(db, { customer_id, amount, source, source_type = null, so
 // way. Only when it becomes *spendable* differs, per BUTTONS spec Section 4,
 // and that falls out naturally from POS never allowing redemption at all —
 // nothing extra needs to be stored here for that.
+
 function upsertCustomerFromSignup(db, { email, name, phone, address, pdpa_consent_text, source, referral_code }) {
   const cleanEmail = (email || '').trim().toLowerCase();
   if (!cleanEmail) throw new Error('email is required');
@@ -96,18 +188,19 @@ function upsertCustomerFromSignup(db, { email, name, phone, address, pdpa_consen
   // A referral code that doesn't match anything is ignored rather than
   // rejected — a mistyped code shouldn't block someone from signing up.
   let referredBy = null;
+  let referralCodeUsed = null;
   if (referral_code) {
-    const referrer = db.queryOne('SELECT id FROM customers WHERE referral_code = ?', [referral_code.trim().toUpperCase()]);
-    if (referrer) referredBy = referrer.id;
+    const referrer = findReferrerByCode(db, referral_code);
+    if (referrer) { referredBy = referrer.id; referralCodeUsed = normalizeCode(referral_code); }
   }
 
   const newReferralCode = generateReferralCode(db);
   const insertResult = db.run(`
     INSERT INTO customers
       (name, address, phone, email, account_status, signup_source, referred_by_customer_id,
-       referral_code, pdpa_consent, pdpa_consent_text, pdpa_consent_at)
-    VALUES (?,?,?,?, 'unverified', ?, ?, ?, 1, ?, CURRENT_TIMESTAMP)
-  `, [name || null, address || null, phone || null, cleanEmail, source || null, referredBy, newReferralCode, pdpa_consent_text || null]);
+       referral_code, referral_code_used, pdpa_consent, pdpa_consent_text, pdpa_consent_at)
+    VALUES (?,?,?,?, 'unverified', ?, ?, ?, ?, 1, ?, CURRENT_TIMESTAMP)
+  `, [name || null, address || null, phone || null, cleanEmail, source || null, referredBy, newReferralCode, referralCodeUsed, pdpa_consent_text || null]);
 
   const customerId = insertResult.lastID;
 
@@ -140,7 +233,7 @@ function customerButtonsBalance(db, customerId) {
 }
 
 module.exports = {
-  generateToken, generateReferralCode, creditButtons, upsertCustomerFromSignup, customerButtonsBalance,
+  generateToken, generateReferralCode, normalizeCode, findReferrerByCode, validateCustomCode, setCustomReferralCode, getReferralReport, isAmbassador, creditButtons, upsertCustomerFromSignup, customerButtonsBalance,
   getOrCreateUnsubscribeToken,
   SIGNUP_BONUS_B, VERIFY_TOKEN_TTL_MS, LOGIN_TOKEN_TTL_MS, SESSION_TOKEN_TTL_MS, UNSUBSCRIBE_TOKEN_TTL_MS,
 };

@@ -19,6 +19,8 @@ export default function Customers() {
   const [stampBusy, setStampBusy] = useState(false);
   const [copied, setCopied]       = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const [codeInput, setCodeInput] = useState('');
+  const [codeMsg, setCodeMsg] = useState(null); // { ok, text }
 
   const load = () => {
     const q = {};
@@ -31,10 +33,48 @@ export default function Customers() {
     setDetailLoading(true);
     setDetailModal({ customer: row, pet: null, buttons_ledger: [] });
     try {
-      const { customer, pet, buttons_ledger } = await customerAdminApi.get(row.id);
-      setDetailModal({ customer, pet, buttons_ledger });
+      const { customer, pet, buttons_ledger, referral_report } = await customerAdminApi.get(row.id);
+      setDetailModal({ customer, pet, buttons_ledger, referral_report });
+      setCodeInput(customer.referral_code || '');
+      setCodeMsg(null);
     } finally {
       setDetailLoading(false);
+    }
+  }
+
+  // Ticking/unticking "Special ambassador" (confirms first). Reloads the detail
+  // so the code editor + Referrals report appear/disappear straight away.
+  async function toggleAmbassador(customer, on) {
+    const msg = on
+      ? `Make ${customer.name || customer.email} a special ambassador?\n\nNo cap on BUTTONS redemption (normal customers: 30%), a custom referral code and the Referrals report.`
+      : `Remove ambassador status from ${customer.name || customer.email}?\n\nThey go back to the 30% redemption cap. Their code and past referrals are kept.`;
+    if (!window.confirm(msg)) return;
+    await customerAdminApi.setAmbassador(customer.id, on);
+    await openDetail({ ...customer, id: customer.id });
+    load();
+  }
+
+  async function checkCode(value) {
+    setCodeInput(value);
+    setCodeMsg(null);
+    if (!value.trim() || !detailModal) return;
+    try {
+      const r = await customerAdminApi.checkReferralCode(value, detailModal.customer.id);
+      const same = r.code === (detailModal.customer.referral_code || '');
+      setCodeMsg(r.ok ? { ok: true, text: same ? 'This is the current code.' : 'Available ✓' } : { ok: false, text: r.error });
+    } catch (e) { /* the save re-checks everything on the server */ }
+  }
+
+  async function saveCode() {
+    if (!detailModal) return;
+    try {
+      const r = await customerAdminApi.setReferralCode(detailModal.customer.id, codeInput);
+      setCodeMsg({ ok: true, text: r.unchanged ? 'No change.' : `Saved. New code: ${r.code}${r.old_code ? ` (old code ${r.old_code} still works)` : ''}` });
+      setDetailModal(m => ({ ...m, customer: { ...m.customer, referral_code: r.code } }));
+      setCodeInput(r.code);
+      load();
+    } catch (err) {
+      setCodeMsg({ ok: false, text: err?.message || 'Could not save that code.' });
     }
   }
 
@@ -77,6 +117,7 @@ export default function Customers() {
       render: (v, row) => (
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span>{v || '—'}</span>
+          {row.is_ambassador ? <Badge color="#ff8fd0">★ AMBASSADOR</Badge> : null}
           {row.is_active === 0 && (
             <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--cream-30)', background: 'rgba(245,242,235,.08)', padding: '1px 5px', borderRadius: 3 }}>ARCHIVED</span>
           )}
@@ -241,7 +282,7 @@ export default function Customers() {
           + PDPA consent record would make the list unreadable as columns;
           this keeps the list scannable and puts full depth here instead,
           only loaded when staff actually opens one customer. */}
-      <Modal open={!!detailModal} title="CUSTOMER DETAILS" onClose={() => setDetailModal(null)} width={480}>
+      <Modal open={!!detailModal} title="CUSTOMER DETAILS" onClose={() => setDetailModal(null)} width={640}>
         {detailModal && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
             {detailLoading ? (
@@ -258,6 +299,12 @@ export default function Customers() {
                   <DetailRow label="Preferred Contact" value={detailModal.customer.preferred_contact_channel} />
                   <DetailRow label="Password Set" value={detailModal.customer.password_hash ? 'Yes' : 'No — magic link only'} />
                 </div>
+
+                <AmbassadorSection
+                  customer={detailModal.customer} report={detailModal.referral_report}
+                  codeInput={codeInput} codeMsg={codeMsg}
+                  onToggle={toggleAmbassador} onCodeChange={checkCode} onSaveCode={saveCode}
+                />
 
                 <div>
                   <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: .5, textTransform: 'uppercase', color: 'var(--cream-30)', marginBottom: 8 }}>Pet</div>
@@ -342,6 +389,83 @@ function ButtonsLedgerRow({ batch: b }) {
         <div style={{ color: 'var(--cream)', fontWeight: 700 }}>{b.amount}B</div>
         <Badge color={statusColor}>{statusLabel}</Badge>
       </div>
+    </div>
+  );
+}
+
+function AmbassadorSection({ customer, report, codeInput, codeMsg, onToggle, onCodeChange, onSaveCode }) {
+  const label = { fontSize: 11, fontWeight: 700, letterSpacing: .5, textTransform: 'uppercase', color: 'var(--cream-30)', marginBottom: 8 };
+  const isAmb = !!customer.is_ambassador;
+  const fmt = (v) => v ? new Date(v).toLocaleDateString('en-SG', { day: '2-digit', month: 'short' }) : '—';
+  return (
+    <div>
+      <div style={label}>Special Ambassador</div>
+      <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', cursor: 'pointer', background: 'var(--navy)', border: '1px solid rgba(245,242,235,.1)', borderRadius: 8, padding: '10px 12px' }}>
+        <input type="checkbox" checked={isAmb} onChange={e => onToggle(customer, e.target.checked)} style={{ marginTop: 3 }} />
+        <span style={{ fontSize: 12.5, color: 'var(--cream)' }}>
+          <strong>Special ambassador</strong>
+          <span style={{ display: 'block', fontSize: 11.5, color: 'var(--cream-30)', marginTop: 2 }}>
+            No cap on BUTTONS redemption (normal customers: 30%), can have a custom referral code, and gets the Referrals report below.
+          </span>
+        </span>
+      </label>
+
+      {isAmb && (
+        <>
+          <div style={{ ...label, marginTop: 14 }}>Referral code</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              value={codeInput} maxLength={12} onChange={e => onCodeChange(e.target.value.toUpperCase())}
+              style={{ flex: 1, background: 'var(--navy)', border: '1px solid rgba(245,242,235,.15)', color: 'var(--cream)', borderRadius: 7, padding: '8px 10px', fontSize: 14, fontWeight: 700, letterSpacing: 1 }}
+            />
+            <Btn size="sm" onClick={onSaveCode}>Save code</Btn>
+          </div>
+          <div style={{ fontSize: 12, marginTop: 6, minHeight: 16, color: codeMsg ? (codeMsg.ok ? '#7fc93e' : '#f87171') : 'transparent' }}>{codeMsg ? codeMsg.text : '.'}</div>
+          <ul style={{ fontSize: 11, color: 'var(--cream-30)', lineHeight: 1.7, margin: '4px 0 0', paddingLeft: 16 }}>
+            <li>4–12 characters, letters and numbers only (not case-sensitive)</li>
+            <li>Must be unique across all codes, including old ones; reserved words are refused</li>
+            <li>The old code keeps working after you change it, so shared links still count</li>
+          </ul>
+
+          <div style={{ ...label, marginTop: 14 }}>Referral performance</div>
+          {report ? (
+            <>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                {[['Signed up with code', report.summary.signed_up], ['Made 1st purchase', report.summary.purchased], ['Referral BUTTONS earned', `${report.summary.buttons_earned}B`]].map(([l, v]) => (
+                  <div key={l} style={{ flex: 1, background: 'var(--navy)', border: '1px solid rgba(245,242,235,.1)', borderRadius: 8, padding: '10px 12px' }}>
+                    <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--cream)' }}>{v}</div>
+                    <div style={{ fontSize: 10.5, color: 'var(--cream-30)' }}>{l}</div>
+                  </div>
+                ))}
+              </div>
+              {report.referrals.length === 0 ? (
+                <div style={{ fontSize: 12.5, color: 'var(--cream-30)' }}>Nobody has signed up with this code yet.</div>
+              ) : (
+                <div style={{ maxHeight: 240, overflowY: 'auto' }}>
+                  {report.referrals.map(r => (
+                    <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 12, padding: '6px 0', borderBottom: '1px solid rgba(245,242,235,.06)' }}>
+                      <div>
+                        <div style={{ color: 'var(--cream)' }}>{r.name || '—'}</div>
+                        <div style={{ color: 'var(--cream-30)', fontSize: 11 }}>{r.email}</div>
+                      </div>
+                      <div style={{ color: 'var(--cream-30)', textAlign: 'center' }}>
+                        <div>{fmt(r.signed_up_at)}</div>
+                        <div style={{ fontSize: 11 }}>{r.code_used || 'code n/a'}</div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        {r.purchased
+                          ? <><Badge color="#7fc93e">PURCHASED {fmt(r.purchased_at).toUpperCase()}</Badge><div style={{ fontSize: 11, color: 'var(--cream-30)', marginTop: 2 }}>150B {r.bonus_status === 'credited' ? 'credited' : 'pending'}</div></>
+                          : <Badge color="#f59e0b">SIGNED UP, NOT PURCHASED</Badge>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div style={{ fontSize: 10.5, color: 'var(--cream-30)', marginTop: 6 }}>Signups from before this feature show the referrer but not the exact code.</div>
+            </>
+          ) : <div style={{ fontSize: 12.5, color: 'var(--cream-30)' }}>Loading…</div>}
+        </>
+      )}
     </div>
   );
 }

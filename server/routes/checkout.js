@@ -98,7 +98,7 @@ module.exports = function(db, inventoryRouter, stripeClient) {
       const websiteUrl = requireEnv('WEBSITE_URL');
       const customer = attachOptionalCustomer(req);
 
-      const { items, shipping_address, buttons_redeem } = req.body;
+      const { items, shipping_address, buttons_redeem, referral_code } = req.body;
       let { guest_email, guest_name, guest_phone, pdpa_consent, pdpa_consent_text, create_account } = req.body;
       // Website checkbox defaults to checked, and any older/other caller
       // that doesn't send this field at all gets today's behavior — so
@@ -119,8 +119,6 @@ module.exports = function(db, inventoryRouter, stripeClient) {
       const { items: pricedItems, subtotal, error: itemsError } = priceAndValidateItems(items);
       if (itemsError) return res.status(400).json({ error: itemsError });
 
-      const shippingAmount = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_COST;
-
       let redemption = { redeemed: 0, redemptionValue: 0 };
       const requestedB = parseInt(buttons_redeem) || 0;
       if (customer && requestedB > 0) {
@@ -128,6 +126,13 @@ module.exports = function(db, inventoryRouter, stripeClient) {
           customerId: customer.id, requestedB, orderValueAfterDiscount: subtotal,
         });
       }
+
+      // Order of rules (Oct 2026, everyone): items -> BUTTONS redemption ->
+      // free-delivery check on what is LEFT to pay for items -> payment.
+      // Shipping never earns BUTTONS, so an order where BUTTONS cover the
+      // items still pays shipping. (Used to be checked on the pre-BUTTONS
+      // subtotal.) Must match app/cart/page.js on the website.
+      const shippingAmount = (subtotal - redemption.redemptionValue) >= FREE_SHIPPING_THRESHOLD - 0.001 ? 0 : SHIPPING_COST;
 
       // Never allow a redemption that would take the charge below Stripe's
       // practical minimum — clamp the redemption down rather than error out,
@@ -160,7 +165,7 @@ module.exports = function(db, inventoryRouter, stripeClient) {
         try {
           const signupResult = upsertCustomerFromSignup(db, {
             email: guest_email, name: guest_name, phone: guest_phone, address: shipping_address,
-            pdpa_consent_text, source: 'website',
+            pdpa_consent_text, source: 'website', referral_code, // code remembered from a referral link (30-day cookie on the website)
           });
           linkedCustomerId = signupResult.customer_id;
           if (signupResult.isNew) {

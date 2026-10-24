@@ -30,7 +30,17 @@ const FIRST_PURCHASE_BONUS_B = 100;
 const REFERRAL_BONUS_B = 150;
 
 function buttonsToDollars(b) { return Math.round(b * B_VALUE_DOLLARS * 100) / 100; }
-function dollarsToButtons(d) { return Math.floor(d / B_VALUE_DOLLARS); }
+// +1e-9 guards float error (e.g. 17.4 / 0.02 = 869.9999999999999 would floor to 869 instead of 870)
+function dollarsToButtons(d) { return Math.floor(d / B_VALUE_DOLLARS + 1e-9); }
+
+// Normal customers can pay at most 30% of an order with B. Special ambassadors
+// (customers.is_ambassador = 1) have no cap — up to 100% of the order value,
+// still limited by their balance. One place decides it, so redemption at
+// checkout, the preview and the website cart can never disagree.
+function redemptionCapPct(db, customerId) {
+  const c = customerId ? db.queryOne('SELECT is_ambassador FROM customers WHERE id = ?', [customerId]) : null;
+  return c && c.is_ambassador ? 1 : REDEMPTION_CAP_PCT;
+}
 
 // The one earn formula agreed in the spec: B earned = round(amount actually
 // paid for products), where "amount paid" = subtotal - discount - B
@@ -125,7 +135,7 @@ function getBestActiveCampaign(db, onDate = new Date()) {
 function redeemButtons(db, { customerId, requestedB, orderValueAfterDiscount, sourceType, sourceId }) {
   if (!requestedB || requestedB <= 0) return { redeemed: 0, redemptionValue: 0, capped: false };
 
-  const maxValue = orderValueAfterDiscount * REDEMPTION_CAP_PCT;
+  const maxValue = orderValueAfterDiscount * redemptionCapPct(db, customerId);
   const maxB = dollarsToButtons(maxValue);
   const capped = requestedB > maxB;
   const target = Math.min(requestedB, maxB);
@@ -176,7 +186,7 @@ function redeemButtons(db, { customerId, requestedB, orderValueAfterDiscount, so
 // number always matches what actually gets redeemed on success.
 function previewRedemption(db, { customerId, requestedB, orderValueAfterDiscount }) {
   if (!customerId || !requestedB || requestedB <= 0) return { redeemed: 0, redemptionValue: 0, capped: false };
-  const maxValue = orderValueAfterDiscount * REDEMPTION_CAP_PCT;
+  const maxValue = orderValueAfterDiscount * redemptionCapPct(db, customerId);
   const maxB = dollarsToButtons(maxValue);
   const balance = customerButtonsBalance(db, customerId);
   const redeemed = Math.max(0, Math.min(requestedB, maxB, balance));
@@ -327,5 +337,5 @@ module.exports = {
   redeemButtons, previewRedemption, recordPurchaseButtons,
   recordPosCheckoutButtons, processExpiredHolds, voidPendingButtons, buttonsToDollars, dollarsToButtons,
   singaporeDateStr, singaporeMonth,
-  REDEMPTION_CAP_PCT, B_VALUE_DOLLARS, HOLD_DAYS, FIRST_PURCHASE_BONUS_B, REFERRAL_BONUS_B,
+  REDEMPTION_CAP_PCT, redemptionCapPct, B_VALUE_DOLLARS, HOLD_DAYS, FIRST_PURCHASE_BONUS_B, REFERRAL_BONUS_B,
 };

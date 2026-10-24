@@ -1,7 +1,7 @@
 const { Router } = require('express');
 const bcrypt = require('bcryptjs');
 const {
-  generateToken, upsertCustomerFromSignup, customerButtonsBalance, creditButtons,
+  generateToken, upsertCustomerFromSignup, customerButtonsBalance, creditButtons, findReferrerByCode, getReferralReport,
   SIGNUP_BONUS_B, LOGIN_TOKEN_TTL_MS, SESSION_TOKEN_TTL_MS,
 } = require('../lib/customers');
 const { getActiveMultiplierDetail, recordPosCheckoutButtons } = require('../lib/buttons');
@@ -43,6 +43,7 @@ module.exports = function(db) {
       account_status: c.account_status, referral_code: c.referral_code,
       instagram_handle: c.instagram_handle, preferred_contact_channel: c.preferred_contact_channel,
       profile_bonus_claimed: !!c.profile_bonus_claimed, has_password: !!c.password_hash,
+      is_ambassador: !!c.is_ambassador,
     };
   }
 
@@ -296,6 +297,19 @@ module.exports = function(db) {
   // the website at all — the nav badge/account banner previously also
   // discarded campaign info even when it WAS detected, but that display-side
   // fix alone wouldn't have mattered without this too.
+  // GET /api/customers/referral-code/:code — public. Powers the "Code accepted"
+  // tick on the website signup page. Returns only { valid } (never who owns
+  // the code). Light in-memory rate limit so it can't be used to guess codes.
+  const codeChecks = new Map();
+  router.get('/referral-code/:code', (req, res) => {
+    const ip = req.ip || 'x', now = Date.now();
+    const hits = (codeChecks.get(ip) || []).filter(t => now - t < 60000);
+    if (hits.length >= 30) return res.status(429).json({ error: 'Too many checks — please wait a minute.' });
+    hits.push(now); codeChecks.set(ip, hits);
+    if (codeChecks.size > 5000) codeChecks.clear();
+    res.json({ valid: !!findReferrerByCode(db, req.params.code) });
+  });
+
   router.get('/me', requireCustomerAuth, (req, res) => {
     const customer = db.queryOne('SELECT * FROM customers WHERE id = ?', [req.customerId]);
     if (!customer) return res.status(404).json({ error: 'Account not found.' });
@@ -306,6 +320,8 @@ module.exports = function(db) {
       customer: customerPublicView(customer),
       pet: pet || null,
       buttons_balance: customerButtonsBalance(db, customer.id),
+      // Ambassadors only: COUNTS only — never the referred customers' names or emails.
+      ambassador_stats: customer.is_ambassador ? getReferralReport(db, customer.id).summary : null,
       active_multiplier: multiplierDetail.multiplier,
       active_multiplier_source: multiplierDetail.source,
       active_campaign_name: multiplierDetail.campaignName,
