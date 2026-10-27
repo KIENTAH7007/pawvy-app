@@ -27,7 +27,7 @@ const B_VALUE_DOLLARS = 0.02;      // 100B = $2, i.e. 1B = $0.02
 const HOLD_DAYS = 7;
 const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
 const FIRST_PURCHASE_BONUS_B = 100;
-const REFERRAL_BONUS_B = 150;
+const REFERRAL_BONUS_B = 200;
 
 function buttonsToDollars(b) { return Math.round(b * B_VALUE_DOLLARS * 100) / 100; }
 // +1e-9 guards float error (e.g. 17.4 / 0.02 = 869.9999999999999 would floor to 869 instead of 870)
