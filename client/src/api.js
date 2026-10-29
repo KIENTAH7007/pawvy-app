@@ -187,6 +187,7 @@ export const homepageBannersApi = {
   create: (p) => api.post('/homepage-banners', p),
   update: (id, p) => api.patch(`/homepage-banners/${id}`, p),
   delete: (id) => api.delete(`/homepage-banners/${id}`),
+  optimizeExisting: () => api.post('/homepage-banners/optimize-existing', {}),
 };
 
 export const testimonialsApi = {

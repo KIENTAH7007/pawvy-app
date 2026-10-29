@@ -1,5 +1,22 @@
 const { Router } = require('express');
 const { uploadBuffer, decodeDataUrl, buildImageKey, deleteObject } = require('../lib/bucket');
+const { optimizeForWeb } = require('../lib/imageOptimize');
+const { optimizeExistingImages } = require('../lib/optimizeExisting');
+
+// Saves one banner image: resized + compressed for the web (desktop 1920px,
+// tablet 1200px, mobile 800px wide). If that actually changed the file, the
+// untouched original is also kept in the bucket under '<folder>-original/'.
+async function storeBannerImage(folder, id, dataUrl, maxWidth) {
+  const orig = decodeDataUrl(dataUrl);
+  const opt = await optimizeForWeb(orig.buffer, orig.contentType, { maxWidth });
+  const { key, url } = buildImageKey(folder, id, opt.extension);
+  await uploadBuffer(key, opt.buffer, opt.contentType);
+  if (opt.changed) {
+    const o = buildImageKey(`${folder}-original`, id, orig.extension);
+    uploadBuffer(o.key, orig.buffer, orig.contentType).catch(() => {});
+  }
+  return url;
+}
 
 // Admin-editable homepage takeover banner (the "Wild Balance"-style new
 // brand announcement) — mounted at /api/homepage-banners, staff-only
@@ -14,6 +31,17 @@ module.exports = function(db) {
 
   router.get('/', (req, res) => {
     res.json({ banners: db.query('SELECT * FROM homepage_banners ORDER BY sort_order ASC, id ASC') });
+  });
+
+  // One-time (safe to re-run) tidy-up of images uploaded before optimising
+  // existed: banners (all three sizes) and Instagram highlights. Originals
+  // stay in the bucket; each page just gets pointed at a lighter copy.
+  router.post('/optimize-existing', async (req, res) => {
+    try {
+      res.json(await optimizeExistingImages(db));
+    } catch (err) {
+      res.status(500).json({ error: 'Optimise failed: ' + err.message });
+    }
   });
 
   router.post('/', async (req, res) => {
@@ -38,9 +66,7 @@ module.exports = function(db) {
         VALUES (?,?,?,?,?,?,?)
       `, [headline?.trim() || null, link_url?.trim() || null, start_date || null, end_date || null, is_active ? 1 : 0, sort_order || 0, show_caption === false ? 0 : 1]);
 
-      const { buffer, contentType, extension } = decodeDataUrl(image_data);
-      const { key, url } = buildImageKey('banners', result.lastID, extension);
-      await uploadBuffer(key, buffer, contentType);
+      const url = await storeBannerImage('banners', result.lastID, image_data, 1920);
       db.run('UPDATE homepage_banners SET image_url = ? WHERE id = ?', [url, result.lastID]);
 
       // Both optional on create — a banner with just the desktop image
@@ -48,15 +74,11 @@ module.exports = function(db) {
       // publicContent.js), staff can add the device-specific versions
       // whenever they're ready.
       if (image_data_mobile) {
-        const m = decodeDataUrl(image_data_mobile);
-        const { key: mKey, url: mUrl } = buildImageKey('banners-mobile', result.lastID, m.extension);
-        await uploadBuffer(mKey, m.buffer, m.contentType);
+        const mUrl = await storeBannerImage('banners-mobile', result.lastID, image_data_mobile, 800);
         db.run('UPDATE homepage_banners SET image_url_mobile = ? WHERE id = ?', [mUrl, result.lastID]);
       }
       if (image_data_tablet) {
-        const t = decodeDataUrl(image_data_tablet);
-        const { key: tKey, url: tUrl } = buildImageKey('banners-tablet', result.lastID, t.extension);
-        await uploadBuffer(tKey, t.buffer, t.contentType);
+        const tUrl = await storeBannerImage('banners-tablet', result.lastID, image_data_tablet, 1200);
         db.run('UPDATE homepage_banners SET image_url_tablet = ? WHERE id = ?', [tUrl, result.lastID]);
       }
 
@@ -89,29 +111,20 @@ module.exports = function(db) {
     let newImageUrlTablet = null;
     try {
       if (image_data) {
-        const { buffer, contentType, extension } = decodeDataUrl(image_data);
-        const { key, url } = buildImageKey('banners', req.params.id, extension);
-        await uploadBuffer(key, buffer, contentType);
-        newImageUrl = url;
+        newImageUrl = await storeBannerImage('banners', req.params.id, image_data, 1920);
         if (banner.image_url) {
           deleteObject(banner.image_url.replace(/^\/api\/uploads\//, '')).catch(() => {});
         }
       }
       // Each image is independent — replacing one never touches the others.
       if (image_data_mobile) {
-        const m = decodeDataUrl(image_data_mobile);
-        const { key: mKey, url: mUrl } = buildImageKey('banners-mobile', req.params.id, m.extension);
-        await uploadBuffer(mKey, m.buffer, m.contentType);
-        newImageUrlMobile = mUrl;
+        newImageUrlMobile = await storeBannerImage('banners-mobile', req.params.id, image_data_mobile, 800);
         if (banner.image_url_mobile) {
           deleteObject(banner.image_url_mobile.replace(/^\/api\/uploads\//, '')).catch(() => {});
         }
       }
       if (image_data_tablet) {
-        const t = decodeDataUrl(image_data_tablet);
-        const { key: tKey, url: tUrl } = buildImageKey('banners-tablet', req.params.id, t.extension);
-        await uploadBuffer(tKey, t.buffer, t.contentType);
-        newImageUrlTablet = tUrl;
+        newImageUrlTablet = await storeBannerImage('banners-tablet', req.params.id, image_data_tablet, 1200);
         if (banner.image_url_tablet) {
           deleteObject(banner.image_url_tablet.replace(/^\/api\/uploads\//, '')).catch(() => {});
         }

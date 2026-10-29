@@ -543,6 +543,24 @@ function HomepageBannerSection() {
   const [form, setForm] = useState({ image_data: '', image_url: '', image_data_mobile: '', image_url_mobile: '', image_data_tablet: '', image_url_tablet: '', headline: '', link_url: '', start_date: '', end_date: '', is_active: true, sort_order: 0, show_caption: true });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [optimizing, setOptimizing] = useState(false);
+
+  // One-time tidy-up of banner + Instagram images uploaded before automatic
+  // optimising existed. Safe to run again; originals are never deleted.
+  async function optimizeExisting() {
+    if (!window.confirm('Make the existing banner and Instagram images lighter so the homepage loads faster?\n\nOriginals are kept. It is safe to run this more than once.')) return;
+    setOptimizing(true);
+    try {
+      const r = await homepageBannersApi.optimizeExisting();
+      const lines = (r.items || []).map(i => `• ${i.label}: ${i.status}${i.status === 'optimised' ? ` (${i.beforeKB} KB → ${i.afterKB} KB)` : (i.beforeKB ? ` (${i.beforeKB} KB)` : '')}`);
+      window.alert(`Checked ${r.checked} images, optimised ${r.optimised}, saved about ${Math.round((r.savedKB || 0) / 1024 * 10) / 10} MB.\n\n${lines.join('\n')}`);
+      load();
+    } catch (e) {
+      window.alert('Could not optimise images: ' + (e.message || 'unknown error'));
+    } finally {
+      setOptimizing(false);
+    }
+  }
 
   const load = () => homepageBannersApi.getAll().then(d => setBanners(d.banners));
   useEffect(() => { load(); }, []);
@@ -700,7 +718,10 @@ function HomepageBannerSection() {
             blank to send clicks to the brand gallery instead of a specific page.
           </div>
         </div>
-        <Btn onClick={openNew}><span style={{ fontSize: 16 }}>+</span> Add Banner</Btn>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Btn variant="ghost" onClick={optimizeExisting} disabled={optimizing}>{optimizing ? 'Optimising…' : 'Optimise existing images'}</Btn>
+          <Btn onClick={openNew}><span style={{ fontSize: 16 }}>+</span> Add Banner</Btn>
+        </div>
       </div>
 
       <div style={{ background: 'var(--navy)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>

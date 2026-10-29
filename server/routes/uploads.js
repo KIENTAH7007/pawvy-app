@@ -1,7 +1,7 @@
 const { Router } = require('express');
 const { pipeline } = require('stream/promises');
-const { getObjectStream } = require('../lib/bucket');
-const { trimmedSquare } = require('../lib/imageTrim');
+const { getObjectStream, uploadBuffer } = require('../lib/bucket');
+const { trimmedSquare, normalizeSize } = require('../lib/imageTrim');
 
 // Railway Buckets are private-only (no public buckets, per Railway's own
 // docs as of Aug 2026) — this route is the one place that actually talks
@@ -23,6 +23,54 @@ module.exports = function() {
     const key = req.params[0];
     if (!key) return res.status(400).json({ error: 'Missing image key.' });
 
+    const wantTrim = req.query.trim === '1';
+    const size = normalizeSize(req.query.w);
+
+    // ?trim=1[&w=480|1000] — website product photos: border trimmed, square,
+    // product bigger (see lib/imageTrim.js). Each result is saved in the
+    // bucket under derived/trim-<size>/<key> the first time it is asked for
+    // (the original is never touched), so every later request — from any
+    // visitor, and after any deploy or restart — is just a file read.
+    // Same immutable-URL caching reasoning as below applies, since the output
+    // depends only on the (unique) key and size.
+    if (wantTrim) {
+      const derivedKey = `derived/trim-${size}/${key.replace(/\.[^./]+$/, '')}.jpg`;
+      try {
+        const saved = await getObjectStream(derivedKey);
+        res.setHeader('Content-Type', saved.ContentType || 'image/jpeg');
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        if (saved.ContentLength) res.setHeader('Content-Length', saved.ContentLength);
+        try { await pipeline(saved.Body, res); } catch { /* client went away */ }
+        return;
+      } catch { /* not saved yet — build it below */ }
+
+      let original;
+      try {
+        const o = await getObjectStream(key);
+        if (!/^image\/(jpe?g|png|webp)$/i.test(o.ContentType || '')) {
+          // Not something we can trim — serve it as-is, below.
+          return serveOriginal(res, o);
+        }
+        const chunks = [];
+        for await (const chunk of o.Body) chunks.push(chunk);
+        original = { buf: Buffer.concat(chunks), type: o.ContentType };
+      } catch (err) {
+        return res.status(404).json({ error: 'Image not found.' });
+      }
+      try {
+        const t = await trimmedSquare(original.buf, key, size);
+        res.setHeader('Content-Type', t ? t.type : original.type);
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        res.end(t ? t.buf : original.buf);
+        // Save for next time (after replying; failure just means we rebuild later).
+        if (t) uploadBuffer(derivedKey, t.buf, t.type).catch(() => {});
+        return;
+      } catch (err) {
+        if (!res.headersSent) return res.status(404).json({ error: 'Image not found.' });
+        return;
+      }
+    }
+
     let obj;
     try {
       obj = await getObjectStream(key);
@@ -32,26 +80,13 @@ module.exports = function() {
       // than leaking bucket error details to the client.
       return res.status(404).json({ error: 'Image not found.' });
     }
+    return serveOriginal(res, obj);
+  });
 
-    // ?trim=1 — website product photos: border trimmed, square, product bigger
-    // (see lib/imageTrim.js). Same immutable-URL caching reasoning as below
-    // applies, since the output depends only on the (unique) key. Falls
-    // through to the untouched original if trimming isn't possible.
-    if (req.query.trim === '1' && /^image\/(jpe?g|png|webp)$/i.test(obj.ContentType || '')) {
-      try {
-        const chunks = [];
-        for await (const chunk of obj.Body) chunks.push(chunk);
-        const original = Buffer.concat(chunks);
-        const t = await trimmedSquare(original, key);
-        res.setHeader('Content-Type', t ? t.type : obj.ContentType);
-        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-        return res.end(t ? t.buf : original);
-      } catch (err) {
-        if (!res.headersSent) return res.status(404).json({ error: 'Image not found.' });
-        return;
-      }
-    }
+  return router;
+};
 
+async function serveOriginal(res, obj) {
     res.setHeader('Content-Type', obj.ContentType || 'application/octet-stream');
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
     if (obj.ContentLength) res.setHeader('Content-Length', obj.ContentLength);
@@ -77,7 +112,4 @@ module.exports = function() {
     } catch (err) {
       // Expected on client disconnect — not an error worth logging.
     }
-  });
-
-  return router;
-};
+}

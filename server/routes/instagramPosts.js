@@ -1,5 +1,15 @@
 const { Router } = require('express');
 const { uploadBuffer, decodeDataUrl, buildImageKey, deleteObject } = require('../lib/bucket');
+const { optimizeForWeb } = require('../lib/imageOptimize');
+
+// Instagram tiles are small on the page, so 800px wide (WebP) is plenty.
+async function storeInstagramImage(id, dataUrl) {
+  const orig = decodeDataUrl(dataUrl);
+  const opt = await optimizeForWeb(orig.buffer, orig.contentType, { maxWidth: 800 });
+  const { key, url } = buildImageKey('instagram', id, opt.extension);
+  await uploadBuffer(key, opt.buffer, opt.contentType);
+  return url;
+}
 
 // Admin-editable Instagram Highlights shown on the website homepage —
 // mounted at /api/instagram-posts, staff-only (covered by the PIN gate in
@@ -25,7 +35,6 @@ module.exports = function(db) {
     }
 
     try {
-      const { buffer, contentType, extension } = decodeDataUrl(image_data);
       // url NOT NULL is a leftover from the old embed-URL design (see the
       // comment on the CREATE TABLE in server/database.js) — pass '' to
       // satisfy it without exposing this historical detail to the admin UI.
@@ -33,8 +42,7 @@ module.exports = function(db) {
         INSERT INTO instagram_posts (url, link_url, sort_order, is_active)
         VALUES ('', ?, ?, ?)
       `, [link_url?.trim() || null, sort_order || 0, is_active === false ? 0 : 1]);
-      const { key, url } = buildImageKey('instagram', result.lastID, extension);
-      await uploadBuffer(key, buffer, contentType);
+      const url = await storeInstagramImage(result.lastID, image_data);
       db.run('UPDATE instagram_posts SET image_url = ? WHERE id = ?', [url, result.lastID]);
       res.status(201).json({ ok: true, id: result.lastID });
     } catch (err) {
@@ -54,10 +62,7 @@ module.exports = function(db) {
     let newImageUrl = null;
     if (image_data) {
       try {
-        const { buffer, contentType, extension } = decodeDataUrl(image_data);
-        const { key, url } = buildImageKey('instagram', req.params.id, extension);
-        await uploadBuffer(key, buffer, contentType);
-        newImageUrl = url;
+        newImageUrl = await storeInstagramImage(req.params.id, image_data);
         if (post.image_url) deleteObject(post.image_url.replace(/^\/api\/uploads\//, '')).catch(() => {});
       } catch (err) {
         return res.status(502).json({ error: 'Image upload to storage failed: ' + err.message });
