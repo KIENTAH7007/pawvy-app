@@ -5,8 +5,8 @@ import { Page, Table, Badge, Btn, Modal, FormRow, Input, Select, KpiCard, fmt, M
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, CartesianGrid } from 'recharts';
 import { currentMonthRange, localDateStr } from '../utils/dates';
 
-const CATS = ['Marketing','Storage','Delivery','Event','Platform Fee','Packaging','Other'];
-const CAT_C = { Marketing:'#f36f4a',Storage:'#378ADD',Delivery:'#1D9E75',Event:'#7F77DD','Platform Fee':'#BA7517',Packaging:'#639922',Other:'#888' };
+const CATS = ['Marketing','Storage','Delivery','Event','Platform Fee','Packaging','Credit Notes','Other'];
+const CAT_C = { Marketing:'#f36f4a',Storage:'#378ADD',Delivery:'#1D9E75',Event:'#7F77DD','Platform Fee':'#BA7517',Packaging:'#639922','Credit Notes':'#d6457a',Other:'#888' };
 
 const TrendTip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;

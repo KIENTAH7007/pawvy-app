@@ -1,41 +1,39 @@
-# Pawvy App – Faster Images and Banner Optimiser
+# Pawvy App – Credit Lines on Invoice and SOA
 
 ## What it does
-1. Product photos with the border trimmed (used on pawvy.co) are now SAVED in the bucket the first time they are
-   made (under derived/…), in two sizes: 480px (cards) and 1000px (product page). After that they are just a file read –
-   no re-processing after a deploy/restart. Originals are never touched (POS, Order Portal, PDFs still use them).
-   The trimming itself is also lighter, and at most 2 photos are processed at a time.
-2. New banner uploads are automatically resized and compressed (desktop 1920px, tablet 1200px, mobile 800px, WebP).
-   The untouched original is also kept in the bucket (folders banners-original etc.). New Instagram highlights are resized to 800px.
-3. New button on Marketing tab > Homepage Banner Carousel: "Optimise existing images". Click it ONCE after deploying.
-   It makes lighter copies of the current banners and Instagram images and points the website at them. Originals stay in the
-   bucket, an already-light image is skipped, and it is safe to click again. It shows a before/after size list.
+- **Generate Invoice** and **Generate SOA**: new optional section "Credit / adjustment (optional)". Click "+ Add credit line",
+  type a free-text description and an amount. Up to 10 lines. The amount is deducted from the document total and printed as a
+  green negative line (the Invoice also shows a "Credit / Adjustment" line in the totals box). A negative total is allowed.
+- **Nothing entered = nothing changes.** Every invoice and SOA comes out exactly as before. The Vanillapup rebate (auto and
+  manual) is untouched; if a credit line is added on a Vanillapup SOA, it sits right after the Vanillapup CN line.
+- Invoice credits flow into the SOA automatically, because the SOA uses each invoice's total.
+- **Operating Costs**: new category "Credit Notes". When you give a partner a credit, add a cost with this category so profit reflects it.
+  (Sales figures are not reduced; only profit via Operating Costs.)
+- You still issue the formal credit note document yourself; the app only deducts the amount.
+- Small additive database change: one new column (invoice_items.is_credit, default 0). It is added automatically on first start,
+  existing data is untouched. Backup is still good practice before the merge (Railway: download /data/pawvy.db).
 
-No database change. Extra bucket space is tiny (well under 1 GB).
-
-## Deploy order
-Deploy this App zip FIRST. The Website zip works with or without it, but the speed-up needs both.
-
-## Git steps
+## Git steps (staging)
 ```
 cd pawvy-app
 git checkout staging
 git pull origin staging
 ```
-Copy the code files from this folder into the repo, keeping the folders (NOT README.md, NOT the zip):
-client/src/api.js, client/src/pages/Marketing.jsx, server/lib/imageTrim.js, server/lib/imageOptimize.js (new),
-server/lib/optimizeExisting.js (new), server/routes/homepageBanners.js, server/routes/instagramPosts.js, server/routes/uploads.js
+Copy these code files from this folder into the repo, keeping the folders (NOT README.md, NOT the zip):
+client/src/pages/Costs.jsx, client/src/pages/Invoices.jsx, server/database.js, server/routes/invoices.js
 ```
 git add -A
-git commit -m "Saved trimmed photos, banner optimiser, lighter image processing"
+git commit -m "Credit / adjustment lines on Invoice and SOA, Credit Notes cost category"
 git push origin staging
 ```
-After Railway deploys staging: Marketing tab > click "Optimise existing images" and check the homepage banners still look right.
-Then merge to main:
+Test on staging: Invoices & Docs > Generate Invoice > add a credit line > print. Then Generate SOA the same way.
+Also confirm an invoice/SOA with NO credit line looks exactly as before.
+
+## Git steps (merge to main)
 ```
 git checkout main
 git pull origin main
 git merge staging
 git push origin main
 ```
-Then click "Optimise existing images" once on production too (production has its own database and bucket).
+Wait for Railway to deploy and go green. (Website zip: none for this change.)

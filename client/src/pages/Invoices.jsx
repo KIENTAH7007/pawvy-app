@@ -33,7 +33,18 @@ function generateInvoicePDF(invoice) {
   // Description, Qty, Unit Price, Total — no changes, no empty column.
   const hasSpecialDiscount = (invoice.items || []).some(it => (it.special_discount_amt || 0) > 0);
 
-  const rows = (invoice.items||[]).map((it, idx) => {
+  // One-off credit / adjustment lines typed in at generation time (is_credit)
+  // are shown after the goods, deducted in the totals box below.
+  const creditItems = (invoice.items || []).filter(it => it.is_credit);
+  const creditTotal = creditItems.reduce((s, it) => s + Math.abs(parseFloat(it.line_total) || 0), 0);
+  const colCount = hasSpecialDiscount ? 6 : 5;
+  const creditRows = creditItems.map(it => `
+      <tr style="background:#f3faf0">
+        <td colspan="${colCount - 1}" style="padding:8px 12px;border-bottom:1px solid #e8ecf0;color:#27ae60;font-weight:600">${it.description}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e8ecf0;text-align:right;font-weight:600;color:#27ae60">− ${Math.abs(parseFloat(it.line_total)).toFixed(2)}</td>
+      </tr>`).join('');
+
+  const rows = (invoice.items||[]).filter(it => !it.is_credit).map((it, idx) => {
     // Brand-aware rows (product-linked lines) vs plain description (legacy/non-product lines)
     const brand = it.brand_name || '—';
     const desc  = it.item_series ? `${it.item_series}${it.variation ? ' · '+it.variation : ''}` : it.description;
@@ -99,7 +110,7 @@ function generateInvoicePDF(invoice) {
         ${discountHeaderCell}
         <th style="padding:10px 12px;text-align:right;color:#fff;font-weight:700;font-size:11px">Total</th>
       </tr></thead>
-      <tbody>${rows}</tbody>
+      <tbody>${rows}${creditRows}</tbody>
     </table>
   </div>
 
@@ -111,6 +122,7 @@ function generateInvoicePDF(invoice) {
       ${invoice.special_discount > 0 ? `<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:12px;color:#c07a1f"><span>Special Discount</span><span>− ${sgd(invoice.special_discount)}</span></div>` : ''}
       ${invoice.discount > 0 ? `<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:12px;color:#27ae60"><span>Partner Rebate</span><span>− ${sgd(invoice.discount)}</span></div>` : ''}
       ${invoice.shipping > 0 ? `<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:12px;color:#555"><span>Shipping</span><span>+ ${sgd(invoice.shipping)}</span></div>` : ''}
+      ${creditTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:12px;color:#27ae60"><span>Credit / Adjustment</span><span>− ${sgd(creditTotal)}</span></div>` : ''}
       <div style="display:flex;justify-content:space-between;padding:10px 0;border-top:2px solid #14213d;margin-top:4px">
         <span style="font-size:14px;font-weight:700;color:#14213d">Amount Due</span>
         <span style="font-size:14px;font-weight:700;color:#14213d">${sgd(invoice.total)}</span>
@@ -230,6 +242,39 @@ function generateSOAPDF(soa) {
   openPdfWindow(html);
 }
 
+// ── Optional one-off credit / adjustment lines (Oct 2026) ──────────
+// Free-text description + amount to deduct, for the rare ad-hoc credit note.
+// Leaving it empty changes nothing about the document. The formal credit note
+// document itself is issued outside the app; this only deducts the amount.
+function creditsToSend(lines) {
+  return (lines || []).filter(l => (l.description || '').trim() || String(l.amount ?? '').trim() !== '')
+    .map(l => ({ description: (l.description || '').trim(), amount: l.amount }));
+}
+function creditsSum(lines) {
+  return creditsToSend(lines).reduce((s, l) => s + (parseFloat(l.amount) > 0 ? parseFloat(l.amount) : 0), 0);
+}
+function CreditLinesEditor({ lines, setLines, cur }) {
+  const set = (i, k, v) => setLines(ls => ls.map((l, j) => j === i ? { ...l, [k]: v } : l));
+  return (
+    <div style={{border:'1px dashed var(--border)',borderRadius:8,padding:'10px 12px'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom: lines.length ? 8 : 0}}>
+        <div>
+          <div style={{fontSize:10,fontWeight:700,letterSpacing:.8,textTransform:'uppercase',color:'var(--cream-30)'}}>Credit / adjustment (optional)</div>
+          <div style={{fontSize:10.5,color:'var(--cream-30)',marginTop:2}}>Deducted from the total and shown as a line on the document. Leave empty for none.</div>
+        </div>
+        <Btn variant="ghost" size="sm" onClick={()=>setLines(ls => ls.length >= 10 ? ls : [...ls, { description:'', amount:'' }])}>+ Add credit line</Btn>
+      </div>
+      {lines.map((l, i) => (
+        <div key={i} style={{display:'flex',gap:8,alignItems:'flex-end',marginTop:i?8:0}}>
+          <Input label={i===0?'Description':undefined} value={l.description} onChange={e=>set(i,'description',e.target.value)} placeholder="e.g. Credit – damaged goods, INV-20261015-002" style={{flex:1}}/>
+          <Input label={i===0?`Amount (${cur})`:undefined} type="number" step="0.01" min="0" value={l.amount} onChange={e=>set(i,'amount',e.target.value)} style={{width:130}}/>
+          <Btn variant="ghost" size="sm" onClick={()=>setLines(ls => ls.filter((_, j) => j !== i))}>✕</Btn>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ════════════════════════════════════════════════════════════════
 // Generate Invoice Modal
 // ════════════════════════════════════════════════════════════════
@@ -241,6 +286,7 @@ function GenerateInvoiceModal({ open, onClose, partners, onGenerated }) {
   const [sales, setSales]         = useState([]);
   const [selected, setSelected]   = useState(new Set());
   const [notes, setNotes]         = useState('');
+  const [credits, setCredits]     = useState([]);
   const [outletId, setOutletId]   = useState('');
   const [outlets, setOutlets]     = useState([]);
   const [loading, setLoading]     = useState(false);
@@ -251,7 +297,7 @@ function GenerateInvoiceModal({ open, onClose, partners, onGenerated }) {
   const sgd = v => money(v, cur);
 
   useEffect(() => {
-    if (open) { setPartnerId(''); setSales([]); setSelected(new Set()); setNotes(''); setError(''); setResult(null); setDateFrom(''); setDateTo(today()); setInvoiceDate(today()); setOutletId(''); setOutlets([]); }
+    if (open) { setCredits([]); setPartnerId(''); setSales([]); setSelected(new Set()); setNotes(''); setError(''); setResult(null); setDateFrom(''); setDateTo(today()); setInvoiceDate(today()); setOutletId(''); setOutlets([]); }
   }, [open]);
 
   useEffect(() => {
@@ -281,13 +327,14 @@ function GenerateInvoiceModal({ open, onClose, partners, onGenerated }) {
   const discount = selectedSales.reduce((s,r) => s + (r.platform_fee_amt||0), 0);
   const specialDiscount = selectedSales.reduce((s,r) => s + (r.special_discount_amt||0), 0);
   const shipping = selectedSales.reduce((s,r) => s + (r.shipping_charged||0), 0);
-  const total = subtotal - discount + shipping;
+  const creditTotal = creditsSum(credits);
+  const total = subtotal - discount + shipping - creditTotal;
 
   async function generate() {
     if (selected.size === 0) { setError('Select at least one order line.'); return; }
     setSaving(true); setError('');
     try {
-      const res = await invoicesApi.generateInvoice({ partner_id: partnerId, sale_ids: [...selected], notes: notes||null, invoice_date: invoiceDate, outlet_address_id: outletId||null });
+      const res = await invoicesApi.generateInvoice({ partner_id: partnerId, sale_ids: [...selected], notes: notes||null, invoice_date: invoiceDate, outlet_address_id: outletId||null, credits: creditsToSend(credits) });
       setResult(res);
     } catch(e) { setError(e.message); }
     finally { setSaving(false); }
@@ -389,6 +436,7 @@ function GenerateInvoiceModal({ open, onClose, partners, onGenerated }) {
             </div>
             <div style={{background:'rgba(245,242,235,.04)',border:'1px solid var(--border)',borderRadius:8,padding:'10px 16px',display:'flex',gap:24,flexWrap:'wrap',justifyContent:'flex-end'}}>
               <span style={{fontSize:12,color:'var(--cream-30)'}}>Subtotal: <strong style={{color:'var(--cream)'}}>{sgd(subtotal + specialDiscount)}</strong></span>
+              {creditTotal>0 && <span style={{fontSize:12,color:'#7fc93e'}}>Credit: <strong>−{sgd(creditTotal)}</strong></span>}
               {specialDiscount>0 && <span style={{fontSize:12,color:'var(--cream-30)'}}>Special Discount: <strong style={{color:'#c07a1f'}}>−{sgd(specialDiscount)}</strong></span>}
               {discount>0 && <span style={{fontSize:12,color:'var(--cream-30)'}}>Partner Rebate: <strong style={{color:'#fbbf24'}}>−{sgd(discount)}</strong></span>}
               {shipping>0 && <span style={{fontSize:12,color:'var(--cream-30)'}}>Shipping: <strong style={{color:'#7fc93e'}}>+{sgd(shipping)}</strong></span>}
@@ -396,6 +444,7 @@ function GenerateInvoiceModal({ open, onClose, partners, onGenerated }) {
             </div>
           </>
         )}
+        {partnerId && <CreditLinesEditor lines={credits} setLines={setCredits} cur={cur}/>}
         <Input label="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="e.g. Partial shipment"/>
         {error && <div style={{color:'#f87171',fontSize:12}}>{error}</div>}
         <div style={{display:'flex',gap:10}}>
@@ -565,6 +614,7 @@ function GenerateDOModal({ open, onClose, partners, onGenerated }) {
 function GenerateSOAModal({ open, onClose, partners, onGenerated }) {
   const [partnerId, setPartnerId] = useState('');
   const [month, setMonth]         = useState(() => localMonthStr());
+  const [credits, setCredits]     = useState([]);
   const [manualCn, setManualCn]   = useState(''); // one-off override — see server/routes/invoices.js
   const [preview, setPreview]     = useState(null);
   const [loading, setLoading]     = useState(false);
@@ -577,7 +627,7 @@ function GenerateSOAModal({ open, onClose, partners, onGenerated }) {
   const soaPartners = partners.filter(p => p.billing_cycle === 'soa');
 
   useEffect(() => {
-    if (open) { setPartnerId(''); setPreview(null); setError(''); setResult(null); setManualCn(''); setMonth(localMonthStr()); }
+    if (open) { setCredits([]); setPartnerId(''); setPreview(null); setError(''); setResult(null); setManualCn(''); setMonth(localMonthStr()); }
   }, [open]);
 
   function periodRange(monthStr) {
@@ -607,6 +657,8 @@ function GenerateSOAModal({ open, onClose, partners, onGenerated }) {
       const label = new Date(start).toLocaleString('default',{month:'long',year:'numeric'});
       const body = { partner_id: partnerId, period_start: start, period_end: end, period_label: label };
       if (manualCn !== '') body.manual_cn_amount = manualCn;
+      const cl = creditsToSend(credits);
+      if (cl.length) body.credits = cl;
       const res = await invoicesApi.generateSOA(body);
       setResult(res);
     } catch(e) { setError(e.message); }
@@ -619,7 +671,7 @@ function GenerateSOAModal({ open, onClose, partners, onGenerated }) {
         <CheckCircle size={48} color="#7fc93e"/>
         <div style={{fontSize:18,fontFamily:"monospace",color:'var(--cream)'}}>{result.invoice_number}</div>
         <div style={{fontSize:28,fontFamily:"'Bebas Neue',sans-serif",color:'#7fc93e',letterSpacing:1}}>{sgd(result.total)}</div>
-        <div style={{fontSize:11,color:'var(--cream-30)'}}>{result.invoices_included} invoice(s) included{result.cn?.amount>0?` · CN credit ${sgd(result.cn.amount)}`:''}</div>
+        <div style={{fontSize:11,color:'var(--cream-30)'}}>{result.invoices_included} invoice(s) included{result.cn?.amount>0?` · CN credit ${sgd(result.cn.amount)}`:''}{result.credits_total>0?` · Credit ${sgd(result.credits_total)}`:''}</div>
         <div style={{display:'flex',gap:10,width:'100%'}}>
           <Btn onClick={async()=>{const full=await invoicesApi.get(result.id);generateSOAPDF(full);}} size="lg" style={{flex:1,justifyContent:'center'}}>
             <Printer size={14}/> Print SOA
@@ -695,8 +747,10 @@ function GenerateSOAModal({ open, onClose, partners, onGenerated }) {
             <div style={{background:'rgba(245,242,235,.04)',border:'1px solid var(--border)',borderRadius:8,padding:'10px 16px',display:'flex',justifyContent:'flex-end',gap:24}}>
               <span style={{fontSize:12,color:'var(--cream-30)'}}>Subtotal: <strong style={{color:'var(--cream)'}}>{sgd(preview.subtotal)}</strong></span>
               {preview.cn?.amount>0 && <span style={{fontSize:12,color:'#7fc93e'}}>CN: <strong>−{sgd(preview.cn.amount)}</strong></span>}
-              <span style={{fontSize:14,color:'var(--cream)'}}>Total: <strong style={{color:'var(--orange)'}}>{sgd(preview.total)}</strong></span>
+              {creditsSum(credits)>0 && <span style={{fontSize:12,color:'#7fc93e'}}>Credit: <strong>−{sgd(creditsSum(credits))}</strong></span>}
+              <span style={{fontSize:14,color:'var(--cream)'}}>Total: <strong style={{color:'var(--orange)'}}>{sgd(preview.total - creditsSum(credits))}</strong></span>
             </div>
+            <CreditLinesEditor lines={credits} setLines={setCredits} cur={cur}/>
           </>
         )}
 

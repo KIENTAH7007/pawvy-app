@@ -805,6 +805,8 @@ function createSchema() {
     "ALTER TABLE sales ADD COLUMN invoice_id INTEGER REFERENCES invoices(id)",
     "ALTER TABLE sales ADD COLUMN do_id INTEGER REFERENCES invoices(id)",
     "ALTER TABLE partners ADD COLUMN billing_cycle TEXT DEFAULT 'per_invoice'",
+    // One-off credit / adjustment lines typed in when generating an Invoice or SOA (Oct 2026)
+    "ALTER TABLE invoice_items ADD COLUMN is_credit INTEGER DEFAULT 0",
   ].forEach(sql => { try { db.run(sql); } catch(e) {} });
 
   // Add discount columns to partners (safe ALTER TABLE — ignored if already exist)

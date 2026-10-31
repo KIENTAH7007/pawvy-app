@@ -22,6 +22,37 @@ module.exports = function(db) {
     return d.toISOString().slice(0,10);
   }
 
+  // ── One-off credit / adjustment lines (Oct 2026, per KT) ────────
+  // Typed in when generating an Invoice or SOA: a free-text description and
+  // an amount to deduct. Stored as invoice_items rows (negative line,
+  // is_credit = 1) and taken off the document total. Nothing here touches
+  // the Vanillapup rebate logic below — with no credits sent, every number
+  // is exactly what it was before.
+  function parseCredits(raw) {
+    if (raw === undefined || raw === null || raw === '') return { credits: [], total: 0 };
+    if (!Array.isArray(raw) || raw.length > 10) return { error: 'Credits must be a list of up to 10 lines.' };
+    const credits = [];
+    for (const c of raw) {
+      const desc = String(c?.description ?? '').trim();
+      const amtRaw = c?.amount;
+      const blank = (amtRaw === undefined || amtRaw === null || amtRaw === '') && !desc;
+      if (blank) continue;
+      const amount = parseFloat(parseFloat(amtRaw).toFixed(2));
+      if (!desc) return { error: 'Each credit line needs a description.' };
+      if (!Number.isFinite(amount) || amount <= 0) return { error: `Credit "${desc.slice(0, 40)}" needs an amount greater than 0.` };
+      credits.push({ description: desc.slice(0, 200), amount });
+    }
+    return { credits, total: parseFloat(credits.reduce((s, c) => s + c.amount, 0).toFixed(2)) };
+  }
+  function insertCreditLines(invoiceId, credits) {
+    credits.forEach(c => {
+      db.run(
+        'INSERT INTO invoice_items (invoice_id, product_id, description, qty, unit_price, line_total, is_credit) VALUES (?,?,?,?,?,?,1)',
+        [invoiceId, null, c.description, 1, -c.amount, -c.amount]
+      );
+    });
+  }
+
   // ── Vanillapup CN tier calculation ──────────────────────────────
   function calcVanillapupCN(partner_id, periodStart, periodEnd) {
     const row = db.queryOne(`
@@ -140,6 +171,8 @@ module.exports = function(db) {
   router.post('/generate-invoice', (req, res) => {
     const { partner_id, sale_ids, notes, invoice_date, outlet_address_id } = req.body;
     if (!partner_id || !sale_ids?.length) return res.status(400).json({ error: 'partner_id and sale_ids required' });
+    const cr = parseCredits(req.body.credits);
+    if (cr.error) return res.status(400).json({ error: cr.error });
 
     const partner = db.queryOne('SELECT * FROM partners WHERE id = ?', [partner_id]);
 
@@ -159,7 +192,7 @@ module.exports = function(db) {
     const discount = sales.reduce((s, row) => s + (row.platform_fee_amt || 0), 0);
     const specialDiscount = sales.reduce((s, row) => s + (row.special_discount_amt || 0), 0);
     const shipping = sales.reduce((s, row) => s + (row.shipping_charged || 0), 0);
-    const total    = parseFloat((subtotal - discount + shipping).toFixed(2));
+    const total    = parseFloat((subtotal - discount + shipping - cr.total).toFixed(2));
 
     // Defaults to today (standard practice: invoice date = when issued), but can be
     // explicitly back-dated by the user to match the underlying order date if preferred.
@@ -182,6 +215,7 @@ module.exports = function(db) {
       );
       db.run('UPDATE sales SET invoice_id = ? WHERE id = ?', [invoiceId, row.id]);
     });
+    insertCreditLines(invoiceId, cr.credits);
 
     res.status(201).json({ ...db.queryOne('SELECT * FROM invoices WHERE id = ?', [invoiceId]), items_count: sales.length });
   });
@@ -260,6 +294,8 @@ module.exports = function(db) {
   router.post('/generate-soa', (req, res) => {
     const { partner_id, period_start, period_end, period_label, notes, manual_cn_amount } = req.body;
     if (!partner_id || !period_start || !period_end) return res.status(400).json({ error: 'partner_id, period_start, period_end required' });
+    const cr = parseCredits(req.body.credits);
+    if (cr.error) return res.status(400).json({ error: cr.error });
 
     const partner = db.queryOne('SELECT * FROM partners WHERE id = ?', [partner_id]);
     if (!partner) return res.status(404).json({ error: 'Partner not found' });
@@ -282,7 +318,7 @@ module.exports = function(db) {
     }
 
     const subtotal = parseFloat(invoicesInPeriod.reduce((s,i) => s + (i.total||0), 0).toFixed(2));
-    const total = parseFloat((subtotal - cn.amount).toFixed(2));
+    const total = parseFloat((subtotal - cn.amount - cr.total).toFixed(2));
 
     const issueDate = localDateStr();
     const due_date  = addDays(issueDate, partner?.credit_term_days || 7);
@@ -307,6 +343,9 @@ module.exports = function(db) {
       );
     }
 
+    // One-off credit lines come right after the Vanillapup CN line (if any), before the invoices
+    insertCreditLines(soaId, cr.credits);
+
     invoicesInPeriod.forEach(inv => {
       db.run(
         'INSERT INTO invoice_items (invoice_id, product_id, description, qty, unit_price, line_total) VALUES (?,?,?,?,?,?)',
@@ -315,7 +354,7 @@ module.exports = function(db) {
       db.run('UPDATE invoices SET included_in_soa_id = ? WHERE id = ?', [soaId, inv.id]);
     });
 
-    res.status(201).json({ ...db.queryOne('SELECT * FROM invoices WHERE id = ?', [soaId]), invoices_included: invoicesInPeriod.length, cn });
+    res.status(201).json({ ...db.queryOne('SELECT * FROM invoices WHERE id = ?', [soaId]), invoices_included: invoicesInPeriod.length, cn, credits_total: cr.total });
   });
 
   // ── PATCH mark paid / unpaid ─────────────────────────────────────
