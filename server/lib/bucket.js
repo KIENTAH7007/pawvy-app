@@ -1,4 +1,4 @@
-const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3');
 const { NodeHttpHandler } = require('@smithy/node-http-handler');
 
 // Wraps the Railway Storage Bucket (S3-compatible — confirmed against
@@ -80,6 +80,21 @@ async function deleteObject(key) {
   await getClient().send(new DeleteObjectCommand({ Bucket: bucketName(), Key: key }));
 }
 
+// Lists objects under a prefix as [{ key, size }] — used by the one-time
+// removal of the old 480px copies (see jobs/removeOldSmallPhotos.js).
+async function listObjects(prefix = '') {
+  const out = [];
+  let token;
+  do {
+    const r = await getClient().send(new ListObjectsV2Command({
+      Bucket: bucketName(), Prefix: prefix || undefined, ContinuationToken: token,
+    }));
+    for (const o of r.Contents || []) out.push({ key: o.Key, size: o.Size || 0 });
+    token = r.IsTruncated ? r.NextContinuationToken : undefined;
+  } while (token);
+  return out;
+}
+
 // Decodes a "data:image/jpeg;base64,AAAA..." string (the format the
 // upload UI already sends) into { buffer, contentType, extension }.
 // Used both by the live upload endpoint and the one-time migration.
@@ -102,4 +117,4 @@ function buildImageKey(folder, id, extension) {
   return { key, url: `/api/uploads/${key}` };
 }
 
-module.exports = { uploadBuffer, getObjectStream, objectExists, deleteObject, decodeDataUrl, buildImageKey };
+module.exports = { uploadBuffer, getObjectStream, objectExists, deleteObject, listObjects, decodeDataUrl, buildImageKey };

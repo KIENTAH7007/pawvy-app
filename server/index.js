@@ -6,6 +6,7 @@ const dns     = require('dns');
 const cron    = require('node-cron');
 const { init, backupNow, getDbPath } = require('./database');
 const { runImageMigration } = require('./jobs/imageMigration');
+const { removeOldSmallPhotos } = require('./jobs/removeOldSmallPhotos');
 const { runDailyDigest } = require('./jobs/dailyDigest');
 const { runDailyBackup } = require('./jobs/backup');
 const { runAutoRestock } = require('./jobs/autoRestock');
@@ -182,6 +183,8 @@ async function startServer() {
     // see the comment at the top of jobs/imageMigration.js for why this
     // runs here and not before app.listen().
     runImageMigration(db).catch(err => console.error('⚠️  Image migration failed:', err.message));
+    // One-time: delete the saved 480px small-photo copies (replaced by 600px) — see the job's header.
+    removeOldSmallPhotos().catch(err => console.error('⚠️  Old 480px photo cleanup failed:', err.message));
   });
 
   // ── Scheduled jobs (Singapore time, DST-free so a fixed cron is safe) ──

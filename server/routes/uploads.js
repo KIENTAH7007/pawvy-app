@@ -26,7 +26,7 @@ module.exports = function() {
     const wantTrim = req.query.trim === '1';
     const size = normalizeSize(req.query.w);
 
-    // ?trim=1[&w=480|1000] — website product photos: border trimmed, square,
+    // ?trim=1[&w=600|1000] — website product photos: border trimmed, square,
     // product bigger (see lib/imageTrim.js). Each result is saved in the
     // bucket under derived/trim-<size>/<key> the first time it is asked for
     // (the original is never touched), so every later request — from any

@@ -10,7 +10,7 @@
 // Speed update (Oct 2026): the work is now (a) done on a downscaled copy,
 // (b) kept as raw pixels between steps instead of encoding/decoding PNGs,
 // (c) limited to a couple of photos at a time so a page full of cold photos
-// can't starve the rest of the app, and (d) available in two sizes (480 for
+// can't starve the rest of the app, and (d) available in two sizes (600 for
 // cards, 1000 for product pages). routes/uploads.js saves each result in the
 // bucket, so this only ever runs once per photo and size.
 //
@@ -24,8 +24,9 @@ try { sharp = require('sharp'); } catch { /* sharp optional: callers fall back t
 const THRESHOLD = 18;      // same tolerance as the Best Sellers PDF
 const MARGIN = 0.04;       // 4% of the longest side, each edge
 const WORK_SIZE = 1600;    // px, longest side of the working copy
-const SIZES = { 480: 82, 1000: 85 };   // allowed output sizes -> JPEG quality
+const SIZES = { 600: 82, 1000: 85 };   // allowed output sizes -> JPEG quality
 const DEFAULT_SIZE = 1000;
+const MIN_SIDE = 600;      // never output smaller than this (Google wants images of at least 500 x 500 px)
 const CACHE_MAX = 300;     // results kept in memory as a fast first layer
 
 const cache = new Map();   // key -> { buf, type } (insertion-ordered = simple LRU)
@@ -54,7 +55,8 @@ function release() {
 }
 
 function normalizeSize(size) {
-  const n = parseInt(size, 10);
+  let n = parseInt(size, 10);
+  if (n === 480) n = 600; // the old small size — older page versions may still ask for it
   return SIZES[n] ? n : DEFAULT_SIZE;
 }
 
@@ -117,9 +119,11 @@ async function build(buffer, size) {
       .raw()
       .toBuffer({ resolveWithObject: true });
 
-    // 4) Final size + JPEG.
+    // 4) Final size + JPEG. Normally never enlarged, except up to MIN_SIDE so
+    // that even a small source photo is delivered at least MIN_SIDE x MIN_SIDE.
+    const target = Math.max(Math.min(size, padded.info.width), MIN_SIDE);
     const out = await rawOf(padded.data, padded.info.width, padded.info.height)
-      .resize({ width: size, height: size, fit: 'inside', withoutEnlargement: true })
+      .resize({ width: target, height: target, fit: 'fill' })
       .jpeg({ quality: SIZES[size], mozjpeg: false })
       .toBuffer();
     return { buf: out, type: 'image/jpeg' };
