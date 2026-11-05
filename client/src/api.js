@@ -225,6 +225,12 @@ export const restockApi = {
   complete: (id) => api.post(`/restock/${id}/complete`, {}),
 };
 
+export const backupApi = {
+  status:  () => api.get('/backup/status'),
+  confirm: () => api.post('/backup/confirm', {}),
+  download: () => api.downloadFile('/backup/download'),
+};
+
 export const authApi = {
   login:  (pin) => api.post('/auth/login', { pin }),
   logout: ()    => api.post('/auth/logout', {}),

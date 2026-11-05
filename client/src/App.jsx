@@ -6,7 +6,7 @@ import {
   ShoppingBag, Menu, X, Inbox, Truck, Coins, FolderOpen, Scale, ListChecks,
   Calculator, LogOut, UserCircle, MessageSquare, Megaphone
 } from 'lucide-react';
-import { ordersApi, authApi } from './api';
+import { ordersApi, authApi, backupApi } from './api';
 
 import Dashboard      from './pages/Dashboard';
 import Sales          from './pages/Sales';
@@ -29,6 +29,7 @@ import VarianceLedger from './pages/VarianceLedger';
 import Customers      from './pages/Customers';
 import Enquiries      from './pages/Enquiries';
 import Marketing      from './pages/Marketing';
+import SettingsPage   from './pages/Settings';
 
 import { PAWVY_LOGO_WHITE } from './pawvyLogo.js';
 
@@ -88,6 +89,17 @@ function Sidebar({ open, onClose }) {
   const loc      = useLocation();
   const isMobile = useIsMobile();
   const [pendingCount, setPendingCount] = useState(0);
+  const [backupOverdue, setBackupOverdue] = useState(false);
+
+  // Backup reminder: "Settings" turns amber when no backup has been downloaded for 7+ days.
+  useEffect(() => {
+    function check() { backupApi.status().then(s => setBackupOverdue(!!s.overdue)).catch(() => {}); }
+    check();
+    const t = setInterval(check, 10 * 60 * 1000);
+    window.addEventListener('pawvy:backup-updated', check);
+    return () => { clearInterval(t); window.removeEventListener('pawvy:backup-updated', check); };
+  }, []);
+  const settingsActive = loc.pathname.startsWith('/settings');
 
   useEffect(() => {
     function refresh() { ordersApi.list({ status: 'pending' }).then(o => setPendingCount(o.length)).catch(() => {}); }
@@ -182,9 +194,16 @@ function Sidebar({ open, onClose }) {
 
         {/* Bottom */}
         <div style={{ padding:'10px 8px', borderTop:'1px solid var(--border)' }}>
-          <div style={{ display:'flex', alignItems:'center', gap:9, padding:'8px', fontSize:12, fontWeight:500, color:'var(--cream-30)', borderRadius:7, cursor:'pointer' }}>
-            <Settings size={15} /> Settings
-          </div>
+          <NavLink to="/settings" onClick={isMobile ? onClose : undefined} style={{ textDecoration:'none' }}>
+            <div title={backupOverdue ? 'Backup overdue — open Settings to download one' : undefined} style={{
+              display:'flex', alignItems:'center', gap:9, padding:'8px', fontSize:12, fontWeight:backupOverdue ? 700 : 500,
+              color: backupOverdue ? '#f5a524' : (settingsActive ? 'var(--orange)' : 'var(--cream-30)'),
+              background: settingsActive ? 'rgba(243,111,74,.09)' : 'transparent', borderRadius:7, cursor:'pointer',
+            }}>
+              <Settings size={15} /> Settings
+              {backupOverdue && <span style={{ marginLeft:'auto', width:8, height:8, borderRadius:'50%', background:'#f5a524' }}/>}
+            </div>
+          </NavLink>
           <div onClick={async()=>{ try{await authApi.logout();}catch(e){} localStorage.removeItem('pawvy_auth_token'); localStorage.removeItem('pawvy_auth_expires'); window.location.reload(); }}
             style={{ display:'flex', alignItems:'center', gap:9, padding:'8px', fontSize:12, fontWeight:500, color:'var(--cream-30)', borderRadius:7, cursor:'pointer' }}>
             <LogOut size={15} /> Log Out
@@ -282,6 +301,7 @@ export default function App() {
             <Route path="/marketing"     element={<Marketing />} />
             <Route path="/costs"         element={<Costs />} />
             <Route path="/reports"       element={<Reports />} />
+            <Route path="/settings"      element={<SettingsPage />} />
           </Routes>
         </main>
       </div>

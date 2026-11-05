@@ -116,6 +116,8 @@ async function startServer() {
   app.use('/api/waitlist',         require('./routes/waitlist')(db));
   app.use('/api/admin-waitlist',   require('./routes/waitlistAdmin')(db));
   app.use('/api/public-content', require('./routes/publicContent')(db));
+  // Staff-only (PIN-gated — deliberately NOT in the public list above): download a copy of the database.
+  app.use('/api/backup',         require('./routes/backup')(db, backupNow, getDbPath));
 
   // Stripe client for website checkout (card + PayNow). STRIPE_SECRET_KEY
   // must be set on Railway — see DEPLOY.md. Constructing the client here
