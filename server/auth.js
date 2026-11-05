@@ -15,22 +15,49 @@ function endOfTodaySGT() {
 }
 
 module.exports = function(db) {
-  // In-memory brute-force guard, keyed by IP. Resets on server restart —
-  // acceptable tradeoff for a 4-digit PIN meant to deter casual access,
-  // not withstand a sustained attack from a fixed IP across restarts.
+  // In-memory brute-force guards. Reset on server restart — acceptable for a
+  // 4-digit PIN meant to keep casual/automated guessing out.
+  //   1) Per IP: 5 wrong PINs from one address -> that address is locked 15 min.
+  //   2) Global: 10 wrong PINs from ANYONE within 15 min -> PIN login is paused
+  //      for everybody for 15 min. This is what stops an attacker who rotates
+  //      addresses; with 10,000 possible PINs it caps guessing at ~960/day.
+  //      Trade-off: someone hammering wrong PINs can briefly lock staff out too.
   const failedAttempts = new Map();
   const MAX_ATTEMPTS = 5;
   const LOCKOUT_MS = 15 * 60 * 1000;
+  const GLOBAL_MAX_FAILS = 10;
+  const GLOBAL_WINDOW_MS = 15 * 60 * 1000;
+  let globalFails = [];          // timestamps of recent wrong PINs (any address)
+  let globalLockedUntil = 0;
 
+  // The visitor controls the FIRST entries of X-Forwarded-For (they can send any
+  // value), but Railway's proxy appends the address it actually saw as the LAST
+  // entry — that is the only one we can trust.
   function clientIp(req) {
-    return req.headers['x-forwarded-for']?.split(',')[0].trim() || req.ip || req.connection?.remoteAddress || 'unknown';
+    const xff = req.headers['x-forwarded-for'];
+    if (xff) {
+      const parts = String(xff).split(',').map(x => x.trim()).filter(Boolean);
+      if (parts.length) return parts[parts.length - 1];
+    }
+    return req.ip || req.connection?.remoteAddress || 'unknown';
+  }
+
+  function pinMatches(given, correct) {
+    const a = Buffer.from(String(given || ''));
+    const b = Buffer.from(String(correct));
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
   }
 
   function login(req, res) {
+    const now = Date.now();
+    if (now < globalLockedUntil) {
+      const waitMin = Math.ceil((globalLockedUntil - now) / 60000);
+      return res.status(429).json({ error: `Too many incorrect PIN attempts. Login is paused — try again in ${waitMin} minute(s).` });
+    }
     const ip = clientIp(req);
     const attempt = failedAttempts.get(ip);
-    if (attempt?.lockedUntil && Date.now() < attempt.lockedUntil) {
-      const waitMin = Math.ceil((attempt.lockedUntil - Date.now()) / 60000);
+    if (attempt?.lockedUntil && now < attempt.lockedUntil) {
+      const waitMin = Math.ceil((attempt.lockedUntil - now) / 60000);
       return res.status(429).json({ error: `Too many incorrect attempts. Try again in ${waitMin} minute(s).` });
     }
 
@@ -40,11 +67,15 @@ module.exports = function(db) {
     }
 
     const { pin } = req.body;
-    if (String(pin || '') !== String(correctPin)) {
+    if (!pinMatches(pin, correctPin)) {
+      globalFails = globalFails.filter(t => now - t < GLOBAL_WINDOW_MS);
+      globalFails.push(now);
+      if (globalFails.length >= GLOBAL_MAX_FAILS) { globalLockedUntil = now + LOCKOUT_MS; globalFails = []; }
+      if (failedAttempts.size > 5000) failedAttempts.clear();
       const prev = failedAttempts.get(ip) || { count: 0 };
       prev.count += 1;
       if (prev.count >= MAX_ATTEMPTS) {
-        failedAttempts.set(ip, { count: 0, lockedUntil: Date.now() + LOCKOUT_MS });
+        failedAttempts.set(ip, { count: 0, lockedUntil: now + LOCKOUT_MS });
       } else {
         failedAttempts.set(ip, prev);
       }

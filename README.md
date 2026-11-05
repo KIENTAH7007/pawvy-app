@@ -1,36 +1,33 @@
-# Pawvy App – 600px Photos (simplified; replaces the earlier "600px Photos and Storage Cleanup" App zip)
+# Pawvy App - PIN Login Protection
 
-## What it does
-1. Small product photos are now 600 x 600 px (was 480). Large ones stay 1000 x 1000. Nothing is delivered smaller than 600 x 600
-   (a small original is enlarged to 600). Older website pages that still ask for the 480 size automatically get the 600 version.
-   The 600 copies are created the first time each photo is viewed.
-2. The saved 480 x 480 copies (derived/trim-480/ only) are deleted automatically, once, a few seconds after the App starts.
-   Nothing else is deleted: originals, the 1000 px copies, banners, Instagram and everything else stay exactly as they are.
-   After the first run it does nothing. The Railway log shows a line "Removed N old 480px photo copies".
-3. No clean-up screen, no database change.
+**What changes (1 file):** `server/auth.js`
+- Wrong-PIN counting now uses the visitor's REAL address (the old way could be fooled with a fake header, so the lockout never triggered).
+- New global limit: 10 wrong PINs from anyone within 15 minutes pauses PIN login for everybody for 15 minutes.
+- Still 5 wrong PINs from one address = that address locked 15 minutes. PIN stays 4 digits. Nothing else changes.
 
-## Deploy order
-App first, then Website ("Pawvy Website - 600px Photos.zip", unchanged from before).
+**If you ever get locked out** (someone else guessing, or too many typos): wait 15 minutes, or in Railway open pawvy-app, then Deployments, then Restart. The counters live in memory, so a restart clears them.
 
-## Git steps (staging)
+Only App changes. No Website zip needed.
+
+## 1) Staging
 ```
 cd pawvy-app
 git checkout staging
 git pull origin staging
 ```
-Copy these files from this folder into the repo, keeping the folders (NOT README.md, NOT the zip):
-server/index.js, server/lib/bucket.js, server/lib/imageTrim.js, server/routes/uploads.js, server/jobs/removeOldSmallPhotos.js (new)
+Copy `server/auth.js` from this zip into your repo's `server/` folder (overwrite). Do not copy this README or the zip.
 ```
 git add -A
-git commit -m "Small product photos 600px, remove old 480px copies"
+git commit -m "PIN login: real IP + global limit"
 git push origin staging
 ```
+Check on staging: log in with the correct PIN (works), then try a wrong PIN once and the right one again (still works).
+Please do NOT test the lockout on production with many wrong PINs, or you will pause login for 15 minutes.
 
-## Git steps (merge to main)
+## 2) Merge to main (production)
 ```
 git checkout main
 git pull origin main
 git merge staging
 git push origin main
 ```
-Wait for the Railway deploy to go green. The 480 copies are removed on that start (on staging when staging deploys, on production when main deploys).
