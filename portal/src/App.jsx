@@ -49,7 +49,8 @@ export default function App() {
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
-  const [email, setEmail] = useState(() => { try { return localStorage.getItem(EMAIL_KEY) || ''; } catch (e) { return ''; } });
+  // Email is no longer remembered; clear any value saved by an earlier version on this device.
+  const [email, setEmail] = useState(() => { try { localStorage.removeItem(EMAIL_KEY); } catch (e) {} return ''; });
   const [prompt, setPrompt] = useState(null); // null | 'foc' | 'rebate'
   const [sentPdf, setSentPdf] = useState(null);
   const [sentAt, setSentAt] = useState('');
@@ -158,7 +159,6 @@ export default function App() {
         email: email.trim() || null,
         items: cartLines.map(l => ({ product_id: l.product.id, qty: l.qty, source: l.source })),
       });
-      try { if (email.trim()) localStorage.setItem(EMAIL_KEY, email.trim()); } catch (e) {}
       setSentEmail(email.trim());
       setSentPdf(res && res.pdf_base64 ? res.pdf_base64 : null);
       setSentAt(new Date().toLocaleString('en-SG', { timeZone: 'Asia/Singapore', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }));
@@ -400,7 +400,6 @@ export default function App() {
                     type="email"
                     value={email}
                     onChange={e => setEmail(e.target.value)}
-                    placeholder="you@yourshop.com"
                     style={fieldInputStyle}
                   />
                 </Field>

@@ -1,15 +1,17 @@
-# Pawvy App - Order Sent Frame
+# Pawvy App - Portal Email Field
 
-One complete file: portal/src/App.jsx. Only the ORDER SENT screen changes: the order list now sits on a cream frame with a soft shadow so the navy header no longer blends into the page. Nothing else is touched.
+One complete file: portal/src/App.jsx.
+- The portal no longer remembers the email address (any address saved earlier on a device is cleared the next time the portal opens).
+- The grey "you@yourshop.com" hint is removed from the email field.
 
 ## 1. Test on staging
 cd pawvy-app
 git checkout staging
 git pull
-git merge main   # staging should include the order-list redesign already merged to main
-# copy portal/src/App.jsx from this zip into the repo (replace the file), then:
+git merge main
+# replace portal/src/App.jsx with the file from this zip, then:
 git add portal/src/App.jsx
-git commit -m "Order Portal: cream frame around ORDER SENT document"
+git commit -m "Order Portal: do not remember email, remove email placeholder"
 git push origin staging
 
 ## 2. After you are happy, merge to main
