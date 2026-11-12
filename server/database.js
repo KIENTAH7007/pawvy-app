@@ -1247,6 +1247,13 @@ function createSchema() {
   try { db.run("ALTER TABLE operating_costs ADD COLUMN fx_rate REAL"); } catch(e) {}
   // Order Portal: which market link the order came through (SG link vs MY link at /order/my)
   try { db.run("ALTER TABLE portal_orders ADD COLUMN market TEXT DEFAULT 'SG'"); } catch(e) {}
+  // Nov 2026: Order Portal delivery nudge + emailed copy. order_subtotal = the order amount at
+  // wholesale prices as the SERVER calculated it at submission; below_foc = 1 when that was under
+  // the free-delivery amount (SG $200 / MY RM600); contact_email = optional address for the
+  // partner's emailed copy. Old orders keep NULL/0 — nothing existing is touched.
+  try { db.run("ALTER TABLE portal_orders ADD COLUMN order_subtotal REAL"); } catch(e) {}
+  try { db.run("ALTER TABLE portal_orders ADD COLUMN below_foc INTEGER DEFAULT 0"); } catch(e) {}
+  try { db.run("ALTER TABLE portal_orders ADD COLUMN contact_email TEXT"); } catch(e) {}
   // West / East Malaysia — shipping zone for MY partners (shows the right
   // free-delivery reminder in Pending Orders). Separate from partners.region,
   // which is the SG region tag for the public Stockist page.

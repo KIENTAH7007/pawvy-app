@@ -117,7 +117,7 @@ async function notifyBackupEmail(subject, text, attachmentPath, attachmentName) 
 // Fire-and-forget from the caller's perspective — both channels are
 // independently try/caught above, so a Telegram or email outage never
 // blocks or slows down the actual order submission response.
-function notifyNewPortalOrder({ orderId, companyName, notes, lines, market }) {
+function notifyNewPortalOrder({ orderId, companyName, notes, lines, market, belowFoc }) {
   const mk = market === 'MY' ? ' 🇲🇾 [MY]' : '';
   const itemLines = lines.map(l => `• ${l.qty}x ${l.name}`).join('\n');
   const itemCount = lines.reduce((s, l) => s + l.qty, 0);
@@ -125,6 +125,7 @@ function notifyNewPortalOrder({ orderId, companyName, notes, lines, market }) {
   const telegramText =
     `🐾 *New Order Portal order!*${mk}\n` +
     `Company: ${companyName}\n` +
+    (belowFoc ? `⚠️ Below FOC delivery — a delivery fee may need to be added.\n` : '') +
     `${lines.length} SKU${lines.length === 1 ? '' : 's'}, ${itemCount} unit${itemCount === 1 ? '' : 's'} total:\n` +
     `${itemLines}` +
     (notes ? `\nNotes: ${notes}` : '') +
@@ -133,11 +134,13 @@ function notifyNewPortalOrder({ orderId, companyName, notes, lines, market }) {
   const emailSubject = `New Order Portal submission${mk} — ${companyName}`;
   const emailText =
     `New order received from ${companyName}.\n\n` +
+    (belowFoc ? `BELOW FOC delivery — a delivery fee may need to be added.\n\n` : '') +
     `${itemLines}` +
     (notes ? `\n\nNotes: ${notes}` : '') +
     `\n\nOrder #${orderId} — review and approve it in Pending Orders.`;
   const emailHtml =
     `<p>New order received from <strong>${companyName}</strong>.</p>` +
+    (belowFoc ? `<p><strong>⚠️ Below FOC delivery</strong> — a delivery fee may need to be added.</p>` : '') +
     `<ul>${lines.map(l => `<li>${l.qty}x ${l.name}</li>`).join('')}</ul>` +
     (notes ? `<p><em>Notes: ${notes}</em></p>` : '') +
     `<p>Order #${orderId} — review and approve it in Pending Orders.</p>`;

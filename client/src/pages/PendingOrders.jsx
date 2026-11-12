@@ -365,6 +365,12 @@ export default function PendingOrders() {
                     <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--cream)', display: 'flex', alignItems: 'center', gap: 8 }}>
                       {order.company_name}
                       <MarketBadge market={order.market}/>
+                      {order.below_foc ? (
+                        <span title="Order was below the free-delivery amount — add a delivery fee if applicable"
+                          style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: .5, color: '#f5a524', background: 'rgba(245,165,36,.12)', border: '1px solid rgba(245,165,36,.4)', borderRadius: 4, padding: '2px 6px' }}>
+                          BELOW FOC
+                        </span>
+                      ) : null}
                       {order.voided_at && (
                         <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: .5, color: '#f87171', background: 'rgba(248,113,113,.12)', border: '1px solid rgba(248,113,113,.3)', borderRadius: 4, padding: '2px 6px' }}>
                           VOIDED

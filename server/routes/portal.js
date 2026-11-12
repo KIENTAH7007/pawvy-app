@@ -1,5 +1,6 @@
 const { Router } = require('express');
 const { notifyNewPortalOrder } = require('../utils/notify');
+const { sendPortalOrderCopy } = require('../lib/portalOrderEmail');
 const { withEffectivePrice } = require('../lib/pricing');
 const { localDateStr } = require('../utils/dates');
 
@@ -142,12 +143,24 @@ module.exports = function(db) {
     const { company_name, notes, items } = req.body;
     const mk = String(req.body.market || '').toUpperCase() === 'MY' ? 'MY' : 'SG';
 
+    // Optional email for the partner's copy of their order. Blank is fine; a typo is caught here
+    // so they can fix it instead of silently never getting the copy.
+    const contactEmail = String(req.body.email || '').trim().slice(0, 200);
+    if (contactEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) {
+      return res.status(400).json({ error: 'That email address doesn\'t look right — please check it, or leave it blank.' });
+    }
+
     if (!company_name || !String(company_name).trim()) {
       return res.status(400).json({ error: 'Company name is required.' });
     }
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'Add at least one item to your order.' });
     }
+
+    // Order amount at wholesale prices, calculated HERE from the database (never trusted from the
+    // browser). Used for the "Below FOC" flag, the Pending Orders tag and the emailed copy.
+    let subtotalCents = 0;
+    const emailLines = [];
 
     // Validate every line: product must exist, be active, have qty > 0,
     // and not be out of stock (defense in depth — the portal UI already blocks this).
@@ -157,7 +170,7 @@ module.exports = function(db) {
         return res.status(400).json({ error: 'Each item needs a valid product and quantity.' });
       }
       const product = db.queryOne(`
-        SELECT p.id, p.is_active, p.item_series, p.variation, p.price_wholesale_my,
+        SELECT p.id, p.is_active, p.item_series, p.variation, p.price_wholesale_my, p.price_wholesale_sg,
           COALESCE(mega.qty, 0) + COALESCE(hougang.qty, 0) AS total_qty
         FROM products p
         LEFT JOIN inventory_levels mega    ON mega.product_id = p.id    AND mega.location    = 'Mega'
@@ -185,12 +198,19 @@ module.exports = function(db) {
           error: `Only ${product.total_qty} unit${product.total_qty === 1 ? '' : 's'} of "${name}" ${product.total_qty === 1 ? 'is' : 'are'} currently available. Please adjust the quantity and try again.`
         });
       }
+      const unit = Number(mk === 'MY' ? product.price_wholesale_my : product.price_wholesale_sg) || 0;
+      subtotalCents += Math.round(unit * 100) * qty;
+      emailLines.push({ name: `${product.item_series}${product.variation ? ' · ' + product.variation : ''}`, qty, unit });
     }
 
+    const FOC_CENTS = (mk === 'MY' ? 600 : 200) * 100;   // FOC delivery from SGD 200 / MYR 600 (>=)
+    const subtotal = subtotalCents / 100;
+    const belowFoc = subtotalCents < FOC_CENTS ? 1 : 0;
+
     const orderResult = db.run(`
-      INSERT INTO portal_orders (company_name, notes, status, market)
-      VALUES (?, ?, 'pending', ?)
-    `, [String(company_name).trim(), notes || null, mk]);
+      INSERT INTO portal_orders (company_name, notes, status, market, order_subtotal, below_foc, contact_email)
+      VALUES (?, ?, 'pending', ?, ?, ?, ?)
+    `, [String(company_name).trim(), notes || null, mk, subtotal, belowFoc, contactEmail || null]);
 
     const portalOrderId = orderResult.lastID;
     for (const line of items) {
@@ -217,11 +237,25 @@ module.exports = function(db) {
         orderId: portalOrderId,
         companyName: String(company_name).trim(),
         market: mk,
+        belowFoc: !!belowFoc,
         notes: notes || null,
         lines: items.map(l => ({ qty: parseInt(l.qty), name: nameById[l.product_id] || `Product #${l.product_id}` })),
       });
     } catch (err) {
       console.error('⚠️  Failed to build/send new-order notification:', err.message);
+    }
+
+    // Partner's emailed copy — fire-and-forget AFTER the order is saved. sendCustomerEmail swallows
+    // its own errors, and this is wrapped too, so it can never affect the order or the response.
+    if (contactEmail) {
+      try {
+        Promise.resolve(sendPortalOrderCopy({
+          to: contactEmail, companyName: String(company_name).trim(), market: mk,
+          notes: notes || null, lines: emailLines, subtotal,
+        })).catch(err => console.error('⚠️  Portal order copy email failed:', err.message));
+      } catch (err) {
+        console.error('⚠️  Portal order copy email failed:', err.message);
+      }
     }
 
     res.status(201).json({ ok: true, order_id: portalOrderId });

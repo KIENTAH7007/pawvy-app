@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { Search, ShoppingCart, ArrowLeft, CheckCircle2, Loader2, ImageOff } from 'lucide-react'
-import { portalApi, MARKET, CURRENCY } from './api.js'
+import { portalApi, MARKET, CURRENCY, FOC_AMOUNT, MONEY_SYMBOL } from './api.js'
 import { PAWVY_LOGO_WHITE } from './pawvyLogo.js'
 import ProductCard from './ProductCard.jsx'
 import QtyStepper from './QtyStepper.jsx'
@@ -13,6 +13,26 @@ function useIsMobile() {
     return () => window.removeEventListener('resize', h);
   }, []);
   return mobile;
+}
+
+const money = (n) => `${MONEY_SYMBOL}${Number(n).toFixed(2)}`;
+const EMAIL_KEY = 'pawvy_portal_email';
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Free-delivery + rebate status for an order amount, worked out in whole cents so edge cases like
+// 399.99 → "add 0.01" are exact. Rules (all ">="): FOC delivery from 200 (SG) / 600 (MY);
+// SG cash rebate 12 from 400, 30 from 600. Nudges: 350.00–399.99 → add for the 12 rebate,
+// 550.00–599.99 → add for the 30 rebate. MY has no rebate tiers.
+function deliveryStatus(cents) {
+  const focCents = FOC_AMOUNT * 100;
+  const out = { focOk: cents >= focCents, focNeed: Math.max(0, focCents - cents) / 100, ticks: [], nudge: null };
+  if (!out.focOk) return out;
+  if (MARKET === 'MY') return out;
+  if (cents >= 60000) out.ticks.push('S$30 cash rebate unlocked');
+  else if (cents >= 40000) out.ticks.push('S$12 cash rebate unlocked');
+  if (cents >= 35000 && cents < 40000) out.nudge = { amount: (40000 - cents) / 100, rebate: 'S$12' };
+  else if (cents >= 55000 && cents < 60000) out.nudge = { amount: (60000 - cents) / 100, rebate: 'S$30' };
+  return out;
 }
 
 export default function App() {
@@ -29,6 +49,9 @@ export default function App() {
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  const [email, setEmail] = useState(() => { try { return localStorage.getItem(EMAIL_KEY) || ''; } catch (e) { return ''; } });
+  const [showFocPrompt, setShowFocPrompt] = useState(false);
+  const [sentEmail, setSentEmail] = useState('');
 
   useEffect(() => {
     portalApi.getCatalogue()
@@ -77,6 +100,13 @@ export default function App() {
 
   const cartCount = cartLines.reduce((s, l) => s + l.qty, 0);
   const cartSubtotal = cartLines.reduce((s, l) => s + l.qty * (l.product.price_wholesale || 0), 0);
+  const cartCents = cartLines.reduce((s, l) => s + Math.round((l.product.price_wholesale || 0) * 100) * l.qty, 0);
+  const dStatus = deliveryStatus(cartCents);
+
+  function scrollToTopSellers() {
+    const el = document.getElementById('top-sellers');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
 
   // source defaults to 'catalogue'; the upsell grid passes 'upsell' explicitly.
   // If a product's already in the cart, the ORIGINAL source is kept even if
@@ -105,16 +135,28 @@ export default function App() {
     });
   }
 
-  async function handleSubmit() {
+  // Validate, then — if the order is below the free-delivery amount — ask first (pop-up) before sending.
+  function handleSubmit() {
     if (!companyName.trim()) { setSubmitError('Please enter your company name.'); return; }
     if (cartLines.length === 0) { setSubmitError('Your cart is empty.'); return; }
+    if (email.trim() && !EMAIL_RE.test(email.trim())) { setSubmitError("That email address doesn't look right — please check it, or leave it blank."); return; }
+    setSubmitError('');
+    if (!dStatus.focOk) { setShowFocPrompt(true); return; }
+    doSubmit();
+  }
+
+  async function doSubmit() {
+    setShowFocPrompt(false);
     setSubmitting(true); setSubmitError('');
     try {
       await portalApi.submitOrder({
         company_name: companyName.trim(),
         notes: notes.trim() || null,
+        email: email.trim() || null,
         items: cartLines.map(l => ({ product_id: l.product.id, qty: l.qty, source: l.source })),
       });
+      try { if (email.trim()) localStorage.setItem(EMAIL_KEY, email.trim()); } catch (e) {}
+      setSentEmail(email.trim());
       setView('success');
     } catch (e) {
       setSubmitError(e.message);
@@ -145,13 +187,36 @@ export default function App() {
   if (view === 'success') {
     return (
       <Centered>
-        <div style={{ textAlign: 'center', maxWidth: 360, padding: 24 }}>
-          <CheckCircle2 size={48} style={{ color: '#7fc93e', marginBottom: 16 }} />
-          <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 28, letterSpacing: 1, marginBottom: 8 }}>ORDER SENT</div>
-          <div style={{ fontSize: 13.5, color: 'rgba(245,242,235,.6)', lineHeight: 1.6 }}>
-            Thanks — we've received your order. Applicable discounts will be reflected in your invoice.
-            We'll be in touch shortly.
+        <style>{`@media print { body * { visibility: hidden; } #order-copy, #order-copy * { visibility: visible; color: #000 !important; } #order-copy { position: absolute; left: 0; top: 0; width: 100%; background: #fff; padding: 24px; } .no-print { display: none !important; } }`}</style>
+        <div style={{ textAlign: 'center', maxWidth: 400, width: '100%', padding: 24 }}>
+          <div id="order-copy">
+            <CheckCircle2 size={48} style={{ color: '#7fc93e', marginBottom: 16 }} />
+            <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 28, letterSpacing: 1, marginBottom: 8 }}>ORDER SENT</div>
+            <div style={{ fontSize: 13.5, color: 'rgba(245,242,235,.6)', lineHeight: 1.6 }}>
+              Thanks — we've received your order.
+              {sentEmail && <> A copy has been emailed to <strong style={{ color: 'var(--cream)' }}>{sentEmail}</strong>.</>}
+            </div>
+            <div style={{ textAlign: 'left', marginTop: 18 }}>
+              {cartLines.map(l => (
+                <div key={l.product.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 12, padding: '8px 0', borderBottom: '1px solid rgba(245,242,235,.12)', color: 'rgba(245,242,235,.6)' }}>
+                  <span>{l.product.brand_name} · {l.product.item_series}{l.product.variation ? ` · ${l.product.variation}` : ''} ×{l.qty} · {money(l.product.price_wholesale || 0)}</span>
+                  <strong style={{ color: 'var(--cream)', whiteSpace: 'nowrap' }}>{money((l.product.price_wholesale || 0) * l.qty)}</strong>
+                </div>
+              ))}
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '10px 0', color: 'rgba(245,242,235,.6)' }}>
+                <span>Subtotal</span><strong style={{ color: 'var(--cream)' }}>{money(cartCents / 100)}</strong>
+              </div>
+              {notes.trim() && (
+                <div style={{ fontSize: 11.5, color: 'rgba(245,242,235,.5)', marginBottom: 8 }}><strong>Notes:</strong> {notes.trim()}</div>
+              )}
+              <div style={{ fontSize: 11, color: 'rgba(245,242,235,.35)', lineHeight: 1.5 }}>
+                Applicable discounts and any delivery fee will be reflected in your invoice. We'll be in touch shortly.
+              </div>
+            </div>
           </div>
+          <button className="no-print" onClick={() => window.print()} style={{ marginTop: 16, width: '100%', height: 42, borderRadius: 10, border: 'none', background: 'rgba(245,242,235,.1)', color: 'var(--cream)', fontSize: 13.5, fontWeight: 700, cursor: 'pointer' }}>
+            Save / print this list
+          </button>
         </div>
       </Centered>
     );
@@ -208,6 +273,28 @@ export default function App() {
                 <strong style={{ color: 'var(--cream)' }}>{CURRENCY} {cartSubtotal.toFixed(2)}</strong>
               </div>
 
+              {!dStatus.focOk ? (
+                <div style={{ borderRadius: 10, padding: 12, fontSize: 12.5, lineHeight: 1.5, background: 'rgba(245,165,36,.1)', border: '1px solid rgba(245,165,36,.5)', color: '#ffd48a' }}>
+                  Add <strong>{money(dStatus.focNeed)}</strong> more to get <strong>FOC delivery</strong>.
+                  {topSellers.length > 0 && (
+                    <div><button onClick={scrollToTopSellers} style={{ background: 'none', border: 'none', padding: 0, marginTop: 4, color: 'var(--orange)', fontWeight: 700, fontSize: 12.5, textDecoration: 'underline', cursor: 'pointer' }}>See our top sellers ↓</button></div>
+                  )}
+                </div>
+              ) : (
+                <div style={{ borderRadius: 10, padding: 12, fontSize: 12.5, lineHeight: 1.6, background: 'rgba(127,201,62,.1)', border: '1px solid rgba(127,201,62,.45)', color: '#b9e68a' }}>
+                  <div>✓ Free delivery unlocked</div>
+                  {dStatus.ticks.map(t => <div key={t}>✓ {t}</div>)}
+                  {dStatus.nudge && (
+                    <div style={{ marginTop: 2 }}>
+                      Add <strong>{money(dStatus.nudge.amount)}</strong> more to get a <strong>{dStatus.nudge.rebate} cash rebate</strong>.
+                      {topSellers.length > 0 && (
+                        <div><button onClick={scrollToTopSellers} style={{ background: 'none', border: 'none', padding: 0, marginTop: 4, color: 'var(--orange)', fontWeight: 700, fontSize: 12.5, textDecoration: 'underline', cursor: 'pointer' }}>See our top sellers ↓</button></div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div style={{
                 marginTop: 4, marginBottom: 4, padding: 14,
                 border: '1px solid rgba(245,242,235,.1)', borderRadius: 10, background: 'rgba(245,242,235,.03)',
@@ -216,7 +303,7 @@ export default function App() {
                 {MARKET === 'MY' ? (
                   <>
                     <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      <li style={{ fontSize: 12, color: 'rgba(245,242,235,.75)' }}>West Malaysia: order above MYR 600 — free delivery</li>
+                      <li style={{ fontSize: 12, color: 'rgba(245,242,235,.75)' }}>West Malaysia: order MYR 600 and above — free delivery</li>
                       <li style={{ fontSize: 12, color: 'rgba(245,242,235,.75)' }}>West Malaysia: order below MYR 600 — MYR 25 delivery fee</li>
                     </ul>
                     <div style={{ fontSize: 10.5, color: 'rgba(245,242,235,.35)', marginTop: 8 }}>
@@ -226,9 +313,9 @@ export default function App() {
                 ) : (
                   <>
                     <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      <li style={{ fontSize: 12, color: 'rgba(245,242,235,.75)' }}>Order &gt; $200 — FOC Delivery</li>
-                      <li style={{ fontSize: 12, color: 'rgba(245,242,235,.75)' }}>Order &gt; $400 — Cash rebate $12 off</li>
-                      <li style={{ fontSize: 12, color: 'rgba(245,242,235,.75)' }}>Order &gt; $600 — Cash rebate $30 off</li>
+                      <li style={{ fontSize: 12, color: 'rgba(245,242,235,.75)' }}>Order $200 and above — FOC Delivery</li>
+                      <li style={{ fontSize: 12, color: 'rgba(245,242,235,.75)' }}>Order $400 and above — Cash rebate $12 off</li>
+                      <li style={{ fontSize: 12, color: 'rgba(245,242,235,.75)' }}>Order $600 and above — Cash rebate $30 off</li>
                     </ul>
                     <div style={{ fontSize: 10.5, color: 'rgba(245,242,235,.35)', marginTop: 8 }}>
                       *Relevant discount (where applicable) will be reflected in the invoice directly.
@@ -246,6 +333,15 @@ export default function App() {
                     style={fieldInputStyle}
                   />
                 </Field>
+                <Field label="Email (optional) — send me a copy of this order">
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    placeholder="you@yourshop.com"
+                    style={fieldInputStyle}
+                  />
+                </Field>
                 <Field label="Notes (optional)">
                   <textarea
                     value={notes}
@@ -258,7 +354,7 @@ export default function App() {
               </div>
 
               {topSellers.length > 0 && (
-                <div style={{ marginTop: 14 }}>
+                <div id="top-sellers" style={{ marginTop: 14, scrollMarginTop: 70 }}>
                   <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--cream)', marginBottom: 3 }}>
                     🔥 Our Top Sellers
                   </div>
@@ -302,13 +398,28 @@ export default function App() {
             </button>
           </BottomBar>
         )}
+
+        {showFocPrompt && (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(5,10,22,.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18 }}>
+            <div role="dialog" aria-modal="true" style={{ background: '#1b2c4d', border: '1px solid rgba(245,242,235,.12)', borderRadius: 14, padding: 20, width: '100%', maxWidth: 380 }}>
+              <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>Add {money(dStatus.focNeed)} for FOC delivery?</div>
+              <div style={{ fontSize: 13, lineHeight: 1.55, color: 'rgba(245,242,235,.65)', marginBottom: 16 }}>
+                Your current order is <strong style={{ color: 'var(--cream)' }}>{money(cartCents / 100)}</strong>. Orders of {MONEY_SYMBOL}{FOC_AMOUNT} and above get free delivery{MARKET === 'MY' ? ' to West Malaysia' : ''}. A delivery fee may apply to orders below {MONEY_SYMBOL}{FOC_AMOUNT}.
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <button onClick={() => { setShowFocPrompt(false); setView('catalogue'); }} style={{ ...submitBtnStyle, width: '100%' }}>Add more items</button>
+                <button onClick={doSubmit} style={{ height: 44, borderRadius: 10, border: 'none', background: 'rgba(245,242,235,.1)', color: 'var(--cream)', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>Proceed anyway</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
 
   // catalogue view
   return (
-    <div style={{ minHeight: '100vh', paddingBottom: cartCount > 0 ? 84 : 24 }}>
+    <div style={{ minHeight: '100vh', paddingBottom: cartCount > 0 ? 112 : 24 }}>
       <TopBar>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ width: 34, height: 34, background: 'var(--orange)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -374,9 +485,16 @@ export default function App() {
 
       {cartCount > 0 && (
         <BottomBar>
+          <div style={{ fontSize: 11.5, fontWeight: 600, marginBottom: 7, color: dStatus.focOk ? '#7fc93e' : '#f5a524' }}>
+            {!dStatus.focOk
+              ? `Add ${money(dStatus.focNeed)} more for FOC delivery`
+              : dStatus.nudge
+                ? `Add ${money(dStatus.nudge.amount)} more for ${dStatus.nudge.rebate} cash rebate`
+                : `✓ FOC delivery${dStatus.ticks.length ? ' · ✓ ' + dStatus.ticks[0].replace(' unlocked', '') : ''}`}
+          </div>
           <button onClick={() => setView('review')} style={{ ...submitBtnStyle, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
             <ShoppingCart size={16} />
-            Review Order — {cartCount} item{cartCount !== 1 ? 's' : ''}
+            Review Order — {cartCount} item{cartCount !== 1 ? 's' : ''} · {money(cartCents / 100)}
           </button>
         </BottomBar>
       )}

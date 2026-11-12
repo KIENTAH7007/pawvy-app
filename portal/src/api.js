@@ -4,6 +4,9 @@ const BASE = '/api/portal';
 // The server decides prices and the order's market from this flag; stock is the same shared stock.
 export const MARKET = /\/order\/my\/?$/i.test(window.location.pathname) ? 'MY' : 'SG';
 export const CURRENCY = MARKET === 'MY' ? 'MYR' : 'SGD';
+// Free-delivery amount (>=): SGD 200 / MYR 600 (West Malaysia). Rebate tiers are SG only.
+export const FOC_AMOUNT = MARKET === 'MY' ? 600 : 200;
+export const MONEY_SYMBOL = MARKET === 'MY' ? 'RM' : 'S$';
 const Q = MARKET === 'MY' ? '?market=MY' : '';
 
 async function handle(res) {
