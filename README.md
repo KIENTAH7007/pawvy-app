@@ -1,20 +1,15 @@
-# Pawvy App - Order Portal Copy Redesign
+# Pawvy App - Order Sent Frame
 
-Builds on the Order Portal patch already on staging. Four complete files, no database changes.
-
-Files:
-- server/utils/notify.js  (resendSend can now carry an optional attachment; customer verification emails unchanged)
-- server/lib/portalOrderEmail.js  (invoice-style email + A4 PDF "Pawvy-Order-List.pdf")
-- server/routes/portal.js  (builds the PDF, emails it, returns it to the portal)
-- portal/src/App.jsx  (pop-up wording, new SG rebate pop-ups, ORDER SENT document, Download PDF)
+One complete file: portal/src/App.jsx. Only the ORDER SENT screen changes: the order list now sits on a cream frame with a soft shadow so the navy header no longer blends into the page. Nothing else is touched.
 
 ## 1. Test on staging
 cd pawvy-app
 git checkout staging
 git pull
-# copy the 4 files from this zip into the same paths in the repo, then:
-git add server/utils/notify.js server/lib/portalOrderEmail.js server/routes/portal.js portal/src/App.jsx
-git commit -m "Order Portal: invoice-style order list email + PDF, rebate pop-ups, copy fixes"
+git merge main   # staging should include the order-list redesign already merged to main
+# copy portal/src/App.jsx from this zip into the repo (replace the file), then:
+git add portal/src/App.jsx
+git commit -m "Order Portal: cream frame around ORDER SENT document"
 git push origin staging
 
 ## 2. After you are happy, merge to main

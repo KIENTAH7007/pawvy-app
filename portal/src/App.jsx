@@ -214,7 +214,8 @@ export default function App() {
             {sentEmail && <> A copy has been emailed to <strong style={{ color: 'var(--cream)' }}>{sentEmail}</strong>.</>}
           </div>
 
-          <div style={{ background: '#fff', color: '#222', borderRadius: 6, overflow: 'hidden', textAlign: 'left', fontFamily: 'Arial,Helvetica,sans-serif', fontSize: 12 }}>
+          <div style={{ background: '#f5f2eb', padding: 10, borderRadius: 12, boxShadow: '0 6px 18px rgba(0,0,0,.45)' }}>
+          <div style={{ background: '#fff', color: '#222', borderRadius: 6, boxShadow: '0 1px 4px rgba(0,0,0,.2)', overflow: 'hidden', textAlign: 'left', fontFamily: 'Arial,Helvetica,sans-serif', fontSize: 12 }}>
             <div style={{ background: '#14213d', padding: '14px 22px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ width: 30, height: 30, background: 'var(--orange)', borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <img src={PAWVY_LOGO_WHITE} alt="Pawvy" style={{ width: 20, height: 20, objectFit: 'contain' }} />
@@ -270,6 +271,7 @@ export default function App() {
             </div>
             <div style={{ textAlign: 'center', padding: 14, fontStyle: 'italic', fontSize: 14, fontWeight: 600, color: '#14213d' }}>Thank you for the partnership !</div>
             <div style={{ background: '#f36f4a', height: 9 }} />
+          </div>
           </div>
 
           {sentPdf && (
