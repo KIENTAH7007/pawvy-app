@@ -126,7 +126,7 @@ module.exports = function(db, inventoryRouter) {
     const mkt = order.market === 'MY' ? 'MY' : 'SG';
     if ((ptr?.market === 'MY' ? 'MY' : 'SG') !== mkt) {
       return res.status(400).json({ error: mkt === 'MY'
-        ? `This order came through the Malaysia portal (MYR prices), but "${ptr?.company_name}" is an SG partner. Pick a MY partner, or change that partner's market to MY first.`
+        ? `This order came through the Malaysia portal (RM prices), but "${ptr?.company_name}" is an SG partner. Pick a MY partner, or change that partner's market to MY first.`
         : `This order came through the Singapore portal (SGD prices), but "${ptr?.company_name}" is a MY partner. Pick an SG partner.` });
     }
     let st;

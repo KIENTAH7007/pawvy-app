@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { curLabel } from '../utils/curLabel.js';
 import { Trash2 } from 'lucide-react';
 import { costsApi } from '../api';
 import { Page, Table, Badge, Btn, Modal, FormRow, Input, Select, KpiCard, fmt, MarketBadge } from '../components/ui';
@@ -29,7 +30,7 @@ export default function Costs() {
   const [dateTo, setDateTo] = useState(defaultRange.to);
   // SG (default) / MY / All (All = SGD equivalent). MY costs are typed and shown in MYR.
   const [mkt,setMkt]=useState('SG');
-  const cur = mkt==='MY' ? 'MYR' : 'SGD';
+  const cur = mkt==='MY' ? 'RM' : 'SGD';   // display label (MY = RM); data code stays MYR
   const isCurrentMonthOnly = dateFrom === defaultRange.from && dateTo === defaultRange.to;
 
   const load = () => {
@@ -60,7 +61,7 @@ export default function Costs() {
     {key:'category',label:'Category',render:v=><Badge color={CAT_C[v]||'#888'}>{v}</Badge>},
     {key:'description',label:'Description'},{key:'market',label:'Mkt',render:v=><MarketBadge market={v}/>},
     {key:'receipt_ref',label:'Ref',render:v=>v||'—'},
-    {key:'amount',label:'Amount',align:'right',render:(v,row)=><span style={{fontWeight:700,color:'#f87171'}}>{row.market==='MY'?'MYR':'SGD'} {parseFloat(v).toFixed(2)}</span>},
+    {key:'amount',label:'Amount',align:'right',render:(v,row)=><span style={{fontWeight:700,color:'#f87171'}}>{row.market==='MY'?'RM':'SGD'} {parseFloat(v).toFixed(2)}</span>},
     {key:'actions',label:'',align:'right',render:(_,row)=>(
       <button onClick={e=>{e.stopPropagation();remove(row.id);}} title="Delete"
         style={{background:'none',border:'none',color:'rgba(248,113,113,.5)',cursor:'pointer',padding:4,display:'inline-flex',alignItems:'center'}}
@@ -110,9 +111,9 @@ export default function Costs() {
       </div>
 
       <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10}}>
-        <KpiCard label={isCurrentMonthOnly ? "Total This Month" : "Total (Filtered)"} value={sum?`${sum.currency||cur} ${parseFloat(sum.total||0).toFixed(2)}`:'…'}/>
+        <KpiCard label={isCurrentMonthOnly ? "Total This Month" : "Total (Filtered)"} value={sum?`${curLabel(sum.currency||cur)} ${parseFloat(sum.total||0).toFixed(2)}`:'…'}/>
         {(sum?.byCategory||[]).slice(0,3).map(c=>(
-          <KpiCard key={c.category} label={c.category} value={`${sum.currency||cur} ${parseFloat(c.total).toFixed(2)}`}/>
+          <KpiCard key={c.category} label={c.category} value={`${curLabel(sum.currency||cur)} ${parseFloat(c.total).toFixed(2)}`}/>
         ))}
       </div>
 
@@ -160,7 +161,7 @@ export default function Costs() {
           </FormRow>
           <Input label="Description *" value={form.description||''} onChange={e=>sf('description',e.target.value)} placeholder="e.g. Hougang July rental"/>
           <FormRow cols={3}>
-            <Input label={`Amount (${form.market==='MY'?'MYR':'SGD'}) *`} type="number" step="0.01" value={form.amount||''} onChange={e=>sf('amount',e.target.value)}/>
+            <Input label={`Amount (${form.market==='MY'?'RM':'SGD'}) *`} type="number" step="0.01" value={form.amount||''} onChange={e=>sf('amount',e.target.value)}/>
             <Select label="Market" value={form.market||'SG'} onChange={e=>sf('market',e.target.value)}>
               {['SG','MY'].map(m=><option key={m} value={m}>{m}</option>)}
             </Select>

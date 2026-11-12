@@ -21,7 +21,7 @@ const PAWVY = {
 
 const esc = (v) => String(v == null ? '' : v)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-const cur = (market) => (market === 'MY' ? 'MYR' : 'SGD');
+const cur = (market) => (market === 'MY' ? 'RM' : 'SGD');   // what people read; the data code stays MYR
 const money = (market, n) => `${cur(market)} ${Number(n).toFixed(2)}`;
 
 function keyOf(imageUrl) {

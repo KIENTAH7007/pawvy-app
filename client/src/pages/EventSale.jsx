@@ -35,7 +35,7 @@ export default function EventSale() {
   const [date,   setDate]  = useState(localDateStr());
   const [channel, setChannel] = useState('Event Sale');
   const [market,  setMarket]  = useState('SG');
-  const cur = market === 'MY' ? 'MYR' : 'SGD';
+  const cur = market === 'MY' ? 'RM' : 'SGD';   // display label; the market (MY) drives the logic
   const sgd = v => `${cur} ${parseFloat(v||0).toFixed(2)}`;   // (name kept) money in the selected market's currency
   const [lines,  setLines] = useState([{ ...EMPTY }]);
   const [notes,  setNotes] = useState('');

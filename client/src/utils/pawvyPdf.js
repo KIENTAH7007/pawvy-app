@@ -1,3 +1,4 @@
+import { curLabel } from './curLabel.js';
 // Shared Pawvy brand assets + PDF document helpers — used across
 // Consignment, Invoices, Delivery Orders, and SOA document generators.
 
@@ -22,7 +23,7 @@ export const PAWVY = {
 
 export const sgd = v => `SGD ${parseFloat(v||0).toFixed(2)}`;
 // Money in any currency code (MY documents use MYR)
-export const money = (v, c = 'SGD') => `${c} ${parseFloat(v||0).toFixed(2)}`;
+export const money = (v, c = 'SGD') => `${curLabel(c)} ${parseFloat(v||0).toFixed(2)}`;
 
 /**
  * Renders the shared Pawvy document header (logo + title + date) used by

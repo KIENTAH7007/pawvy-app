@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { curLabel } from '../utils/curLabel.js';
 import { Download, FileText } from 'lucide-react';
 import { shipmentsApi, brandsApi } from '../api';
 import { Page, Table, Select, Input, fmt } from '../components/ui';
@@ -22,7 +23,7 @@ const Tip = ({ active, payload, label, unit }) => {
       {payload.map((p, i) => (
         <div key={i} style={{ color: p.color || '#7fc93e', fontWeight: 600 }}>
           {p.name}: {p.value >= 0 && p.payload?.signed ? '+' : ''}{parseFloat(p.value || 0).toFixed(2)}{unit || ''}
-          {p.payload?.currency ? ` (${p.payload.currency})` : ''}
+          {p.payload?.currency ? ` (${curLabel(p.payload.currency)})` : ''}
         </div>
       ))}
     </div>

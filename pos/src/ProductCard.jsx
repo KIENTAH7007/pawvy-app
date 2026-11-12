@@ -8,8 +8,8 @@ const STOCK_LABEL = {
   out_of_stock: { text: 'Out of Stock', color: '#f87171' },
 };
 
-import { CURRENCY } from './api.js';
-const sgd = v => `${CURRENCY} ${parseFloat(v || 0).toFixed(2)}`;
+import { CURRENCY_LABEL } from './api.js';
+const sgd = v => `${CURRENCY_LABEL} ${parseFloat(v || 0).toFixed(2)}`;
 
 // Same layout as the Order Portal's ProductCard, with one deliberate
 // difference: only RRP is ever shown here. This is a customer-facing

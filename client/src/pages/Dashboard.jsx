@@ -181,7 +181,7 @@ export default function Dashboard() {
   // Market view: SG (default) · MY · ALL (SGD equivalent). Money labels follow it.
   const [dmarket, setDmarket] = useState('SG');
   const mq  = dmarket === 'ALL' ? {} : { market: dmarket };
-  const cur = dmarket === 'MY' ? 'MYR' : 'SGD';
+  const cur = dmarket === 'MY' ? 'RM' : 'SGD';   // display label (MY = RM)
   const [upsell,      setUpsell]      = useState(null);
   const [upsellDetailModal, setUpsellDetailModal] = useState(null); // { source, rows, loading }
   const [perfChannel, setPerfChannel] = useState('Event Sale');
@@ -284,7 +284,7 @@ export default function Dashboard() {
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
         <div>
           <h1 style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:28,letterSpacing:1.5,color:'var(--cream)'}}>DASHBOARD</h1>
-          <div style={{fontSize:11,color:'var(--cream-30)',marginTop:3}}>{period.label} · {dmarket==='SG'?'Singapore (SGD)':dmarket==='MY'?'Malaysia (MYR)':'All markets · SGD equivalent'}</div>
+          <div style={{fontSize:11,color:'var(--cream-30)',marginTop:3}}>{period.label} · {dmarket==='SG'?'Singapore (SGD)':dmarket==='MY'?'Malaysia (RM)':'All markets · SGD equivalent'}</div>
           <div style={{display:'flex',gap:4,marginTop:8}}>
             {[['SG','SG'],['MY','MY'],['ALL','All markets']].map(([k,l])=>(
               <button key={k} onClick={()=>{setLoading(true);setSelected(null);setDmarket(k);}}
@@ -498,7 +498,7 @@ export default function Dashboard() {
                   </ResponsiveContainer>
                 </div>
                 <div>
-                  <div style={{fontSize:10,fontWeight:700,letterSpacing:.8,textTransform:'uppercase',color:'var(--cream-30)',marginBottom:8}}>Estimated Amount ({upsellMarket ? 'MYR' : 'SGD'})</div>
+                  <div style={{fontSize:10,fontWeight:700,letterSpacing:.8,textTransform:'uppercase',color:'var(--cream-30)',marginBottom:8}}>Estimated Amount ({upsellMarket ? 'RM' : 'SGD'})</div>
                   <ResponsiveContainer width="100%" height={140}>
                     <BarChart data={[
                       { name:'Catalogue', amount: upsell.catalogue.amount },
@@ -626,7 +626,7 @@ export default function Dashboard() {
                         <span style={{color:r.brand_color}}>{r.brand_name}</span> {r.item_series}{r.variation ? ` · ${r.variation}` : ''}
                       </td>
                       <td style={{padding:'6px 8px',textAlign:'right',color:'var(--cream)'}}>{r.qty}</td>
-                      <td style={{padding:'6px 8px',textAlign:'right',color:'var(--cream-60)'}}>{upsellMarket ? 'MYR' : 'SGD'} {r.amount.toFixed(2)}</td>
+                      <td style={{padding:'6px 8px',textAlign:'right',color:'var(--cream-60)'}}>{upsellMarket ? 'RM' : 'SGD'} {r.amount.toFixed(2)}</td>
                       <td style={{padding:'6px 8px',color:'var(--cream-30)',whiteSpace:'nowrap'}}>{fmt.date(r.submitted_at)}</td>
                     </tr>
                   ))}

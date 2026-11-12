@@ -1,4 +1,5 @@
 import React from 'react';
+import { curLabel } from '../utils/curLabel.js';
 
 /* ── Tokens ────────────────────────────────────────────────────── */
 const s = {
@@ -249,9 +250,9 @@ export function Divider({ label }) {
 /* ── Currency formatter ────────────────────────────────────────── */
 export const fmt = {
   sgd:  (v) => v == null ? '—' : `SGD ${parseFloat(v).toFixed(2)}`,
-  myr:  (v) => v == null ? '—' : `MYR ${parseFloat(v).toFixed(2)}`,
+  myr:  (v) => v == null ? '—' : `RM ${parseFloat(v).toFixed(2)}`,
   // Money in a given currency code (rows carry their own: SGD for SG, MYR for MY)
-  money: (v, c) => v == null ? '—' : `${c || 'SGD'} ${parseFloat(v).toFixed(2)}`,
+  money: (v, c) => v == null ? '—' : `${curLabel(c || 'SGD')} ${parseFloat(v).toFixed(2)}`,
   aud:  (v) => v == null ? '—' : `AUD ${parseFloat(v).toFixed(2)}`,
   num:  (v) => v == null ? '—' : parseFloat(v).toLocaleString(),
   pct:  (v) => v == null ? '—' : `${parseFloat(v).toFixed(1)}%`,

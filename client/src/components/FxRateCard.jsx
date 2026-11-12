@@ -26,7 +26,7 @@ export default function FxRateCard() {
       <div style={{display:'flex',alignItems:'center',gap:14,flexWrap:'wrap'}}>
         <span style={{fontSize:11,fontWeight:700,letterSpacing:.8,textTransform:'uppercase',color:'var(--cream-30)'}}>Exchange rate</span>
         <span style={{fontSize:13,color:'var(--cream)',fontWeight:700}}>
-          {cur ? `1 SGD = ${parseFloat(cur.myr_per_sgd).toFixed(4)} MYR` : 'No rate yet'}
+          {cur ? `1 SGD = ${parseFloat(cur.myr_per_sgd).toFixed(4)} RM` : 'No rate yet'}
         </span>
         {cur && <span style={{fontSize:11,color:'var(--cream-30)'}}>{cur.source === 'manual' ? 'manual' : 'automatic'} · {cur.date}</span>}
         <button onClick={() => setOpen(o => !o)} style={{background:'none',border:'none',color:'var(--orange)',cursor:'pointer',fontSize:11}}>{open ? 'Hide' : 'Change / history'}</button>
@@ -34,7 +34,7 @@ export default function FxRateCard() {
       {open && (
         <div style={{marginTop:10,display:'flex',flexDirection:'column',gap:10}}>
           <div style={{display:'flex',gap:8,alignItems:'flex-end',flexWrap:'wrap'}}>
-            <Input label="Manual rate for today (MYR per 1 SGD)" type="number" step="0.0001" value={rate} onChange={e => setRate(e.target.value)} style={{width:230}}/>
+            <Input label="Manual rate for today (RM per 1 SGD)" type="number" step="0.0001" value={rate} onChange={e => setRate(e.target.value)} style={{width:230}}/>
             <Btn size="sm" disabled={busy || !rate} onClick={() => act(() => fxApi.set({ myr_per_sgd: rate }), 'Manual rate saved for today.')}>Save manual rate</Btn>
             <Btn size="sm" variant="ghost" disabled={busy} onClick={() => act(() => fxApi.refresh(), 'Rate refreshed.')}>Fetch latest now</Btn>
           </div>

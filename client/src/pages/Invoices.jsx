@@ -293,7 +293,7 @@ function GenerateInvoiceModal({ open, onClose, partners, onGenerated }) {
   const [saving, setSaving]       = useState(false);
   const [error, setError]         = useState('');
   const [result, setResult]       = useState(null);
-  const cur = partners.find(p => String(p.id) === String(partnerId))?.market === 'MY' ? 'MYR' : 'SGD';
+  const cur = partners.find(p => String(p.id) === String(partnerId))?.market === 'MY' ? 'RM' : 'SGD';
   const sgd = v => money(v, cur);
 
   useEffect(() => {
@@ -621,7 +621,7 @@ function GenerateSOAModal({ open, onClose, partners, onGenerated }) {
   const [saving, setSaving]       = useState(false);
   const [error, setError]         = useState('');
   const [result, setResult]       = useState(null);
-  const cur = partners.find(p => String(p.id) === String(partnerId))?.market === 'MY' ? 'MYR' : 'SGD';
+  const cur = partners.find(p => String(p.id) === String(partnerId))?.market === 'MY' ? 'RM' : 'SGD';
   const sgd = v => money(v, cur);
 
   const soaPartners = partners.filter(p => p.billing_cycle === 'soa');

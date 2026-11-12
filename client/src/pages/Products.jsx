@@ -16,9 +16,9 @@ const MARKET_FIELDS = {
   ],
   MY: [
     { key:'unit_cost',           label:'Unit Cost (SGD)' },
-    { key:'price_wholesale_my',  label:'Wholesale (MYR)' },
-    { key:'price_rrp_my',        label:'RRP (MYR)' },
-    { key:'price_rrp_online_my', label:'RRP Online (MYR)' },
+    { key:'price_wholesale_my',  label:'Wholesale (RM)' },
+    { key:'price_rrp_my',        label:'RRP (RM)' },
+    { key:'price_rrp_online_my', label:'RRP Online (RM)' },
   ],
 };
 
@@ -481,7 +481,7 @@ export default function Products() {
             <Input label="RRP Online (Shopee/Lazada)" type="number" step="0.01" value={form.price_rrp_online_sg||''} onChange={e=>sf('price_rrp_online_sg',e.target.value)} placeholder="0.00"/>
           </FormRow>
 
-          <Divider label="MY Pricing (MYR)"/>
+          <Divider label="MY Pricing (RM)"/>
           <FormRow cols={3}>
             <Input label="Wholesale MY" type="number" step="0.01" value={form.price_wholesale_my||''} onChange={e=>sf('price_wholesale_my',e.target.value)} placeholder="0.00"/>
             <Input label="RRP MY"       type="number" step="0.01" value={form.price_rrp_my||''}       onChange={e=>sf('price_rrp_my',e.target.value)}       placeholder="0.00"/>

@@ -2,7 +2,8 @@ const BASE = '/api/pos';
 
 // Two links, one POS: /pos = Singapore (SGD, PayNow); /pos/my = Malaysia (MYR RRP, Touch 'n Go).
 export const MARKET = /\/pos\/my\/?$/i.test(window.location.pathname) ? 'MY' : 'SG';
-export const CURRENCY = MARKET === 'MY' ? 'MYR' : 'SGD';
+export const CURRENCY = MARKET === 'MY' ? 'MYR' : 'SGD';          // data code (unchanged)
+export const CURRENCY_LABEL = MARKET === 'MY' ? 'RM' : 'SGD';      // what people see
 const Q = MARKET === 'MY' ? '?market=MY' : '';
 
 async function handle(res) {

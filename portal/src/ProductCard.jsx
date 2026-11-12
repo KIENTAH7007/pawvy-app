@@ -8,8 +8,8 @@ const STOCK_LABEL = {
   out_of_stock: { text: 'Out of Stock', color: '#f87171' },
 };
 
-import { CURRENCY } from './api.js';
-const sgd = v => `${CURRENCY} ${parseFloat(v || 0).toFixed(2)}`;
+import { CURRENCY_LABEL } from './api.js';
+const sgd = v => `${CURRENCY_LABEL} ${parseFloat(v || 0).toFixed(2)}`;
 
 // Box-quantity nudge (Sep 2026, per KT) — purely informational, never
 // blocks the order. Only shown when the product has a pack_size set AND

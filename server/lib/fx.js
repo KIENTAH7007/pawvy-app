@@ -27,7 +27,7 @@ function getRateForDate(db, date) {
 
 function setRate(db, date, rate, source) {
   const r = parseFloat(rate);
-  if (!(r > 0.5 && r < 20)) throw Object.assign(new Error('Rate looks wrong (expected MYR per 1 SGD, roughly 2–5)'), { status: 400 });
+  if (!(r > 0.5 && r < 20)) throw Object.assign(new Error('Rate looks wrong (expected RM per 1 SGD, roughly 2–5)'), { status: 400 });
   db.run('INSERT OR REPLACE INTO fx_rates (date, myr_per_sgd, source) VALUES (?,?,?)', [date, Math.round(r * 1e6) / 1e6, source]);
 }
 
@@ -56,7 +56,7 @@ async function fetchAndStore(db, fetchImpl = globalThis.fetch) {
 function stamp(db, market, date) {
   if (market !== 'MY') return { currency: 'SGD', fx_rate: null };
   const r = getRateForDate(db, date);
-  if (!r) throw Object.assign(new Error('No MYR exchange rate yet — set one under Settings → Exchange rate (MYR per 1 SGD), then try again.'), { status: 400 });
+  if (!r) throw Object.assign(new Error('No RM exchange rate yet — set one under Settings → Exchange rate (RM per 1 SGD), then try again.'), { status: 400 });
   return { currency: 'MYR', fx_rate: r.myr_per_sgd };
 }
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { Search, ShoppingCart, ArrowLeft, CheckCircle2, Loader2, ImageOff } from 'lucide-react'
-import { portalApi, MARKET, CURRENCY, FOC_AMOUNT, MONEY_SYMBOL } from './api.js'
+import { portalApi, MARKET, CURRENCY_LABEL, FOC_AMOUNT, MONEY_SYMBOL } from './api.js'
 import { PAWVY_LOGO_WHITE } from './pawvyLogo.js'
 import ProductCard from './ProductCard.jsx'
 import QtyStepper from './QtyStepper.jsx'
@@ -28,10 +28,10 @@ function deliveryStatus(cents) {
   const out = { focOk: cents >= focCents, focNeed: Math.max(0, focCents - cents) / 100, ticks: [], nudge: null };
   if (!out.focOk) return out;
   if (MARKET === 'MY') return out;
-  if (cents >= 60000) out.ticks.push('S$30 cash rebate unlocked');
-  else if (cents >= 40000) out.ticks.push('S$12 cash rebate unlocked');
-  if (cents >= 35000 && cents < 40000) out.nudge = { amount: (40000 - cents) / 100, rebate: 'S$12', target: 400 };
-  else if (cents >= 55000 && cents < 60000) out.nudge = { amount: (60000 - cents) / 100, rebate: 'S$30', target: 600 };
+  if (cents >= 60000) out.ticks.push('$30 cash rebate unlocked');
+  else if (cents >= 40000) out.ticks.push('$12 cash rebate unlocked');
+  if (cents >= 35000 && cents < 40000) out.nudge = { amount: (40000 - cents) / 100, rebate: '$12', target: 400 };
+  else if (cents >= 55000 && cents < 60000) out.nudge = { amount: (60000 - cents) / 100, rebate: '$30', target: 600 };
   return out;
 }
 
@@ -252,13 +252,13 @@ export default function App() {
                       </td>
                       <td style={td}>{l.product.item_series}{l.product.variation ? ` · ${l.product.variation}` : ''}</td>
                       <td style={{ ...td, textAlign: 'center' }}>{l.qty}</td>
-                      <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>{CURRENCY} {Number(l.product.price_wholesale || 0).toFixed(2)}</td>
-                      <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 700 }}>{CURRENCY} {(Number(l.product.price_wholesale || 0) * l.qty).toFixed(2)}</td>
+                      <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>{CURRENCY_LABEL} {Number(l.product.price_wholesale || 0).toFixed(2)}</td>
+                      <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 700 }}>{CURRENCY_LABEL} {(Number(l.product.price_wholesale || 0) * l.qty).toFixed(2)}</td>
                     </tr>
                   ))}
                   <tr>
                     <td colSpan={4} style={{ padding: '10px 4px', textAlign: 'right', fontSize: 13, color: '#14213d' }}>Subtotal</td>
-                    <td style={{ padding: '10px 4px', textAlign: 'right', fontSize: 13, color: '#14213d', whiteSpace: 'nowrap', fontWeight: 700 }}>{CURRENCY} {(cartCents / 100).toFixed(2)}</td>
+                    <td style={{ padding: '10px 4px', textAlign: 'right', fontSize: 13, color: '#14213d', whiteSpace: 'nowrap', fontWeight: 700 }}>{CURRENCY_LABEL} {(cartCents / 100).toFixed(2)}</td>
                   </tr>
                 </tbody>
               </table>
@@ -322,7 +322,7 @@ export default function App() {
                     {l.product.item_series}
                     {l.product.variation && <span style={{ color: 'rgba(245,242,235,.5)' }}> · {l.product.variation}</span>}
                     <div style={{ fontSize: 11, color: 'rgba(245,242,235,.4)', fontWeight: 400, marginTop: 2 }}>
-                      {CURRENCY} {parseFloat(l.product.price_wholesale).toFixed(2)} / unit
+                      {CURRENCY_LABEL} {parseFloat(l.product.price_wholesale).toFixed(2)} / unit
                     </div>
                   </div>
                   <QtyStepper value={l.qty} onChange={q => updateQty(l.product.id, q)} />
@@ -332,7 +332,7 @@ export default function App() {
 
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'rgba(245,242,235,.6)', padding: '8px 4px' }}>
                 <span>Subtotal (before any applicable discount)</span>
-                <strong style={{ color: 'var(--cream)' }}>{CURRENCY} {cartSubtotal.toFixed(2)}</strong>
+                <strong style={{ color: 'var(--cream)' }}>{CURRENCY_LABEL} {cartSubtotal.toFixed(2)}</strong>
               </div>
 
               {!dStatus.focOk ? (
@@ -365,8 +365,8 @@ export default function App() {
                 {MARKET === 'MY' ? (
                   <>
                     <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      <li style={{ fontSize: 12, color: 'rgba(245,242,235,.75)' }}>West Malaysia: order MYR 600 and above — free delivery</li>
-                      <li style={{ fontSize: 12, color: 'rgba(245,242,235,.75)' }}>West Malaysia: order below MYR 600 — MYR 25 delivery fee</li>
+                      <li style={{ fontSize: 12, color: 'rgba(245,242,235,.75)' }}>West Malaysia: order RM 600 and above — free delivery</li>
+                      <li style={{ fontSize: 12, color: 'rgba(245,242,235,.75)' }}>West Malaysia: order below RM 600 — RM 25 delivery fee</li>
                     </ul>
                     <div style={{ fontSize: 10.5, color: 'rgba(245,242,235,.35)', marginTop: 8 }}>
                       *Final delivery arrangement will be reflected in the invoice.
@@ -465,16 +465,16 @@ export default function App() {
             <div role="dialog" aria-modal="true" style={{ background: '#1b2c4d', border: '1px solid rgba(245,242,235,.12)', borderRadius: 14, padding: 20, width: '100%', maxWidth: 380 }}>
               {prompt === 'foc' ? (
                 <>
-                  <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>Add {money(dStatus.focNeed)} for FOC delivery?</div>
+                  <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>Add {money(dStatus.focNeed)} for FOC delivery?</div>
                   <div style={{ fontSize: 13, lineHeight: 1.55, color: 'rgba(245,242,235,.65)', marginBottom: 16 }}>
-                    Your current order is <strong style={{ color: 'var(--cream)' }}>{money(cartCents / 100)}</strong>. A delivery fee may apply to orders below {MONEY_SYMBOL}{FOC_AMOUNT}{MARKET === 'MY' ? ' (West Malaysia)' : ''}.
+                    Your current order is <strong style={{ color: 'var(--cream)', fontWeight: 600 }}>{money(cartCents / 100)}</strong>.
                   </div>
                 </>
               ) : (
                 <>
-                  <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>Add {money(dStatus.nudge.amount)} for a {dStatus.nudge.rebate} cash rebate?</div>
+                  <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>Add {money(dStatus.nudge.amount)} for a {dStatus.nudge.rebate} cash rebate?</div>
                   <div style={{ fontSize: 13, lineHeight: 1.55, color: 'rgba(245,242,235,.65)', marginBottom: 16 }}>
-                    Your current order is <strong style={{ color: 'var(--cream)' }}>{money(cartCents / 100)}</strong>. Orders of {MONEY_SYMBOL}{dStatus.nudge.target} and above get a {dStatus.nudge.rebate} cash rebate.
+                    Your current order is <strong style={{ color: 'var(--cream)', fontWeight: 600 }}>{money(cartCents / 100)}</strong>. Orders of {MONEY_SYMBOL}{dStatus.nudge.target} and above get a {dStatus.nudge.rebate} cash rebate.
                   </div>
                 </>
               )}

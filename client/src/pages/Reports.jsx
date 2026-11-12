@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { curLabel } from '../utils/curLabel.js';
 import { reportsApi } from '../api';
 import FxRateCard from '../components/FxRateCard';
 import { Page, KpiCard, Input, Btn, Badge } from '../components/ui';
@@ -10,7 +11,7 @@ export default function Reports() {
   const [to,setTo]=useState(localDateStr());
   const [view,setView]=useState('SG'); // SG (default) | MY | ALL | COMPARE
   const [cmp,setCmp]=useState(null);
-  const cur=pnl?.currency||'SGD';
+  const cur=curLabel(pnl?.currency||'SGD');
   const money=v=>`${cur} ${parseFloat(v||0).toFixed(2)}`;
   function run(){
     setL(true);setPnl(null);setCmp(null);
@@ -49,7 +50,7 @@ export default function Reports() {
       {pnl&&(
         <div style={{display:'flex',flexDirection:'column',gap:14}}>
           {pnl.fx_note&&<div style={{fontSize:11,color:'var(--cream-60)',background:'var(--cream-05)',borderRadius:6,padding:'8px 12px'}}>All figures in <b>SGD equivalent</b> — {pnl.fx_note}. Write-offs and shipment cost variance are SG-side items.</div>}
-          {pnl.currency==='MYR'&&<div style={{fontSize:11,color:'var(--cream-60)',background:'var(--cream-05)',borderRadius:6,padding:'8px 12px'}}>Figures in <b>MYR</b>. Product cost is held in SGD and converted at the rate saved on each sale. Write-offs and cost variance sit in the SG P&L, not here.</div>}
+          {pnl.currency==='MYR'&&<div style={{fontSize:11,color:'var(--cream-60)',background:'var(--cream-05)',borderRadius:6,padding:'8px 12px'}}>Figures in <b>RM</b>. Product cost is held in SGD and converted at the rate saved on each sale. Write-offs and cost variance sit in the SG P&L, not here.</div>}
           <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10}}>
             <KpiCard label="Revenue" value={money(pnl.revenue)}/>
             <KpiCard label="Gross Profit" value={money(pnl.gross_profit)}/>
@@ -143,12 +144,12 @@ function Compare({c,from,to}){
   return(
     <div style={{display:'flex',flexDirection:'column',gap:14}}>
       <div style={{fontSize:11,color:'var(--cream-60)',background:'var(--cream-05)',borderRadius:6,padding:'8px 12px'}}>
-        {from} → {to}. SG is in SGD, MY in MYR; "MY in SGD" converts each MY sale at the rate saved on it, so the last column compares like with like. Write-offs and cost variance are SG-side only.
+        {from} → {to}. SG is in SGD, MY in RM; "MY in SGD" converts each MY sale at the rate saved on it, so the last column compares like with like. Write-offs and cost variance are SG-side only.
       </div>
       <div style={box}>
         <div style={h}>P&L · SG vs MY</div>
         <table style={{width:'100%',borderCollapse:'collapse'}}>
-          <thead><tr><th style={{...th,textAlign:'left'}}></th><th style={th}>SG (SGD)</th><th style={th}>MY (MYR)</th><th style={th}>MY in SGD</th><th style={th}>MY − SG (SGD)</th></tr></thead>
+          <thead><tr><th style={{...th,textAlign:'left'}}></th><th style={th}>SG (SGD)</th><th style={th}>MY (RM)</th><th style={th}>MY in SGD</th><th style={th}>MY − SG (SGD)</th></tr></thead>
           <tbody>
             {money.map(([l,k])=>(
               <tr key={k}><td style={{...td,textAlign:'left',color:'var(--cream-60)',fontWeight:l.startsWith('=')?700:400}}>{l}</td>
@@ -173,9 +174,9 @@ function Compare({c,from,to}){
       </div>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
         <BrandList title="BY BRAND · SG" cur="SGD" rows={sg.by_brand}/>
-        <BrandList title="BY BRAND · MY" cur="MYR" rows={my.by_brand}/>
+        <BrandList title="BY BRAND · MY" cur="RM" rows={my.by_brand}/>
         <TopList title="TOP PRODUCTS · SG" cur="SGD" rows={tpSg.rows}/>
-        <TopList title="TOP PRODUCTS · MY" cur="MYR" rows={tpMy.rows}/>
+        <TopList title="TOP PRODUCTS · MY" cur="RM" rows={tpMy.rows}/>
       </div>
     </div>
   );

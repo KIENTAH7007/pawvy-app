@@ -215,7 +215,7 @@ function reportsRouter(db) {
         if (rows.length) ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: cols.length } };
         return ws;
       };
-      const C = currency, M = '#,##0.00', I = '#,##0';
+      const C = currency === 'MYR' ? 'RM' : currency, M = '#,##0.00', I = '#,##0';
       brands.forEach(r => { r.margin = num(r.revenue) ? num(r.profit) / num(r.revenue) : 0; });
       addSheet('Brands', [
         { h: 'Brand', k: 'brand', w: 22 }, { h: 'Products sold', k: 'skus', w: 14, num: 1, fmt: I },

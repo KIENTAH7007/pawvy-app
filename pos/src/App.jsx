@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { Search, ShoppingCart, ArrowLeft, CheckCircle2, Loader2, ImageOff, ScanLine } from 'lucide-react'
-import { posApi, MARKET, CURRENCY } from './api.js'
+import { posApi, MARKET, CURRENCY_LABEL } from './api.js'
 import { PAWVY_LOGO_WHITE } from './pawvyLogo.js'
 import { QR_CODE, PAYMENT, TNG } from './paymentInfo.js'
 import ProductCard from './ProductCard.jsx'
@@ -209,9 +209,9 @@ export default function App() {
           const calc = lineCalcs[i];
           let lineNote = null;
           if (discountMode === 'manual_price' && calc.discAmt !== 0) {
-            lineNote = `Sale price set to ${CURRENCY} ${calc.netPrice.toFixed(2)} (RRP ${CURRENCY} ${calc.price.toFixed(2)})`;
+            lineNote = `Sale price set to ${CURRENCY_LABEL} ${calc.netPrice.toFixed(2)} (RRP ${CURRENCY_LABEL} ${calc.price.toFixed(2)})`;
           } else if (discountMode !== 'manual_price' && calc.discPct > 0) {
-            lineNote = `Item disc ${calc.discPct}% off ${CURRENCY} ${calc.price.toFixed(2)}`;
+            lineNote = `Item disc ${calc.discPct}% off ${CURRENCY_LABEL} ${calc.price.toFixed(2)}`;
           }
           return {
             product_id: l.product.id,
@@ -325,10 +325,10 @@ export default function App() {
                     {l.product.variation && <span style={{ color: 'rgba(245,242,235,.5)' }}> · {l.product.variation}</span>}
                     <div style={{ fontSize: 11, color: 'rgba(245,242,235,.4)', fontWeight: 400, marginTop: 2 }}>
                       {calc.discAmt !== 0 && (
-                        <span style={{ textDecoration: 'line-through', marginRight: 6 }}>{CURRENCY} {calc.price.toFixed(2)}</span>
+                        <span style={{ textDecoration: 'line-through', marginRight: 6 }}>{CURRENCY_LABEL} {calc.price.toFixed(2)}</span>
                       )}
                       <span style={calc.discAmt !== 0 ? { color: '#fbbf24', fontWeight: 600 } : undefined}>
-                        {CURRENCY} {calc.netPrice.toFixed(2)} / unit
+                        {CURRENCY_LABEL} {calc.netPrice.toFixed(2)} / unit
                       </span>
                     </div>
                   </div>
@@ -366,7 +366,7 @@ export default function App() {
                         onChange={e => setItemPrice(l.product.id, e.target.value)}
                         style={{ ...fieldInputStyle, height: 30, width: 90, fontSize: 12, padding: '0 8px' }}
                       />
-                      <span style={{ fontSize: 10, color: 'rgba(245,242,235,.3)' }}>RRP {CURRENCY} {calc.price.toFixed(2)}</span>
+                      <span style={{ fontSize: 10, color: 'rgba(245,242,235,.3)' }}>RRP {CURRENCY_LABEL} {calc.price.toFixed(2)}</span>
                     </div>
                   )}
                 </div>
@@ -417,23 +417,23 @@ export default function App() {
 
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'rgba(245,242,235,.6)', padding: '8px 4px' }}>
                 <span>Subtotal</span>
-                <strong style={{ color: 'var(--cream)' }}>{CURRENCY} {cartSubtotal.toFixed(2)}</strong>
+                <strong style={{ color: 'var(--cream)' }}>{CURRENCY_LABEL} {cartSubtotal.toFixed(2)}</strong>
               </div>
               {itemDiscountTotal !== 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: itemDiscountTotal > 0 ? '#fbbf24' : '#f87171', padding: '0 4px' }}>
                   <span>{itemDiscountTotal > 0 ? 'Discount' : 'Markup'}</span>
-                  <strong>{itemDiscountTotal > 0 ? '−' : '+'} {CURRENCY} {Math.abs(itemDiscountTotal).toFixed(2)}</strong>
+                  <strong>{itemDiscountTotal > 0 ? '−' : '+'} {CURRENCY_LABEL} {Math.abs(itemDiscountTotal).toFixed(2)}</strong>
                 </div>
               )}
               {shipAmt > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'rgba(245,242,235,.6)', padding: '0 4px' }}>
                   <span>Shipping</span>
-                  <strong style={{ color: 'var(--cream)' }}>{CURRENCY} {shipAmt.toFixed(2)}</strong>
+                  <strong style={{ color: 'var(--cream)' }}>{CURRENCY_LABEL} {shipAmt.toFixed(2)}</strong>
                 </div>
               )}
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 15, padding: '8px 4px', borderTop: '1px solid rgba(245,242,235,.1)', marginTop: 4 }}>
                 <strong style={{ color: 'var(--cream)' }}>Total</strong>
-                <strong style={{ color: 'var(--orange)' }}>{CURRENCY} {cartTotal.toFixed(2)}</strong>
+                <strong style={{ color: 'var(--orange)' }}>{CURRENCY_LABEL} {cartTotal.toFixed(2)}</strong>
               </div>
 
               {/* Payment Instructions — replaces the Order Portal's Delivery card here,

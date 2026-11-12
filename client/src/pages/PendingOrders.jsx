@@ -453,7 +453,7 @@ export default function PendingOrders() {
                       </Select>
                       {es.market === 'MY' && (
                         <div style={{ fontSize: 11, color: 'var(--cream-30)', marginTop: 4 }}>
-                          Malaysia order (MYR prices) — only MY partners are listed. If the company isn't there, add it under Partners with Market = MY.
+                          Malaysia order (RM prices) — only MY partners are listed. If the company isn't there, add it under Partners with Market = MY.
                         </div>
                       )}
                     </div>
@@ -568,10 +568,10 @@ export default function PendingOrders() {
                         SHIPPING (OPTIONAL)
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, paddingTop: 10 }}>
-                        <Input label={`Shipping Charged to Partner (${es.market === 'MY' ? 'MYR' : 'SGD'})`} type="number" step="0.01" placeholder="0.00"
+                        <Input label={`Shipping Charged to Partner (${es.market === 'MY' ? 'RM' : 'SGD'})`} type="number" step="0.01" placeholder="0.00"
                           value={es.shippingCharged}
                           onChange={e => updateEdit(order.id, prev => ({ ...prev, shippingCharged: e.target.value }))}/>
-                        <Input label={`Actual Shipping Cost (${es.market === 'MY' ? 'MYR' : 'SGD'})`} type="number" step="0.01" placeholder="0.00"
+                        <Input label={`Actual Shipping Cost (${es.market === 'MY' ? 'RM' : 'SGD'})`} type="number" step="0.01" placeholder="0.00"
                           value={es.shippingCost}
                           onChange={e => updateEdit(order.id, prev => ({ ...prev, shippingCost: e.target.value }))}/>
                       </div>

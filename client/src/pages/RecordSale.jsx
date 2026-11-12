@@ -93,7 +93,7 @@ export default function RecordSale() {
   const isMobile = useIsMobile();
   const [date,      setDate]      = useState(localDateStr());
   const [market,    setMarket]    = useState('SG');
-  const cur   = market === 'MY' ? 'MYR' : 'SGD';
+  const cur   = market === 'MY' ? 'RM' : 'SGD';   // display label; the market (MY) drives the logic
   const money = (v) => fmt.money(v, cur);
   // Product cost is held in SGD. For a MY sale the screen shows it in MYR (× the rate for the sale date)
   // so the profit preview matches what the ledger will show; the SGD cost is what gets saved.

@@ -227,7 +227,7 @@ export default function Partners() {
           <Input label="Address" value={form.address||''} onChange={e=>sf('address',e.target.value)}/>
           {form.market==='MY' && (
             <Select label="Malaysia delivery zone (shows the right free-delivery reminder on orders)" value={form.shipping_zone||'West'} onChange={e=>sf('shipping_zone',e.target.value)}>
-              <option value="West">West Malaysia — ≥ MYR 600 free, below that MYR 25</option>
+              <option value="West">West Malaysia — ≥ RM 600 free, below that RM 25</option>
               <option value="East">East Malaysia — case by case</option>
             </Select>
           )}

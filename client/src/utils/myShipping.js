@@ -5,5 +5,5 @@
 export function myShippingReminder(partner) {
   if (!partner || partner.market !== 'MY') return null;
   if (partner.shipping_zone === 'East') return 'East Malaysia — delivery charge decided case by case';
-  return '≥ MYR 600 free delivery, below MYR 600 a MYR 25 delivery fee (West Malaysia)';
+  return '≥ RM 600 free delivery, below RM 600 a RM 25 delivery fee (West Malaysia)';
 }

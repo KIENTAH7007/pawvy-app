@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { curLabel } from '../utils/curLabel.js';
 import { useNavigate } from 'react-router-dom';
 import { api, salesApi, brandsApi, partnersApi } from '../api';
 import { Page, Select, Input, Badge, Btn, Modal, fmt, MarketBadge, MARKET_COLORS } from '../components/ui';
@@ -237,8 +238,8 @@ export default function Sales() {
               <div key={c} style={{flex:'1 1 280px',display:'flex',alignItems:'center',gap:20,background:'var(--navy)',border:'1px solid var(--border)',borderLeft:`4px solid ${MARKET_COLORS[mk]}`,borderRadius:8,padding:'10px 16px',fontSize:12}}>
                 <MarketBadge market={mk}/>
                 <span style={{color:'var(--cream-30)'}}>Units: <strong style={{color:'var(--cream)'}}>{t.q}</strong></span>
-                <span style={{color:'var(--cream-30)'}}>Revenue: <strong style={{color:'var(--cream)'}}>{c} {t.r.toFixed(2)}</strong></span>
-                <span style={{color:'var(--cream-30)'}}>Gross Profit: <strong style={{color:'#7fc93e'}}>{c} {t.p.toFixed(2)}</strong></span>
+                <span style={{color:'var(--cream-30)'}}>Revenue: <strong style={{color:'var(--cream)'}}>{curLabel(c)} {t.r.toFixed(2)}</strong></span>
+                <span style={{color:'var(--cream-30)'}}>Gross Profit: <strong style={{color:'#7fc93e'}}>{curLabel(c)} {t.p.toFixed(2)}</strong></span>
               </div>
             );
           })}
@@ -389,7 +390,7 @@ export default function Sales() {
             </div>
             {editModal.website_order_id && (
               <div>
-                <Input label={`Stripe Fee (${editModal.currency || 'SGD'})`} type="number" step="0.01"
+                <Input label={`Stripe Fee (${curLabel(editModal.currency || 'SGD')})`} type="number" step="0.01"
                   value={editForm.stripe_fee_amt} onChange={e=>setEditForm(f=>({...f,stripe_fee_amt:e.target.value}))}
                   placeholder="Leave blank if not fetched yet" />
                 <div style={{fontSize:10,color:'var(--cream-30)',marginTop:4}}>
@@ -401,9 +402,9 @@ export default function Sales() {
               </div>
             )}
             <div style={{display:'flex',gap:10}}>
-              <Input label={`Shipping Charged (${editModal.currency || 'SGD'})`} type="number" step="0.01"
+              <Input label={`Shipping Charged (${curLabel(editModal.currency || 'SGD')})`} type="number" step="0.01"
                 value={editForm.shipping_charged} onChange={e=>setEditForm(f=>({...f,shipping_charged:e.target.value}))} />
-              <Input label={`Shipping Cost (actual, ${editModal.currency || 'SGD'})`} type="number" step="0.01"
+              <Input label={`Shipping Cost (actual, ${curLabel(editModal.currency || 'SGD')})`} type="number" step="0.01"
                 value={editForm.shipping_cost} onChange={e=>setEditForm(f=>({...f,shipping_cost:e.target.value}))} />
             </div>
             <Input label="Shipping Channel" value={editForm.shipping_channel}

@@ -185,7 +185,7 @@ module.exports = function(db) {
     if (sales.length === 0) return res.status(400).json({ error: 'No eligible sales found (already invoiced or mismatched partner)' });
     // SG sales are in SGD and MY sales in MYR — one invoice can only carry one currency.
     if (new Set(sales.map(r => r.market || 'SG')).size > 1) {
-      return res.status(400).json({ error: 'These sales are from both SG (SGD) and MY (MYR). Generate a separate invoice for each market.' });
+      return res.status(400).json({ error: 'These sales are from both SG (SGD) and MY (RM). Generate a separate invoice for each market.' });
     }
 
     const subtotal = sales.reduce((s, row) => s + row.qty * row.unit_price, 0);
@@ -336,7 +336,7 @@ module.exports = function(db) {
     if (cn.amount > 0) {
       const cnDescription = cn.manual
         ? `Credit Note — manual entry (prior to Pawvy App)`
-        : `Credit Note — ${cn.pct}% on prior month orders (${partner.market==='MY'?'MYR':'SGD'} ${cn.subtotal.toFixed(2)})`;
+        : `Credit Note — ${cn.pct}% on prior month orders (${partner.market==='MY'?'RM':'SGD'} ${cn.subtotal.toFixed(2)})`;
       db.run(
         'INSERT INTO invoice_items (invoice_id, product_id, description, qty, unit_price, line_total) VALUES (?,?,?,?,?,?)',
         [soaId, null, cnDescription, 1, -cn.amount, -cn.amount]
