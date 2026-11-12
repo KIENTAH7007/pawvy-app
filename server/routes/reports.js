@@ -228,6 +228,43 @@ function reportsRouter(db) {
         { h: `Gross profit (${C})`, k: 'profit', w: 18, num: 1, fmt: M }, { h: `Avg unit price (${C})`, k: 'avg_price', w: 20, num: 1, fmt: M },
         { h: 'Last sale', k: 'last_sale', w: 12 }, { h: 'Sale days', k: 'sale_days', w: 10, num: 1, fmt: I },
       ], skus);
+      // Per product, per month (one row per product per month with sales) — easy to filter / pivot.
+      const prodMonthly = db.query(`
+        SELECT strftime('%Y-%m', s.date) AS month, b.name AS brand, p.item_series, p.variation, SUM(s.qty) AS units,
+          ROUND(SUM(${REVENUE_SQL}),2) AS revenue, ROUND(SUM(${PROFIT_SQL}),2) AS profit
+        ${FROM} WHERE ${W} GROUP BY month, p.id ORDER BY month, b.name, units DESC`, params);
+      addSheet('Products by month', [
+        { h: 'Month', k: 'month', w: 10 }, { h: 'Brand', k: 'brand', w: 20 }, { h: 'Product / series', k: 'item_series', w: 38 },
+        { h: 'Variation', k: 'variation', w: 28 }, { h: 'Units', k: 'units', w: 10, num: 1, fmt: I },
+        { h: `Revenue (${C})`, k: 'revenue', w: 16, num: 1, fmt: M }, { h: `Gross profit (${C})`, k: 'profit', w: 18, num: 1, fmt: M },
+      ], prodMonthly);
+      // Grids: one row per product, one column per month (Jan–Dec), with a total.
+      const MN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      const grid = (name, field, fmtStr, unit) => {
+        const byProd = new Map();
+        prodMonthly.forEach(r => {
+          const key = `${r.brand}|${r.item_series}|${r.variation || ''}`;
+          if (!byProd.has(key)) byProd.set(key, { brand: r.brand, item_series: r.item_series, variation: r.variation || '', total: 0 });
+          const row = byProd.get(key); const mi = parseInt(r.month.slice(5)) - 1;
+          row[`m${mi}`] = num(r[field]); row.total += num(r[field]);
+        });
+        const rows = [...byProd.values()].sort((a, b) => a.brand.localeCompare(b.brand) || b.total - a.total);
+        const cols = [{ h: 'Brand', k: 'brand', w: 20 }, { h: 'Product / series', k: 'item_series', w: 38 }, { h: 'Variation', k: 'variation', w: 28 },
+          ...MN.map((m, i) => ({ h: m, k: `m${i}`, w: 11, num: 1, fmt: fmtStr })), { h: `Total ${y}`, k: 'total', w: 13, num: 1, fmt: fmtStr }];
+        const ws = addSheet(name, cols, rows);
+        // Total row (real formulas so it stays correct if you filter / edit)
+        if (rows.length) {
+          const tr = ws.addRow({ brand: 'TOTAL' });
+          for (let c = 4; c <= 16; c++) {
+            const L = ws.getColumn(c).letter;
+            tr.getCell(c).value = { formula: `SUM(${L}2:${L}${rows.length + 1})`, result: rows.reduce((a, r) => a + (c === 16 ? r.total : num(r[`m${c - 4}`])), 0) };
+            tr.getCell(c).numFmt = fmtStr;
+          }
+          tr.font = { bold: true };
+        }
+      };
+      grid('Units by month', 'units', I);
+      grid(`Profit by month`, 'profit', M);
       addSheet('Monthly', [
         { h: 'Month', k: 'month', w: 10 }, { h: 'Brand', k: 'brand', w: 22 }, { h: 'Units', k: 'units', w: 10, num: 1, fmt: I },
         { h: `Revenue (${C})`, k: 'revenue', w: 16, num: 1, fmt: M }, { h: `Gross profit (${C})`, k: 'profit', w: 18, num: 1, fmt: M },

@@ -1,24 +1,26 @@
-# Pawvy App - Mailing Filter and Brand Excel
+# Pawvy App - Brand Analysis Month View
 
-Four complete files, no database changes, no new libraries (Excel export uses exceljs, already installed).
+Two complete files, no database changes, no new libraries.
 
-1. Sales Ledger: new "Mailing required only" tick box. Shows every sale still waiting to be mailed (the red ones), across all dates; From/To are ignored while ticked, voided sales never show. Brand / Partner / Market filters still apply. Untick, or "Clear all filters", to go back.
-2. Dashboard > Brand Analysis: new Download (Excel) button on the right of the brand row. A brand selected = that brand only; Overview = every brand. Uses the year and SG / MY / All markets view currently on screen. Sheets: Brands, Products, Monthly, Channels.
+1. Dashboard > Brand Analysis (a brand selected): click any bar in "Monthly Profit Trend" to show only that month. Top Channels and the SKU table switch to that month, the chosen bar stays bright, a "Sep 2026 only - Show all months" tag appears in the header. Click the same bar again (or the tag) to go back to the whole year. Changing brand / market resets to the whole year.
+2. Excel download (still the whole year, same button) gains three sheets:
+   - Products by month: one row per product per month (units, revenue, profit) - filter / pivot friendly.
+   - Units by month: one row per product, columns Jan-Dec + total, with a TOTAL row.
+   - Profit by month: same grid in gross profit.
+   Existing sheets (Brands, Products, Monthly, Channels) are unchanged.
 
 Files:
-- server/routes/reports.js  (new GET /api/reports/brand-analysis-export, PIN-protected like the other reports)
-- client/src/api.js
-- client/src/pages/Sales.jsx
 - client/src/pages/Dashboard.jsx
+- server/routes/reports.js
 
 ## 1. Test on staging
 cd pawvy-app
 git checkout staging
 git pull
 git merge main
-# copy the 4 files from this zip into the same paths in the repo (replace), then:
-git add server/routes/reports.js client/src/api.js client/src/pages/Sales.jsx client/src/pages/Dashboard.jsx
-git commit -m "Sales Ledger: mailing-required filter; Dashboard: Brand Analysis Excel download"
+# copy the 2 files from this zip into the same paths in the repo (replace), then:
+git add client/src/pages/Dashboard.jsx server/routes/reports.js
+git commit -m "Brand Analysis: click a month bar to filter; Excel month breakdown sheets"
 git push origin staging
 
 ## 2. After you are happy, merge to main

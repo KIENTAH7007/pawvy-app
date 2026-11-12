@@ -35,18 +35,37 @@ const Tip = ({ active, payload, label, prefix = 'SGD ' }) => {
 
 /* ── Brand Drill-Down Panel ───────────────────────────────────── */
 function BrandDetail({ brand, year, market, cur, onClose }) {
-  const [data, setData] = useState(null);
+  const [data, setData] = useState(null);          // what the channels / SKU table show (whole year, or one month)
+  const [yearData, setYearData] = useState(null);    // whole-year figures — keeps the bar chart complete
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [monthSel, setMonthSel] = useState(null);    // 'YYYY-MM' when a bar has been clicked
+
+  // New brand / year / market → back to the whole year.
+  useEffect(() => { setMonthSel(null); }, [brand.id, year, market]);
 
   useEffect(() => {
-    brandSkuApi.detail({ brand_id: brand.id, year, ...(market ? { market } : {}) }).then(d => { setData(d); setLoading(false); });
-  }, [brand.id, year, market]);
+    let live = true;
+    const base = { brand_id: brand.id, year, ...(market ? { market } : {}) };
+    if (!monthSel) {
+      brandSkuApi.detail(base).then(d => { if (!live) return; setYearData(d); setData(d); setLoading(false); setBusy(false); });
+    } else {
+      const [yy, mm] = monthSel.split('-');
+      const last = new Date(parseInt(yy), parseInt(mm), 0).getDate();
+      setBusy(true);
+      brandSkuApi.detail({ ...base, date_from: `${monthSel}-01`, date_to: `${monthSel}-${String(last).padStart(2, '0')}` })
+        .then(d => { if (!live) return; setData(d); setBusy(false); });
+    }
+    return () => { live = false; };
+  }, [brand.id, year, market, monthSel]);
 
-  const trendData = (data?.monthlyTrend || []).map(r => ({
+  const trendData = (yearData?.monthlyTrend || []).map(r => ({
+    ym: r.month,
     month: MONTH_LABELS[parseInt(r.month?.slice(5) || '0')],
     profit: parseFloat(r.profit || 0),
     units:  parseInt(r.units || 0),
   }));
+  const monthName = monthSel ? `${MONTH_LABELS[parseInt(monthSel.slice(5))]} ${monthSel.slice(0, 4)}` : null;
 
   return (
     <div style={{background:'var(--navy)',border:`1px solid ${brand.color}44`,borderRadius:'var(--radius)',overflow:'hidden'}}>
@@ -55,7 +74,13 @@ function BrandDetail({ brand, year, market, cur, onClose }) {
         <div style={{display:'flex',alignItems:'center',gap:10}}>
           <span style={{width:10,height:10,borderRadius:'50%',background:brand.color,display:'inline-block'}}/>
           <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1,color:'var(--cream)'}}>{brand.name.toUpperCase()} · BRAND ANALYSIS</span>
-          <span style={{fontSize:11,color:'var(--cream-30)'}}>{year}</span>
+          <span style={{fontSize:11,color:'var(--cream-30)'}}>{monthName || year}</span>
+          {monthSel && (
+            <button onClick={()=>setMonthSel(null)}
+              style={{padding:'2px 10px',borderRadius:12,border:`1px solid ${brand.color}`,background:`${brand.color}22`,color:brand.color,fontSize:10,fontWeight:700,cursor:'pointer'}}>
+              {monthName} only · Show all months ✕
+            </button>
+          )}
         </div>
         <button onClick={onClose} style={{background:'none',border:'none',color:'var(--cream-60)',cursor:'pointer',fontSize:18,lineHeight:1}}>✕</button>
       </div>
@@ -67,15 +92,17 @@ function BrandDetail({ brand, year, market, cur, onClose }) {
           {/* Monthly trend for this brand */}
           {trendData.length > 0 && (
             <div>
-              <div style={{fontSize:11,fontWeight:700,letterSpacing:.8,textTransform:'uppercase',color:'var(--cream-30)',marginBottom:10}}>Monthly Profit Trend</div>
+              <div style={{fontSize:11,fontWeight:700,letterSpacing:.8,textTransform:'uppercase',color:'var(--cream-30)',marginBottom:10}}>Monthly Profit Trend <span style={{fontWeight:500,letterSpacing:0,textTransform:'none',marginLeft:8}}>— click a bar to see just that month</span></div>
               <ResponsiveContainer width="100%" height={150}>
                 <BarChart data={trendData} margin={{top:0,right:8,left:0,bottom:0}}>
                   <XAxis dataKey="month" tick={{fill:'rgba(245,242,235,.4)',fontSize:10}} axisLine={false} tickLine={false}/>
                   <YAxis tick={{fill:'rgba(245,242,235,.4)',fontSize:9}} axisLine={false} tickLine={false} tickFormatter={v=>`$${v>=1000?(v/1000).toFixed(0)+'k':v}`}/>
                   <Tooltip content={<Tip prefix={cur+' '}/>}/>
-                  <Bar dataKey="profit" name="Profit" radius={[3,3,0,0]}>
-                    {trendData.map((_,i) => (
-                      <Cell key={i} fill={brand.color} fillOpacity={i===trendData.length-1?1:.55}/>
+                  <Bar dataKey="profit" name="Profit" radius={[3,3,0,0]} cursor="pointer"
+                    onClick={(d) => { const ym = d?.ym || d?.payload?.ym; if (ym) setMonthSel(m => m === ym ? null : ym); }}>
+                    {trendData.map((r,i) => (
+                      <Cell key={i} fill={brand.color}
+                        fillOpacity={monthSel ? (r.ym===monthSel?1:.3) : (i===trendData.length-1?1:.55)}/>
                     ))}
                   </Bar>
                 </BarChart>
@@ -84,6 +111,7 @@ function BrandDetail({ brand, year, market, cur, onClose }) {
           )}
 
           {/* Top channels */}
+          <div style={{display:'flex',flexDirection:'column',gap:14,opacity:busy?.45:1,transition:'opacity .15s'}}>
           {data?.channels?.length > 0 && (
             <div>
               <div style={{fontSize:11,fontWeight:700,letterSpacing:.8,textTransform:'uppercase',color:'var(--cream-30)',marginBottom:8}}>Top Channels</div>
@@ -101,7 +129,7 @@ function BrandDetail({ brand, year, market, cur, onClose }) {
           {/* SKU table */}
           <div>
             <div style={{fontSize:11,fontWeight:700,letterSpacing:.8,textTransform:'uppercase',color:'var(--cream-30)',marginBottom:8}}>
-              SKU Performance ({data?.skus?.length || 0} products)
+              SKU Performance ({data?.skus?.length || 0} products){monthName ? ` — ${monthName}` : ''}
             </div>
             <div style={{overflowX:'auto'}}>
               <table style={{width:'100%',borderCollapse:'collapse',fontSize:11,minWidth:500}}>
@@ -129,6 +157,7 @@ function BrandDetail({ brand, year, market, cur, onClose }) {
                 </tbody>
               </table>
             </div>
+          </div>
           </div>
         </div>
       )}
