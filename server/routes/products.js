@@ -119,9 +119,11 @@ module.exports = function(db) {
   // filtered/visible on the Products & Pricing tab.
   router.get('/export-partner-sheet', async (req, res) => {
     const { brand_id, active, search } = req.query;
+    // market=MY → MY prices (RM); anything else → SG prices (SGD), as before.
+    const isMY = req.query.market === 'MY';
     let sql = `
       SELECT p.id, p.item_series, p.variation, p.barcode,
-        p.price_rrp_sg, p.price_rrp_online_sg, p.description,
+        p.price_rrp_sg, p.price_rrp_online_sg, p.price_rrp_my, p.price_rrp_online_my, p.description,
         p.image_data, p.image_url,
         b.name AS brand_name
       FROM products p JOIN brands b ON b.id = p.brand_id
@@ -149,8 +151,8 @@ module.exports = function(db) {
       { header: 'Item Series', key: 'item_series', width: 24 },
       { header: 'Variation', key: 'variation', width: 18 },
       { header: 'Barcode', key: 'barcode', width: 16 },
-      { header: 'RRP (SGD)', key: 'rrp', width: 12 },
-      { header: 'RRP Online (SGD)', key: 'rrp_online', width: 16 },
+      { header: isMY ? 'RRP (RM)' : 'RRP (SGD)', key: 'rrp', width: 12 },
+      { header: isMY ? 'RRP Online (RM)' : 'RRP Online (SGD)', key: 'rrp_online', width: 16 },
       { header: 'Description', key: 'description', width: 40 },
       { header: 'Product Image', key: 'image', width: 18 },
     ];
@@ -168,8 +170,8 @@ module.exports = function(db) {
         item_series: p.item_series,
         variation: p.variation || '',
         barcode: p.barcode || '',
-        rrp: p.price_rrp_sg != null ? p.price_rrp_sg : '',
-        rrp_online: p.price_rrp_online_sg != null ? p.price_rrp_online_sg : '',
+        rrp: (isMY ? p.price_rrp_my : p.price_rrp_sg) != null ? (isMY ? p.price_rrp_my : p.price_rrp_sg) : '',
+        rrp_online: (isMY ? p.price_rrp_online_my : p.price_rrp_online_sg) != null ? (isMY ? p.price_rrp_online_my : p.price_rrp_online_sg) : '',
         description: p.description || '',
         image: '',
       });
@@ -224,7 +226,7 @@ module.exports = function(db) {
       }
     }
 
-    const filename = `pawvy-partner-products-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    const filename = `pawvy-partner-products-${isMY ? 'my-' : ''}${new Date().toISOString().slice(0, 10)}.xlsx`;
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     await workbook.xlsx.write(res);

@@ -234,6 +234,7 @@ export default function Products() {
   // bucket and dropped into the sheet. Respects whatever brand/search/
   // archived filters are currently applied, same as Export CSV, so KT can
   // filter to one brand before exporting to send a partner just their line.
+  // The SG / MY toggle decides which market's prices go in the sheet.
   const [exportingPartnerSheet, setExportingPartnerSheet] = useState(false);
   async function exportPartnerSheet() {
     setExportingPartnerSheet(true);
@@ -241,6 +242,7 @@ export default function Products() {
       const q = {};
       if (filterBrand) q.brand_id = filterBrand;
       if (search)      q.search   = search;
+      q.market = filterMkt;   // SG or MY — the sheet carries that market's prices
       if (!showArchived) q.active = 'true';
       const qs = new URLSearchParams(q).toString();
       const { blob, filename } = await api.downloadFile(`/products/export-partner-sheet${qs ? '?' + qs : ''}`);
