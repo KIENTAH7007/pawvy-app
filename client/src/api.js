@@ -147,7 +147,10 @@ export const shipmentsApi = {
   trends:          (q)  => api.get(`/shipments/trends${qs(q)}`),
 };
 
-export const brandSkuApi = { detail: (q) => api.get(`/reports/brand-sku${qs(q)}`), };
+export const brandSkuApi = {
+  detail: (q) => api.get(`/reports/brand-sku${qs(q)}`),
+  exportXlsx: (q) => api.downloadFile(`/reports/brand-analysis-export${qs(q)}`),
+};
 export const enquiryAdminApi = {
   getAll: () => api.get('/enquiry-admin'),
   markReplied: (id) => api.post(`/enquiry-admin/${id}/mark-replied`, {}),

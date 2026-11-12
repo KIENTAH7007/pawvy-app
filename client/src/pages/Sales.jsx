@@ -15,6 +15,7 @@ export default function Sales() {
   const [loading,  setLoading]  = useState(true);
   const defaultRange = currentMonthRange();
   const [filters,  setFilters]  = useState({ brand_id:'', partner_id:'', date_from:defaultRange.from, date_to:defaultRange.to, market:'' });
+  const [mailingOnly, setMailingOnly] = useState(false); // show only sales still waiting to be mailed (any date)
   const [voidConfirm, setVoidConfirm] = useState(null); // sale id pending void
   const [mailingInfoModal, setMailingInfoModal] = useState(null); // sale row pending mailing-info view
   const [editModal, setEditModal] = useState(null); // sale row pending shipping/mailing/notes edit
@@ -95,13 +96,16 @@ export default function Sales() {
     const q = {};
     if (f.brand_id)   q.brand_id   = f.brand_id;
     if (f.partner_id) q.partner_id = f.partner_id;
-    if (f.date_from)  q.date_from  = f.date_from;
-    if (f.date_to)    q.date_to    = f.date_to;
+    if (f.date_from && !mailingOnly) q.date_from = f.date_from;
+    if (f.date_to && !mailingOnly)   q.date_to   = f.date_to;
     if (f.market)     q.market     = f.market;
     salesApi.getAll(q).then(d => { setSales(d); setLoading(false); });
   };
 
-  useEffect(() => { load(); }, [filters]);
+  useEffect(() => { load(); }, [filters, mailingOnly]);
+
+  // Rows shown: all, or only those marked 'mailing required' (the red ones).
+  const shown = mailingOnly ? sales.filter(s => s.mailing_required) : sales;
 
   const setF = (k, v) => setFilters(f => ({ ...f, [k]: v }));
   // "Has filter" now only flags brand/partner/market — the date range always has
@@ -111,8 +115,8 @@ export default function Sales() {
 
   // Each sale is in its own market's currency — never add SGD and MYR together.
   // Totals are therefore kept per currency (one line each when "All" is chosen).
-  const totals = sales.reduce((a, s) => ({ ...a, q: a.q + s.qty }), { q:0 });
-  const totalsByCur = sales.reduce((m, s) => {
+  const totals = shown.reduce((a, s) => ({ ...a, q: a.q + s.qty }), { q:0 });
+  const totalsByCur = shown.reduce((m, s) => {
     const c = s.currency || 'SGD';
     m[c] = m[c] || { r:0, p:0, q:0 };
     m[c].r += (s.revenue||0); m[c].p += (s.profit||0); m[c].q += s.qty;
@@ -179,7 +183,7 @@ export default function Sales() {
   }
 
   return (
-    <Page title="SALES LEDGER" subtitle={`${sales.length} transactions`}
+    <Page title="SALES LEDGER" subtitle={mailingOnly ? `${shown.length} awaiting mailing` : `${shown.length} transactions`}
       action={
         <div style={{display:'flex',gap:8}}>
           <Btn variant="ghost" onClick={openReport}><FileText size={14}/> Best Sellers Report</Btn>
@@ -201,21 +205,31 @@ export default function Sales() {
           <option value="">All</option>
           {['SG','MY'].map(m => <option key={m} value={m}>{m}</option>)}
         </Select>
-        <Input label="From" type="date" value={filters.date_from} onChange={e=>setF('date_from',e.target.value)} style={{width:150}}/>
-        <Input label="To"   type="date" value={filters.date_to}   onChange={e=>setF('date_to',e.target.value)}   style={{width:150}}/>
-        {!isCurrentMonthOnly && (
+        <Input label="From" type="date" value={filters.date_from} onChange={e=>setF('date_from',e.target.value)} style={{width:150,opacity:mailingOnly?.4:1}} disabled={mailingOnly}/>
+        <Input label="To"   type="date" value={filters.date_to}   onChange={e=>setF('date_to',e.target.value)}   style={{width:150,opacity:mailingOnly?.4:1}} disabled={mailingOnly}/>
+        <label style={{display:'flex',alignItems:'center',gap:7,height:36,padding:'0 12px',borderRadius:8,cursor:'pointer',fontSize:12,fontWeight:600,userSelect:'none',
+            border:`1px solid ${mailingOnly?'#f87171':'var(--border)'}`,background:mailingOnly?'rgba(248,113,113,.12)':'transparent',color:mailingOnly?'#f87171':'var(--cream-60)'}}>
+          <input type="checkbox" checked={mailingOnly} onChange={e=>setMailingOnly(e.target.checked)} style={{accentColor:'#f87171'}}/>
+          Mailing required only
+        </label>
+        {!isCurrentMonthOnly && !mailingOnly && (
           <Btn variant="ghost" size="sm" onClick={()=>setFilters(f=>({...f,date_from:defaultRange.from,date_to:defaultRange.to}))}>This month</Btn>
         )}
-        {hasFilter && <Btn variant="ghost" size="sm" onClick={()=>setFilters({brand_id:'',partner_id:'',date_from:'',date_to:'',market:''})}>Clear all filters (all time)</Btn>}
+        {(hasFilter || mailingOnly) && <Btn variant="ghost" size="sm" onClick={()=>{setMailingOnly(false);setFilters({brand_id:'',partner_id:'',date_from:'',date_to:'',market:''});}}>Clear all filters (all time)</Btn>}
       </div>
-      {isCurrentMonthOnly && (
+      {mailingOnly && (
+        <div style={{ fontSize: 11, color: '#f87171' }}>
+          Showing every sale still waiting to be mailed, across all dates (the From/To range is ignored while this is ticked). Brand, Partner and Market filters still apply.
+        </div>
+      )}
+      {isCurrentMonthOnly && !mailingOnly && (
         <div style={{ fontSize: 11, color: 'var(--cream-30)' }}>
           Showing this month only ({defaultRange.from} to {defaultRange.to}). Adjust From/To above, or clear filters, to see other periods.
         </div>
       )}
 
       {/* Totals bar */}
-      {!loading && sales.length > 0 && (
+      {!loading && shown.length > 0 && (
         <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
           {[['SGD','SG'],['MYR','MY']].filter(([c]) => totalsByCur[c]).map(([c, mk]) => {
             const t = totalsByCur[c];
@@ -426,8 +440,8 @@ export default function Sales() {
       <div style={{background:'var(--navy)',border:'1px solid var(--border)',borderRadius:'var(--radius)'}}>
         {loading
           ? <div style={{padding:40,textAlign:'center',color:'var(--cream-30)',fontSize:12}}>Loading…</div>
-          : sales.length === 0
-            ? <div style={{padding:40,textAlign:'center',color:'var(--cream-30)',fontSize:12}}>No sales match filters</div>
+          : shown.length === 0
+            ? <div style={{padding:40,textAlign:'center',color:'var(--cream-30)',fontSize:12}}>{mailingOnly ? 'Nothing is waiting to be mailed.' : 'No sales match filters'}</div>
             : (
               <div style={{overflowX:'auto'}}>
                 <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:1080}}>
@@ -439,7 +453,7 @@ export default function Sales() {
                     </tr>
                   </thead>
                   <tbody>
-                    {sales.map(s => {
+                    {shown.map(s => {
                       const isVoided = s.voided === 1;
                       const rowStyle = isVoided
                         ? {borderBottom:'1px solid rgba(245,242,235,.04)',opacity:0.4}

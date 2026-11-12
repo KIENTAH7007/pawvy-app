@@ -146,6 +146,8 @@ export default function Dashboard() {
   const [b2cMode,     setB2cMode]     = useState(false);
   const [brands,      setBrands]      = useState([]);
   const [selectedBrand, setSelected] = useState(null); // { id, name, color }
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
   const [loading,     setLoading]     = useState(true);
   // Market view: SG (default) · MY · ALL (SGD equivalent). Money labels follow it.
   const [dmarket, setDmarket] = useState('SG');
@@ -226,6 +228,21 @@ export default function Dashboard() {
       .finally(() => setPerfLoading(false));
   }
 
+  // Brand Analysis → Excel. A brand selected = that brand only; Overview = every brand.
+  async function downloadBrandAnalysis() {
+    setExporting(true); setExportError('');
+    try {
+      const q = { year: curYear, ...(dmarket === 'ALL' ? {} : { market: dmarket }), ...(selectedBrand ? { brand_id: selectedBrand.id } : {}) };
+      const { blob, filename } = await brandSkuApi.exportXlsx(q);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename || `pawvy-brand-analysis-${localDateStr()}.xlsx`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    } catch (e) { setExportError(e.message || 'Download failed'); }
+    finally { setExporting(false); }
+  }
+
   const trendData = trend.map(r => ({
     month:   MONTH_LABELS[parseInt(r.month?.slice(5) || '0')],
     profit:  parseFloat(r.profit  || 0),
@@ -283,7 +300,13 @@ export default function Dashboard() {
             {b.name}
           </button>
         ))}
+        <button onClick={downloadBrandAnalysis} disabled={exporting}
+          title={selectedBrand ? `Download ${selectedBrand.name} figures (Excel)` : 'Download all brands (Excel)'}
+          style={{marginLeft:'auto',padding:'5px 14px',borderRadius:20,border:'1px solid var(--border)',cursor:exporting?'default':'pointer',fontSize:11,fontWeight:600,background:'transparent',color:'var(--cream-60)',opacity:exporting?.6:1}}>
+          {exporting ? 'Preparing…' : `⬇ Download ${selectedBrand ? selectedBrand.name : 'all brands'} (Excel)`}
+        </button>
       </div>
+      {exportError && <div style={{fontSize:11,color:'#f87171',marginTop:-8}}>{exportError}</div>}
 
       {/* Brand drill-down OR overview */}
       {selectedBrand ? (

@@ -1,6 +1,8 @@
 const { Router } = require('express');
 
 const money = require('../lib/money');
+const ExcelJS = require('exceljs');
+const { localDateStr } = require('../utils/dates');
 
 // Currency-aware revenue / COGS / profit (see lib/money.js). One market selected
 // → that market's own currency (SG→SGD, MY→MYR with SGD cost converted at the
@@ -162,6 +164,94 @@ function reportsRouter(db) {
     `, [brand_id, df, dt, ...mp]);
 
     res.json({ skus, monthlyTrend, channels, currency, period: { from: df, to: dt } });
+  });
+
+  /* ── Brand Analysis export (Excel) ────────────────────────────────
+     Same numbers as the Dashboard's Brand Analysis, for the chosen year / market.
+     brand_id given → that brand only; omitted (Overview) → every brand. */
+  router.get('/brand-analysis-export', async (req, res) => {
+    try {
+      const { mode, currency, REVENUE_SQL, PROFIT_SQL } = ctx(req);
+      const { brand_id, year, market } = req.query;
+      const y = parseInt(year) || new Date().getFullYear();
+      const df = `${y}-01-01`, dt = `${y}-12-31`;
+      const where = [`${VOIDED_FILTER}`, 's.date BETWEEN ? AND ?'];
+      const params = [df, dt];
+      if (market)   { where.push('s.market = ?');     params.push(market); }
+      if (brand_id) { where.push('p.brand_id = ?');   params.push(brand_id); }
+      const W = where.join(' AND ');
+      const FROM = 'FROM sales s JOIN products p ON p.id = s.product_id JOIN brands b ON b.id = p.brand_id';
+      const avgPrice = mode === 'sgd' ? `s.unit_price / ${money.FX}` : 's.unit_price';
+      const num = v => (v == null || v === '' ? 0 : Number(v));
+
+      const brands = db.query(`
+        SELECT b.name AS brand, COUNT(DISTINCT p.id) AS skus, SUM(s.qty) AS units,
+          ROUND(SUM(${REVENUE_SQL}),2) AS revenue, ROUND(SUM(${PROFIT_SQL}),2) AS profit
+        ${FROM} WHERE ${W} GROUP BY b.id ORDER BY profit DESC`, params);
+      const skus = db.query(`
+        SELECT b.name AS brand, p.item_series, p.variation, SUM(s.qty) AS units,
+          ROUND(SUM(${REVENUE_SQL}),2) AS revenue, ROUND(SUM(${PROFIT_SQL}),2) AS profit,
+          ROUND(AVG(${avgPrice}),2) AS avg_price, MAX(s.date) AS last_sale, COUNT(DISTINCT s.date) AS sale_days
+        ${FROM} WHERE ${W} GROUP BY p.id ORDER BY b.name, profit DESC`, params);
+      const monthly = db.query(`
+        SELECT strftime('%Y-%m', s.date) AS month, b.name AS brand, SUM(s.qty) AS units,
+          ROUND(SUM(${REVENUE_SQL}),2) AS revenue, ROUND(SUM(${PROFIT_SQL}),2) AS profit
+        ${FROM} WHERE ${W} GROUP BY month, b.id ORDER BY month, b.name`, params);
+      const channels = db.query(`
+        SELECT b.name AS brand, s.channel, SUM(s.qty) AS units,
+          ROUND(SUM(${REVENUE_SQL}),2) AS revenue, ROUND(SUM(${PROFIT_SQL}),2) AS profit
+        ${FROM} WHERE ${W} GROUP BY b.id, s.channel ORDER BY b.name, profit DESC`, params);
+
+      const wb = new ExcelJS.Workbook();
+      wb.creator = 'Pawvy';
+      const addSheet = (name, cols, rows) => {
+        const ws = wb.addWorksheet(name, { views: [{ state: 'frozen', ySplit: 1 }] });
+        ws.columns = cols.map(c => ({ header: c.h, key: c.k, width: c.w, style: c.fmt ? { numFmt: c.fmt } : {} }));
+        rows.forEach(r => ws.addRow(Object.fromEntries(cols.map(c => [c.k, c.num ? num(r[c.k]) : (r[c.k] ?? '')]))));
+        const hdr = ws.getRow(1);
+        hdr.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        hdr.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF14213D' } };
+        hdr.alignment = { vertical: 'middle' };
+        if (rows.length) ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: cols.length } };
+        return ws;
+      };
+      const C = currency, M = '#,##0.00', I = '#,##0';
+      brands.forEach(r => { r.margin = num(r.revenue) ? num(r.profit) / num(r.revenue) : 0; });
+      addSheet('Brands', [
+        { h: 'Brand', k: 'brand', w: 22 }, { h: 'Products sold', k: 'skus', w: 14, num: 1, fmt: I },
+        { h: 'Units', k: 'units', w: 10, num: 1, fmt: I }, { h: `Revenue (${C})`, k: 'revenue', w: 16, num: 1, fmt: M },
+        { h: `Gross profit (${C})`, k: 'profit', w: 18, num: 1, fmt: M }, { h: 'Margin %', k: 'margin', w: 11, num: 1, fmt: '0.0%' },
+      ], brands);
+      addSheet('Products', [
+        { h: 'Brand', k: 'brand', w: 20 }, { h: 'Product / series', k: 'item_series', w: 38 }, { h: 'Variation', k: 'variation', w: 28 },
+        { h: 'Units', k: 'units', w: 10, num: 1, fmt: I }, { h: `Revenue (${C})`, k: 'revenue', w: 16, num: 1, fmt: M },
+        { h: `Gross profit (${C})`, k: 'profit', w: 18, num: 1, fmt: M }, { h: `Avg unit price (${C})`, k: 'avg_price', w: 20, num: 1, fmt: M },
+        { h: 'Last sale', k: 'last_sale', w: 12 }, { h: 'Sale days', k: 'sale_days', w: 10, num: 1, fmt: I },
+      ], skus);
+      addSheet('Monthly', [
+        { h: 'Month', k: 'month', w: 10 }, { h: 'Brand', k: 'brand', w: 22 }, { h: 'Units', k: 'units', w: 10, num: 1, fmt: I },
+        { h: `Revenue (${C})`, k: 'revenue', w: 16, num: 1, fmt: M }, { h: `Gross profit (${C})`, k: 'profit', w: 18, num: 1, fmt: M },
+      ], monthly);
+      addSheet('Channels', [
+        { h: 'Brand', k: 'brand', w: 22 }, { h: 'Channel', k: 'channel', w: 22 }, { h: 'Units', k: 'units', w: 10, num: 1, fmt: I },
+        { h: `Revenue (${C})`, k: 'revenue', w: 16, num: 1, fmt: M }, { h: `Gross profit (${C})`, k: 'profit', w: 18, num: 1, fmt: M },
+      ], channels);
+
+      let label = 'all-brands';
+      if (brand_id) {
+        const b = db.queryOne('SELECT name FROM brands WHERE id = ?', [brand_id]);
+        label = (b?.name || 'brand').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      }
+      const filename = `pawvy-brand-analysis-${label}-${y}-${market ? market.toLowerCase() : 'all-markets'}-${localDateStr()}.xlsx`;
+      const buf = await wb.xlsx.writeBuffer();
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Cache-Control', 'no-store');
+      res.send(Buffer.from(buf));
+    } catch (err) {
+      console.error('⚠️  Brand analysis export failed:', err.message);
+      res.status(500).json({ error: 'Could not build the export' });
+    }
   });
 
   /* ── Top partners ─────────────────────────────────────────────── */
