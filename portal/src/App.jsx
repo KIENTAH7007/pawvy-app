@@ -15,7 +15,7 @@ function useIsMobile() {
   return mobile;
 }
 
-const money = (n) => `${MONEY_SYMBOL}${Number(n).toFixed(2)}`;
+const money = (n) => `${MONEY_SYMBOL} ${Number(n).toFixed(2)}`;
 const EMAIL_KEY = 'pawvy_portal_email';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
