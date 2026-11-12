@@ -1,6 +1,6 @@
 const { Router } = require('express');
 const { notifyNewPortalOrder } = require('../utils/notify');
-const { sendPortalOrderCopy } = require('../lib/portalOrderEmail');
+const { sendPortalOrderCopy, buildOrderPdf } = require('../lib/portalOrderEmail');
 const { withEffectivePrice } = require('../lib/pricing');
 const { localDateStr } = require('../utils/dates');
 
@@ -170,7 +170,7 @@ module.exports = function(db) {
         return res.status(400).json({ error: 'Each item needs a valid product and quantity.' });
       }
       const product = db.queryOne(`
-        SELECT p.id, p.is_active, p.item_series, p.variation, p.price_wholesale_my, p.price_wholesale_sg,
+        SELECT p.id, p.is_active, p.item_series, p.variation, p.image_url, p.price_wholesale_my, p.price_wholesale_sg,
           COALESCE(mega.qty, 0) + COALESCE(hougang.qty, 0) AS total_qty
         FROM products p
         LEFT JOIN inventory_levels mega    ON mega.product_id = p.id    AND mega.location    = 'Mega'
@@ -200,7 +200,7 @@ module.exports = function(db) {
       }
       const unit = Number(mk === 'MY' ? product.price_wholesale_my : product.price_wholesale_sg) || 0;
       subtotalCents += Math.round(unit * 100) * qty;
-      emailLines.push({ name: `${product.item_series}${product.variation ? ' · ' + product.variation : ''}`, qty, unit });
+      emailLines.push({ name: `${product.item_series}${product.variation ? ' · ' + product.variation : ''}`, qty, unit, imageUrl: product.image_url || null });
     }
 
     const FOC_CENTS = (mk === 'MY' ? 600 : 200) * 100;   // FOC delivery from SGD 200 / MYR 600 (>=)
@@ -245,20 +245,22 @@ module.exports = function(db) {
       console.error('⚠️  Failed to build/send new-order notification:', err.message);
     }
 
-    // Partner's emailed copy — fire-and-forget AFTER the order is saved. sendCustomerEmail swallows
-    // its own errors, and this is wrapped too, so it can never affect the order or the response.
-    if (contactEmail) {
-      try {
-        Promise.resolve(sendPortalOrderCopy({
-          to: contactEmail, companyName: String(company_name).trim(), market: mk,
-          notes: notes || null, lines: emailLines, subtotal,
-        })).catch(err => console.error('⚠️  Portal order copy email failed:', err.message));
-      } catch (err) {
-        console.error('⚠️  Portal order copy email failed:', err.message);
-      }
-    }
-
-    res.status(201).json({ ok: true, order_id: portalOrderId });
+    // The order is saved. Now build the partner's copy: ONE PDF, used both as the email attachment
+    // and as the ORDER SENT screen's "Download PDF". Best-effort — if the PDF can't be built (or the
+    // email can't be sent) the order is unaffected and the response simply carries no PDF.
+    const doc = {
+      company: String(company_name).trim(), email: contactEmail || '', market: mk,
+      notes: notes || null, lines: emailLines, subtotal,
+      when: new Date().toLocaleString('en-SG', { timeZone: 'Asia/Singapore', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }),
+    };
+    const pdfWork = Promise.race([buildOrderPdf(doc), new Promise(resolve => setTimeout(() => resolve(null), 15000))]);
+    pdfWork.then(pdf => {
+      if (contactEmail) sendPortalOrderCopy(doc, pdf);   // fire-and-forget, never throws
+      res.status(201).json({ ok: true, order_id: portalOrderId, pdf_base64: pdf ? pdf.toString('base64') : null });
+    }).catch(err => {
+      console.error('⚠️  Portal order copy failed:', err.message);
+      res.status(201).json({ ok: true, order_id: portalOrderId, pdf_base64: null });
+    });
   });
 
   return router;

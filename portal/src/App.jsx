@@ -30,8 +30,8 @@ function deliveryStatus(cents) {
   if (MARKET === 'MY') return out;
   if (cents >= 60000) out.ticks.push('S$30 cash rebate unlocked');
   else if (cents >= 40000) out.ticks.push('S$12 cash rebate unlocked');
-  if (cents >= 35000 && cents < 40000) out.nudge = { amount: (40000 - cents) / 100, rebate: 'S$12' };
-  else if (cents >= 55000 && cents < 60000) out.nudge = { amount: (60000 - cents) / 100, rebate: 'S$30' };
+  if (cents >= 35000 && cents < 40000) out.nudge = { amount: (40000 - cents) / 100, rebate: 'S$12', target: 400 };
+  else if (cents >= 55000 && cents < 60000) out.nudge = { amount: (60000 - cents) / 100, rebate: 'S$30', target: 600 };
   return out;
 }
 
@@ -50,7 +50,9 @@ export default function App() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [email, setEmail] = useState(() => { try { return localStorage.getItem(EMAIL_KEY) || ''; } catch (e) { return ''; } });
-  const [showFocPrompt, setShowFocPrompt] = useState(false);
+  const [prompt, setPrompt] = useState(null); // null | 'foc' | 'rebate'
+  const [sentPdf, setSentPdf] = useState(null);
+  const [sentAt, setSentAt] = useState('');
   const [sentEmail, setSentEmail] = useState('');
 
   useEffect(() => {
@@ -141,15 +143,16 @@ export default function App() {
     if (cartLines.length === 0) { setSubmitError('Your cart is empty.'); return; }
     if (email.trim() && !EMAIL_RE.test(email.trim())) { setSubmitError("That email address doesn't look right — please check it, or leave it blank."); return; }
     setSubmitError('');
-    if (!dStatus.focOk) { setShowFocPrompt(true); return; }
+    if (!dStatus.focOk) { setPrompt('foc'); return; }
+    if (dStatus.nudge) { setPrompt('rebate'); return; }
     doSubmit();
   }
 
   async function doSubmit() {
-    setShowFocPrompt(false);
+    setPrompt(null);
     setSubmitting(true); setSubmitError('');
     try {
-      await portalApi.submitOrder({
+      const res = await portalApi.submitOrder({
         company_name: companyName.trim(),
         notes: notes.trim() || null,
         email: email.trim() || null,
@@ -157,12 +160,24 @@ export default function App() {
       });
       try { if (email.trim()) localStorage.setItem(EMAIL_KEY, email.trim()); } catch (e) {}
       setSentEmail(email.trim());
+      setSentPdf(res && res.pdf_base64 ? res.pdf_base64 : null);
+      setSentAt(new Date().toLocaleString('en-SG', { timeZone: 'Asia/Singapore', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }));
       setView('success');
     } catch (e) {
       setSubmitError(e.message);
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function downloadPdf() {
+    if (!sentPdf) return;
+    const bytes = Uint8Array.from(atob(sentPdf), c => c.charCodeAt(0));
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = 'Pawvy-Order-List.pdf';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
   }
 
   if (loading) {
@@ -185,40 +200,85 @@ export default function App() {
   }
 
   if (view === 'success') {
+    const lab = { fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#666', marginBottom: 5 };
+    const th = (t, align) => <th style={{ fontSize: 10, letterSpacing: .6, textTransform: 'uppercase', color: '#14213d', padding: '7px 4px', borderBottom: '2px solid #14213d', textAlign: align }}>{t}</th>;
+    const td = { padding: '7px 4px', borderBottom: '1px solid #e6e1d6', fontSize: 12, verticalAlign: 'middle' };
+    const thumb = (u) => (u && u.startsWith('/api/uploads/') ? `${u}?trim=1&w=600` : u);
     return (
-      <Centered>
-        <style>{`@media print { body * { visibility: hidden; } #order-copy, #order-copy * { visibility: visible; color: #000 !important; } #order-copy { position: absolute; left: 0; top: 0; width: 100%; background: #fff; padding: 24px; } .no-print { display: none !important; } }`}</style>
-        <div style={{ textAlign: 'center', maxWidth: 400, width: '100%', padding: 24 }}>
-          <div id="order-copy">
-            <CheckCircle2 size={48} style={{ color: '#7fc93e', marginBottom: 16 }} />
-            <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 28, letterSpacing: 1, marginBottom: 8 }}>ORDER SENT</div>
-            <div style={{ fontSize: 13.5, color: 'rgba(245,242,235,.6)', lineHeight: 1.6 }}>
-              Thanks — we've received your order.
-              {sentEmail && <> A copy has been emailed to <strong style={{ color: 'var(--cream)' }}>{sentEmail}</strong>.</>}
-            </div>
-            <div style={{ textAlign: 'left', marginTop: 18 }}>
-              {cartLines.map(l => (
-                <div key={l.product.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 12, padding: '8px 0', borderBottom: '1px solid rgba(245,242,235,.12)', color: 'rgba(245,242,235,.6)' }}>
-                  <span>{l.product.brand_name} · {l.product.item_series}{l.product.variation ? ` · ${l.product.variation}` : ''} ×{l.qty} · {money(l.product.price_wholesale || 0)}</span>
-                  <strong style={{ color: 'var(--cream)', whiteSpace: 'nowrap' }}>{money((l.product.price_wholesale || 0) * l.qty)}</strong>
-                </div>
-              ))}
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '10px 0', color: 'rgba(245,242,235,.6)' }}>
-                <span>Subtotal</span><strong style={{ color: 'var(--cream)' }}>{money(cartCents / 100)}</strong>
-              </div>
-              {notes.trim() && (
-                <div style={{ fontSize: 11.5, color: 'rgba(245,242,235,.5)', marginBottom: 8 }}><strong>Notes:</strong> {notes.trim()}</div>
-              )}
-              <div style={{ fontSize: 11, color: 'rgba(245,242,235,.35)', lineHeight: 1.5 }}>
-                Applicable discounts and any delivery fee will be reflected in your invoice. We'll be in touch shortly.
-              </div>
-            </div>
+      <div style={{ minHeight: '100vh', display: 'flex', justifyContent: 'center', padding: '28px 12px 40px' }}>
+        <div style={{ width: '100%', maxWidth: 640, textAlign: 'center' }}>
+          <CheckCircle2 size={44} style={{ color: '#7fc93e', marginBottom: 10 }} />
+          <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 28, letterSpacing: 1, marginBottom: 6 }}>ORDER SENT</div>
+          <div style={{ fontSize: 13.5, color: 'rgba(245,242,235,.6)', lineHeight: 1.6, marginBottom: 16 }}>
+            Thanks — we've received your order.
+            {sentEmail && <> A copy has been emailed to <strong style={{ color: 'var(--cream)' }}>{sentEmail}</strong>.</>}
           </div>
-          <button className="no-print" onClick={() => window.print()} style={{ marginTop: 16, width: '100%', height: 42, borderRadius: 10, border: 'none', background: 'rgba(245,242,235,.1)', color: 'var(--cream)', fontSize: 13.5, fontWeight: 700, cursor: 'pointer' }}>
-            Save / print this list
-          </button>
+
+          <div style={{ background: '#fff', color: '#222', borderRadius: 6, overflow: 'hidden', textAlign: 'left', fontFamily: 'Arial,Helvetica,sans-serif', fontSize: 12 }}>
+            <div style={{ background: '#14213d', padding: '14px 22px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ width: 30, height: 30, background: 'var(--orange)', borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <img src={PAWVY_LOGO_WHITE} alt="Pawvy" style={{ width: 20, height: 20, objectFit: 'contain' }} />
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 19, fontWeight: 700, color: '#fff', letterSpacing: 1 }}>ORDER LIST</div>
+                <div style={{ color: '#f36f4a', fontSize: 12, fontWeight: 600, marginTop: 3 }}>{sentAt}</div>
+              </div>
+            </div>
+            <div style={{ padding: '18px 22px', display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', borderBottom: '2px solid #f0f2f5' }}>
+              <div>
+                <div style={lab}>From</div>
+                <div style={{ fontSize: 11.5, color: '#444', lineHeight: 1.65 }}>
+                  Pawvy Limited Partnership<br />39 Woodlands Close<br />Mega@Woodlands, #05-58, Unit 1H<br />Singapore 737856<br />
+                  <strong style={{ color: '#14213d' }}>janicelee@pawvy.co</strong>
+                </div>
+              </div>
+              <div>
+                <div style={lab}>Ordered by</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: '#14213d' }}>{companyName.trim()}</div>
+                {sentEmail && <div style={{ fontSize: 11.5, color: '#444', marginTop: 3 }}>{sentEmail}</div>}
+              </div>
+            </div>
+            <div style={{ padding: '14px 22px 6px', overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead><tr>{th('', 'left')}{th('Item', 'left')}{th('Qty', 'center')}{th('Unit price', 'right')}{th('Total', 'right')}</tr></thead>
+                <tbody>
+                  {cartLines.map(l => (
+                    <tr key={l.product.id}>
+                      <td style={{ ...td, width: 46 }}>
+                        {l.product.image_url
+                          ? <img src={thumb(l.product.image_url)} alt="" style={{ width: 38, height: 38, borderRadius: 6, border: '1px solid #dfe5ee', objectFit: 'contain', background: '#fff', display: 'block' }} />
+                          : <div style={{ width: 38, height: 38, borderRadius: 6, background: '#eef2f7', border: '1px solid #dfe5ee' }} />}
+                      </td>
+                      <td style={td}>{l.product.item_series}{l.product.variation ? ` · ${l.product.variation}` : ''}</td>
+                      <td style={{ ...td, textAlign: 'center' }}>{l.qty}</td>
+                      <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>{CURRENCY} {Number(l.product.price_wholesale || 0).toFixed(2)}</td>
+                      <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 700 }}>{CURRENCY} {(Number(l.product.price_wholesale || 0) * l.qty).toFixed(2)}</td>
+                    </tr>
+                  ))}
+                  <tr>
+                    <td colSpan={4} style={{ padding: '10px 4px', textAlign: 'right', fontSize: 13, color: '#14213d' }}>Subtotal</td>
+                    <td style={{ padding: '10px 4px', textAlign: 'right', fontSize: 13, color: '#14213d', whiteSpace: 'nowrap', fontWeight: 700 }}>{CURRENCY} {(cartCents / 100).toFixed(2)}</td>
+                  </tr>
+                </tbody>
+              </table>
+              {notes.trim() && (
+                <div style={{ background: '#f7f5ef', borderRadius: 8, padding: '9px 12px', fontSize: 11.5, color: '#445', margin: '10px 0' }}><strong>Notes:</strong> {notes.trim()}</div>
+              )}
+              <div style={{ fontSize: 11, color: '#667', lineHeight: 1.55, margin: '10px 0' }}>
+                This is the list you submitted. Final prices, applicable discounts and any delivery fee will be reflected in your invoice. We'll be in touch shortly.
+              </div>
+            </div>
+            <div style={{ textAlign: 'center', padding: 14, fontStyle: 'italic', fontSize: 14, fontWeight: 600, color: '#14213d' }}>Thank you for the partnership !</div>
+            <div style={{ background: '#f36f4a', height: 9 }} />
+          </div>
+
+          {sentPdf && (
+            <button onClick={downloadPdf} style={{ marginTop: 14, width: '100%', height: 44, borderRadius: 10, border: 'none', background: 'rgba(245,242,235,.1)', color: 'var(--cream)', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+              ⬇ Download PDF
+            </button>
+          )}
         </div>
-      </Centered>
+      </div>
     );
   }
 
@@ -399,16 +459,27 @@ export default function App() {
           </BottomBar>
         )}
 
-        {showFocPrompt && (
+        {prompt && (
           <div style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(5,10,22,.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18 }}>
             <div role="dialog" aria-modal="true" style={{ background: '#1b2c4d', border: '1px solid rgba(245,242,235,.12)', borderRadius: 14, padding: 20, width: '100%', maxWidth: 380 }}>
-              <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>Add {money(dStatus.focNeed)} for FOC delivery?</div>
-              <div style={{ fontSize: 13, lineHeight: 1.55, color: 'rgba(245,242,235,.65)', marginBottom: 16 }}>
-                Your current order is <strong style={{ color: 'var(--cream)' }}>{money(cartCents / 100)}</strong>. Orders of {MONEY_SYMBOL}{FOC_AMOUNT} and above get free delivery{MARKET === 'MY' ? ' to West Malaysia' : ''}. A delivery fee may apply to orders below {MONEY_SYMBOL}{FOC_AMOUNT}.
-              </div>
+              {prompt === 'foc' ? (
+                <>
+                  <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>Add {money(dStatus.focNeed)} for FOC delivery?</div>
+                  <div style={{ fontSize: 13, lineHeight: 1.55, color: 'rgba(245,242,235,.65)', marginBottom: 16 }}>
+                    Your current order is <strong style={{ color: 'var(--cream)' }}>{money(cartCents / 100)}</strong>. A delivery fee may apply to orders below {MONEY_SYMBOL}{FOC_AMOUNT}{MARKET === 'MY' ? ' (West Malaysia)' : ''}.
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>Add {money(dStatus.nudge.amount)} for a {dStatus.nudge.rebate} cash rebate?</div>
+                  <div style={{ fontSize: 13, lineHeight: 1.55, color: 'rgba(245,242,235,.65)', marginBottom: 16 }}>
+                    Your current order is <strong style={{ color: 'var(--cream)' }}>{money(cartCents / 100)}</strong>. Orders of {MONEY_SYMBOL}{dStatus.nudge.target} and above get a {dStatus.nudge.rebate} cash rebate.
+                  </div>
+                </>
+              )}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <button onClick={() => { setShowFocPrompt(false); setView('catalogue'); }} style={{ ...submitBtnStyle, width: '100%' }}>Add more items</button>
-                <button onClick={doSubmit} style={{ height: 44, borderRadius: 10, border: 'none', background: 'rgba(245,242,235,.1)', color: 'var(--cream)', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>Proceed anyway</button>
+                <button onClick={() => { setPrompt(null); setView('catalogue'); }} style={{ ...submitBtnStyle, width: '100%' }}>Add more items</button>
+                <button onClick={doSubmit} style={{ height: 44, borderRadius: 10, border: 'none', background: 'rgba(245,242,235,.1)', color: 'var(--cream)', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>{prompt === 'foc' ? 'Proceed anyway' : 'Continue to submit'}</button>
               </div>
             </div>
           </div>

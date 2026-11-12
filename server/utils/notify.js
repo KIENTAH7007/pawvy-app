@@ -195,7 +195,7 @@ function notifyNewWebsiteOrder({ orderId, customerName, customerEmail, total, li
 // actually needs to work reliably — account verification and login.
 const RESEND_API_URL = 'https://api.resend.com/emails';
 
-async function resendSend({ from, to, subject, text, html }) {
+async function resendSend({ from, to, subject, text, html, attachments }) {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
     return { ok: false, skipped: true, reason: 'RESEND_API_KEY not set' };
@@ -203,7 +203,7 @@ async function resendSend({ from, to, subject, text, html }) {
   const resp = await fetch(RESEND_API_URL, {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from, to: Array.isArray(to) ? to : [to], subject, text, html }),
+    body: JSON.stringify({ from, to: Array.isArray(to) ? to : [to], subject, text, html, ...(attachments && attachments.length ? { attachments } : {}) }),
   });
   if (!resp.ok) {
     const errBody = await resp.text();
@@ -248,4 +248,4 @@ async function sendTestEmail(to) {
   });
 }
 
-module.exports = { notifyTelegram, notifyEmail, notifyBackupEmail, notifyNewPortalOrder, notifyNewWebsiteOrder, sendCustomerEmail, sendTestEmail };
+module.exports = { resendSend, notifyTelegram, notifyEmail, notifyBackupEmail, notifyNewPortalOrder, notifyNewWebsiteOrder, sendCustomerEmail, sendTestEmail };
