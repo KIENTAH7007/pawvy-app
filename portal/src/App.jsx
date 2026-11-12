@@ -28,10 +28,10 @@ function deliveryStatus(cents) {
   const out = { focOk: cents >= focCents, focNeed: Math.max(0, focCents - cents) / 100, ticks: [], nudge: null };
   if (!out.focOk) return out;
   if (MARKET === 'MY') return out;
-  if (cents >= 60000) out.ticks.push('$30 cash rebate unlocked');
-  else if (cents >= 40000) out.ticks.push('$12 cash rebate unlocked');
-  if (cents >= 35000 && cents < 40000) out.nudge = { amount: (40000 - cents) / 100, rebate: '$12', target: 400 };
-  else if (cents >= 55000 && cents < 60000) out.nudge = { amount: (60000 - cents) / 100, rebate: '$30', target: 600 };
+  if (cents >= 60000) out.ticks.push('$ 30 cash rebate unlocked');
+  else if (cents >= 40000) out.ticks.push('$ 12 cash rebate unlocked');
+  if (cents >= 35000 && cents < 40000) out.nudge = { amount: (40000 - cents) / 100, rebate: '$ 12', target: 400 };
+  else if (cents >= 55000 && cents < 60000) out.nudge = { amount: (60000 - cents) / 100, rebate: '$ 30', target: 600 };
   return out;
 }
 
@@ -474,7 +474,7 @@ export default function App() {
                 <>
                   <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>Add {money(dStatus.nudge.amount)} for a {dStatus.nudge.rebate} cash rebate?</div>
                   <div style={{ fontSize: 13, lineHeight: 1.55, color: 'rgba(245,242,235,.65)', marginBottom: 16 }}>
-                    Your current order is <strong style={{ color: 'var(--cream)', fontWeight: 600 }}>{money(cartCents / 100)}</strong>. Orders of {MONEY_SYMBOL}{dStatus.nudge.target} and above get a {dStatus.nudge.rebate} cash rebate.
+                    Your current order is <strong style={{ color: 'var(--cream)', fontWeight: 600 }}>{money(cartCents / 100)}</strong>.
                   </div>
                 </>
               )}
