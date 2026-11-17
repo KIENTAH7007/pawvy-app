@@ -353,6 +353,7 @@ export default function Products() {
                           <div>
                             {p.item_series}
                             {archived && <span style={{marginLeft:6,fontSize:9,fontWeight:700,color:'var(--cream-30)',background:'rgba(245,242,235,.08)',padding:'1px 5px',borderRadius:3}}>ARCHIVED</span>}
+                            {!!p.hidden_from_partners && <span title="Hidden from POS, Order Portal and website" style={{marginLeft:6,fontSize:9,fontWeight:700,color:'#f5a623',background:'rgba(245,166,35,.12)',padding:'1px 5px',borderRadius:3}}>HIDDEN</span>}
                           </div>
                         </div>
                       </td>
@@ -385,6 +386,12 @@ export default function Products() {
                       <td style={td()}>
                         <div style={{display:'flex',gap:6}}>
                           <Btn size="sm" variant="ghost" onClick={e=>{e.stopPropagation();setForm({...p});setModal('edit');}}>Edit</Btn>
+                          <Btn size="sm" variant="ghost" title={p.hidden_from_partners ? 'Show on POS, Order Portal and website' : 'Hide from POS, Order Portal and website'} onClick={async e=>{
+                            e.stopPropagation();
+                            const next = p.hidden_from_partners ? 0 : 1;
+                            try { await productsApi.setVisibility(p.id, !!next); setProducts(prev => prev.map(pr => pr.id === p.id ? { ...pr, hidden_from_partners: next } : pr)); }
+                            catch (err) { alert(err.message || 'Could not update'); }
+                          }}>{p.hidden_from_partners ? 'Show' : 'Hide'}</Btn>
                           <Btn size="sm" variant="ghost" onClick={e=>{
                             e.stopPropagation();
                             setDiscountForm({
@@ -491,6 +498,10 @@ export default function Products() {
           </FormRow>
 
           <Input label="Notes" value={form.notes||''} onChange={e=>sf('notes',e.target.value)} placeholder="Optional"/>
+          <label style={{display:'flex',alignItems:'flex-start',gap:10,fontSize:12,color:'var(--cream-60)',cursor:'pointer',background:'rgba(245,166,35,.06)',border:'1px solid rgba(245,166,35,.25)',borderRadius:7,padding:'10px 12px'}}>
+            <input type="checkbox" checked={!!form.hidden_from_partners} onChange={e=>sf('hidden_from_partners', e.target.checked ? 1 : 0)} style={{marginTop:2}}/>
+            <span><strong style={{color:'var(--cream)'}}>Hide from POS, Order Portal &amp; website</strong><br/>Use while a new SKU is being prepared. It stays Active here, so you can still add it to Shipments, Inventory and Costs. Untick when it is ready to show.</span>
+          </label>
 
           <label style={{display:'flex',flexDirection:'column',gap:5}}>
             <span style={{fontSize:11,fontWeight:600,color:'var(--cream-60)',letterSpacing:.5,textTransform:'uppercase'}}>

@@ -60,7 +60,7 @@ module.exports = function(db, inventoryRouter) {
       JOIN brands b ON b.id = p.brand_id
       LEFT JOIN inventory_levels mega    ON mega.product_id = p.id    AND mega.location    = 'Mega'
       LEFT JOIN inventory_levels hougang ON hougang.product_id = p.id AND hougang.location = 'Hougang'
-      WHERE p.is_active = 1 ${mk === 'MY' ? 'AND COALESCE(p.price_rrp_my,0) > 0' : ''}
+      WHERE p.is_active = 1 AND COALESCE(p.hidden_from_partners,0) = 0 ${mk === 'MY' ? 'AND COALESCE(p.price_rrp_my,0) > 0' : ''}
       -- Aug 2026 (per KT): stock status is now the TOP-level sort key
       -- (was brand-first) — matches routes/shop.js and routes/portal.js,
       -- kept consistent across Website, POS, and Order Portal per KT's
@@ -126,14 +126,14 @@ module.exports = function(db, inventoryRouter) {
         return res.status(400).json({ error: 'Each item needs a valid product and quantity.' });
       }
       const product = db.queryOne(`
-        SELECT p.id, p.is_active, p.item_series, p.variation, p.unit_cost, p.price_rrp_sg, p.price_rrp_my,
+        SELECT p.id, p.is_active, p.hidden_from_partners, p.item_series, p.variation, p.unit_cost, p.price_rrp_sg, p.price_rrp_my,
           COALESCE(mega.qty, 0) + COALESCE(hougang.qty, 0) AS total_qty
         FROM products p
         LEFT JOIN inventory_levels mega    ON mega.product_id = p.id    AND mega.location    = 'Mega'
         LEFT JOIN inventory_levels hougang ON hougang.product_id = p.id AND hougang.location = 'Hougang'
         WHERE p.id = ?
       `, [line.product_id]);
-      if (!product || !product.is_active) {
+      if (!product || !product.is_active || product.hidden_from_partners) {
         return res.status(400).json({ error: 'One of the items is no longer available.' });
       }
       if (qty > product.total_qty) {

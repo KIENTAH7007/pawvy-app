@@ -69,7 +69,7 @@ module.exports = function(db) {
       JOIN brands b ON b.id = p.brand_id
       LEFT JOIN inventory_levels mega    ON mega.product_id = p.id    AND mega.location    = 'Mega'
       LEFT JOIN inventory_levels hougang ON hougang.product_id = p.id AND hougang.location = 'Hougang'
-      WHERE p.is_active = 1 AND b.hidden_on_website = 0
+      WHERE p.is_active = 1 AND COALESCE(p.hidden_from_partners,0) = 0 AND b.hidden_on_website = 0
         AND p.barcode NOT IN (${WEBSITE_HIDDEN_BARCODES.map(() => '?').join(',')})
     `;
     const params = [...WEBSITE_HIDDEN_BARCODES];
@@ -161,7 +161,7 @@ module.exports = function(db) {
       JOIN brands b ON b.id = p.brand_id
       LEFT JOIN inventory_levels mega    ON mega.product_id = p.id    AND mega.location    = 'Mega'
       LEFT JOIN inventory_levels hougang ON hougang.product_id = p.id AND hougang.location = 'Hougang'
-      WHERE p.id = ? AND p.is_active = 1 AND b.hidden_on_website = 0
+      WHERE p.id = ? AND p.is_active = 1 AND COALESCE(p.hidden_from_partners,0) = 0 AND b.hidden_on_website = 0
         AND p.barcode NOT IN (${WEBSITE_HIDDEN_BARCODES.map(() => '?').join(',')})
     `, [req.params.id, ...WEBSITE_HIDDEN_BARCODES]);
 
@@ -197,7 +197,7 @@ module.exports = function(db) {
       JOIN brands b ON b.id = p.brand_id
       LEFT JOIN inventory_levels mega    ON mega.product_id = p.id    AND mega.location    = 'Mega'
       LEFT JOIN inventory_levels hougang ON hougang.product_id = p.id AND hougang.location = 'Hougang'
-      WHERE p.is_active = 1 AND b.hidden_on_website = 0 AND s.date >= date('now', '-90 days') AND COALESCE(s.voided,0) = 0
+      WHERE p.is_active = 1 AND COALESCE(p.hidden_from_partners,0) = 0 AND b.hidden_on_website = 0 AND s.date >= date('now', '-90 days') AND COALESCE(s.voided,0) = 0
         AND p.barcode NOT IN (${WEBSITE_HIDDEN_BARCODES.map(() => '?').join(',')})
       GROUP BY p.id
       ORDER BY units_sold DESC
@@ -231,7 +231,7 @@ module.exports = function(db) {
       JOIN brands b ON b.id = p.brand_id
       LEFT JOIN inventory_levels mega    ON mega.product_id = p.id    AND mega.location    = 'Mega'
       LEFT JOIN inventory_levels hougang ON hougang.product_id = p.id AND hougang.location = 'Hougang'
-      WHERE p.is_active = 1 AND p.is_pawvy_pick = 1 AND b.hidden_on_website = 0
+      WHERE p.is_active = 1 AND COALESCE(p.hidden_from_partners,0) = 0 AND p.is_pawvy_pick = 1 AND b.hidden_on_website = 0
         AND p.barcode NOT IN (${WEBSITE_HIDDEN_BARCODES.map(() => '?').join(',')})
       ORDER BY b.name, p.item_series, p.variation
     `, [...WEBSITE_HIDDEN_BARCODES]);
@@ -260,7 +260,7 @@ module.exports = function(db) {
         p.image_url AS product_image_url, p.price_rrp_sg, p.discount_pct, p.discount_start, p.discount_end,
         b.name AS product_brand_name
       FROM testimonials t
-      LEFT JOIN products p ON p.id = t.product_id AND p.is_active = 1
+      LEFT JOIN products p ON p.id = t.product_id AND p.is_active = 1 AND COALESCE(p.hidden_from_partners,0) = 0
       LEFT JOIN brands b ON b.id = p.brand_id
       WHERE t.is_active = 1 AND t.need_tag = ?
       ORDER BY t.sort_order ASC, t.id ASC
@@ -333,7 +333,7 @@ function buildBundleResponse(db, bundle) {
       COALESCE(mega.qty, 0)    AS mega_qty,
       COALESCE(hougang.qty, 0) AS hougang_qty
     FROM bundle_products bp
-    JOIN products p ON p.id = bp.product_id AND p.is_active = 1
+    JOIN products p ON p.id = bp.product_id AND p.is_active = 1 AND COALESCE(p.hidden_from_partners,0) = 0
     JOIN brands b ON b.id = p.brand_id
     LEFT JOIN inventory_levels mega    ON mega.product_id = p.id    AND mega.location    = 'Mega'
     LEFT JOIN inventory_levels hougang ON hougang.product_id = p.id AND hougang.location = 'Hougang'

@@ -38,7 +38,7 @@ module.exports = function(db) {
       JOIN brands b ON b.id = p.brand_id
       LEFT JOIN inventory_levels mega    ON mega.product_id = p.id    AND mega.location    = 'Mega'
       LEFT JOIN inventory_levels hougang ON hougang.product_id = p.id AND hougang.location = 'Hougang'
-      WHERE p.is_active = 1 ${mk === 'MY' ? 'AND COALESCE(p.price_wholesale_my,0) > 0' : ''}
+      WHERE p.is_active = 1 AND COALESCE(p.hidden_from_partners,0) = 0 ${mk === 'MY' ? 'AND COALESCE(p.price_wholesale_my,0) > 0' : ''}
       -- Aug 2026 (per KT): stock status is now the TOP-level sort key
       -- (was brand-first) — matches routes/shop.js and routes/pos.js,
       -- kept consistent across Website, POS, and Order Portal per KT's
@@ -97,7 +97,7 @@ module.exports = function(db) {
     const ids = ranked.map(r => r.product_id);
     const rows = db.query(`
       SELECT
-        p.id, p.item_series, p.variation, p.image_url, p.is_active,
+        p.id, p.item_series, p.variation, p.image_url, p.is_active, p.hidden_from_partners,
         p.price_wholesale_sg, p.price_rrp_sg, p.price_wholesale_my, p.price_rrp_my,
         b.id AS brand_id, b.name AS brand_name, b.color AS brand_color,
         COALESCE(mega.qty, 0)    AS mega_qty,
@@ -117,7 +117,7 @@ module.exports = function(db) {
     // re-number them 1-8 cleanly (never a gap like #1, #3, #4).
     const topSellers = ranked
       .map(r => byId[r.product_id])
-      .filter(r => r && r.is_active && (mk !== 'MY' || (r.price_wholesale_my || 0) > 0))
+      .filter(r => r && r.is_active && !r.hidden_from_partners && (mk !== 'MY' || (r.price_wholesale_my || 0) > 0))
       .map(r => ({
         id: r.id,
         brand_id: r.brand_id,
@@ -170,14 +170,14 @@ module.exports = function(db) {
         return res.status(400).json({ error: 'Each item needs a valid product and quantity.' });
       }
       const product = db.queryOne(`
-        SELECT p.id, p.is_active, p.item_series, p.variation, p.image_url, p.price_wholesale_my, p.price_wholesale_sg,
+        SELECT p.id, p.is_active, p.hidden_from_partners, p.item_series, p.variation, p.image_url, p.price_wholesale_my, p.price_wholesale_sg,
           COALESCE(mega.qty, 0) + COALESCE(hougang.qty, 0) AS total_qty
         FROM products p
         LEFT JOIN inventory_levels mega    ON mega.product_id = p.id    AND mega.location    = 'Mega'
         LEFT JOIN inventory_levels hougang ON hougang.product_id = p.id AND hougang.location = 'Hougang'
         WHERE p.id = ?
       `, [line.product_id]);
-      if (!product || !product.is_active) {
+      if (!product || !product.is_active || product.hidden_from_partners) {
         return res.status(400).json({ error: `One of the items in your order is no longer available.` });
       }
       if (mk === 'MY' && !(product.price_wholesale_my > 0)) {

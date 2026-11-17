@@ -274,14 +274,14 @@ module.exports = function(db) {
         INSERT INTO products
           (brand_id, barcode, item_series, variation,
            unit_cost, pack_size, price_wholesale_sg, price_consignment_sg, price_rrp_sg, price_rrp_online_sg,
-           price_wholesale_my, price_rrp_my, price_rrp_online_my, notes)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+           price_wholesale_my, price_rrp_my, price_rrp_online_my, notes, hidden_from_partners)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
       `, [
         brand_id, cleanBarcode, item_series, variation || null,
         unit_cost || 0, cleanPackSize,
         price_wholesale_sg || 0, price_consignment_sg || 0, price_rrp_sg || 0, cleanRrpOnlineSg,
         price_wholesale_my || 0, price_rrp_my || 0, cleanRrpOnlineMy,
-        notes || null
+        notes || null, req.body.hidden_from_partners ? 1 : 0
       ]);
 
       const product = db.queryOne('SELECT p.*, b.name AS brand_name, b.color AS brand_color FROM products p JOIN brands b ON b.id = p.brand_id WHERE p.id = ?', [result.lastID]);
@@ -317,6 +317,7 @@ module.exports = function(db) {
         price_wholesale_sg = ?, price_consignment_sg = ?, price_rrp_sg = ?, price_rrp_online_sg = ?,
         price_wholesale_my = ?, price_rrp_my = ?, price_rrp_online_my = ?,
         is_active = ?, notes = ?, description = ?,
+        hidden_from_partners = COALESCE(?, hidden_from_partners),
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `, [
@@ -325,6 +326,7 @@ module.exports = function(db) {
       price_wholesale_sg, price_consignment_sg, price_rrp_sg, cleanRrpOnlineSg,
       price_wholesale_my, price_rrp_my, cleanRrpOnlineMy,
       is_active !== undefined ? is_active : 1, notes, description || null,
+      req.body.hidden_from_partners === undefined ? null : (req.body.hidden_from_partners ? 1 : 0),
       req.params.id
     ]);
 
@@ -345,6 +347,15 @@ module.exports = function(db) {
   // always sends the complete current state of both sections together
   // (same convention this endpoint already used for discount alone), so
   // there's no partial-update ambiguity to get wrong here.
+  // Quick show/hide on POS, Order Portal and website (product stays Active internally)
+  router.patch('/:id/visibility', (req, res) => {
+    const hidden = req.body.hidden ? 1 : 0;
+    const exists = db.queryOne('SELECT id FROM products WHERE id = ?', [req.params.id]);
+    if (!exists) return res.status(404).json({ error: 'Product not found' });
+    db.run('UPDATE products SET hidden_from_partners = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [hidden, req.params.id]);
+    res.json({ id: Number(req.params.id), hidden_from_partners: hidden });
+  });
+
   router.patch('/:id/discount', (req, res) => {
     const product = db.queryOne('SELECT id, price_rrp_sg FROM products WHERE id = ?', [req.params.id]);
     if (!product) return res.status(404).json({ error: 'Product not found.' });

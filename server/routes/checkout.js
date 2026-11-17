@@ -63,7 +63,7 @@ module.exports = function(db, inventoryRouter, stripeClient) {
         return { error: 'Each item needs a valid product and quantity.' };
       }
       const product = db.queryOne(`
-        SELECT p.id, p.is_active, p.item_series, p.variation, p.unit_cost,
+        SELECT p.id, p.is_active, p.hidden_from_partners, p.item_series, p.variation, p.unit_cost,
           p.price_rrp_sg, p.discount_pct, p.discount_start, p.discount_end,
           b.name AS brand_name,
           COALESCE(mega.qty, 0) + COALESCE(hougang.qty, 0) AS total_qty
@@ -74,7 +74,7 @@ module.exports = function(db, inventoryRouter, stripeClient) {
         WHERE p.id = ?
       `, [line.product_id]);
 
-      if (!product || !product.is_active) {
+      if (!product || !product.is_active || product.hidden_from_partners) {
         return { error: 'One of the items in your cart is no longer available.' };
       }
       if (qty > product.total_qty) {
