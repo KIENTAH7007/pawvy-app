@@ -8,6 +8,102 @@ const COVER_DAYS        = 90;  // recommend ordering enough to cover the next qu
 module.exports = function(db) {
   const router = Router();
 
+  // ── Restock Planner step 1: stock cover by month ───────────────────
+  // Real sales only (consignment placements excluded). Stock on the way =
+  // lines of shipments still 'ordered' (not yet received / voided).
+  // Average = last 3 FULL calendar months; the current month is shown but not averaged.
+  router.get('/stock-cover', (req, res) => {
+    const { brand_id } = req.query;
+    const now = new Date();
+    const months = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+    }
+    const currentMonth = months[months.length - 1];
+    const avgMonths = months.slice(-4, -1); // 3 full months before the current one
+    const firstDay = months[0] + '-01';
+
+    let sql = `
+      SELECT p.id AS product_id, p.item_series, p.variation,
+        b.id AS brand_id, b.name AS brand_name, b.color AS brand_color
+      FROM products p JOIN brands b ON b.id = p.brand_id
+      WHERE p.is_active = 1`;
+    const params = [];
+    if (brand_id) { sql += ' AND b.id = ?'; params.push(brand_id); }
+    sql += ' ORDER BY b.name, p.item_series, p.variation';
+    const products = db.query(sql, params);
+
+    const salesRows = db.query(`
+      SELECT product_id, substr(date,1,7) AS ym, COALESCE(SUM(-qty_change),0) AS units
+      FROM inventory_movements
+      WHERE type IN ('Sale','Sale Reversal') AND date >= ?
+      GROUP BY product_id, ym`, [firstDay]);
+    const sales = {};
+    salesRows.forEach(r => { (sales[r.product_id] = sales[r.product_id] || {})[r.ym] = Math.max(0, r.units); });
+
+    const stockRows = db.query(`SELECT product_id, location, qty FROM inventory_levels WHERE location IN ('Hougang','Mega')`);
+    const stock = {};
+    stockRows.forEach(r => { (stock[r.product_id] = stock[r.product_id] || {})[r.location] = r.qty || 0; });
+
+    const wayRows = db.query(`
+      SELECT li.product_id, COALESCE(SUM(li.qty_ordered),0) AS qty
+      FROM shipment_line_items li JOIN shipments s ON s.id = li.shipment_id
+      WHERE s.status = 'ordered' AND li.inventory_synced = 0
+      GROUP BY li.product_id`);
+    const onWay = {};
+    wayRows.forEach(r => { onWay[r.product_id] = r.qty; });
+
+    const LOW = 2, WATCH = 3;
+    const items = products.map(p => {
+      const m = sales[p.product_id] || {};
+      const monthly = months.map(ym => m[ym] || 0);
+      const avg = avgMonths.reduce((s, ym) => s + (m[ym] || 0), 0) / avgMonths.length;
+      const hougang = stock[p.product_id]?.Hougang || 0;
+      const mega = stock[p.product_id]?.Mega || 0;
+      const on_hand = hougang + mega;
+      const on_the_way = onWay[p.product_id] || 0;
+      const cover_months = avg > 0 ? (on_hand + on_the_way) / avg : null;
+      const cover_now_months = avg > 0 ? on_hand / avg : null;
+      let status;
+      const soldAny = monthly.some(u => u > 0);
+      if (!soldAny) status = 'no_sales';            // nothing sold in 6 months: not part of planning
+      else if (avg <= 0) status = on_hand + on_the_way <= 0 ? 'out' : 'no_sales';
+      else if (cover_months < LOW) status = 'low';
+      else if (cover_months < WATCH) status = 'watch';
+      else status = 'ok';
+      return {
+        ...p, hougang_qty: hougang, mega_qty: mega, on_hand, on_the_way, monthly,
+        avg_per_month: parseFloat(avg.toFixed(1)),
+        cover_months: cover_months === null ? null : parseFloat(cover_months.toFixed(1)),
+        cover_now_months: cover_now_months === null ? null : parseFloat(cover_now_months.toFixed(1)),
+        status,
+      };
+    });
+
+    // Most urgent first inside each brand: lowest cover on top, no-sales SKUs last
+    const rank = i => i.status === 'out' ? -1 : (i.cover_months === null ? 9999 : i.cover_months);
+    items.sort((a, b) => (a.brand_name || '').localeCompare(b.brand_name || '') || rank(a) - rank(b) || (a.item_series || '').localeCompare(b.item_series || ''));
+
+    const brandMap = {};
+    items.forEach(i => {
+      const b = brandMap[i.brand_id] = brandMap[i.brand_id] || {
+        brand_id: i.brand_id, brand_name: i.brand_name, brand_color: i.brand_color,
+        total_skus: 0, active_skus: 0, low_skus: 0, on_the_way_units: 0, shortest_cover: null,
+      };
+      b.total_skus++;
+      b.on_the_way_units += i.on_the_way;
+      if (i.status !== 'no_sales') b.active_skus++;
+      if (i.status === 'low' || i.status === 'out') b.low_skus++;
+      if (i.cover_months !== null && (b.shortest_cover === null || i.cover_months < b.shortest_cover)) b.shortest_cover = i.cover_months;
+    });
+    const brands = Object.values(brandMap).map(b => ({
+      ...b, time_to_plan: b.active_skus > 0 && b.low_skus / b.active_skus >= 0.5,
+    }));
+
+    res.json({ months, current_month: currentMonth, avg_months: avgMonths, low_threshold: LOW, watch_threshold: WATCH, items, brands });
+  });
+
   router.get('/restock-recommendations', (req, res) => {
     const { brand_id } = req.query;
     const since = new Date();

@@ -90,6 +90,7 @@ export const inventoryApi = {
 };
 export const forecastApi = {
   restockRecommendations: (q) => api.get(`/forecast/restock-recommendations${qs(q)}`),
+  stockCover: (q) => api.get(`/forecast/stock-cover${qs(q)}`),
 };
 
 export const partnerAddressesApi = {

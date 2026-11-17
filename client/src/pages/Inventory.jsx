@@ -1,78 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, ArrowLeftRight, Trash2, AlertTriangle, CheckCircle, Upload, Clock, X, ChevronLeft, ChevronRight, Printer } from 'lucide-react';
+import { Plus, ArrowLeftRight, Trash2, AlertTriangle, CheckCircle, Upload, Clock, X } from 'lucide-react';
 import { inventoryApi, forecastApi, brandsApi, productsApi } from '../api';
 import { Page, Card, Select, Input, Btn, Badge, Modal } from '../components/ui';
-import { pawvyHeaderHtml, pawvyAddressBlockHtml, pawvyFooterHtml, openPdfWindow } from '../utils/pawvyPdf';
 import { localDateStr } from '../utils/dates';
 
 const today = () => localDateStr();
 const sgd = v => `SGD ${parseFloat(v||0).toFixed(2)}`;
-
-// ── PDF: Restock Order Sheet (consolidated per-brand order list) ────
-function printRestockOrderSheet(brandInfo, items, recs) {
-  const date = new Date().toLocaleDateString('en-SG', { day:'numeric', month:'long', year:'numeric' });
-  const orderable = items.filter(i => i.recommended_qty > 0);
-  const rows = orderable.map((i, idx) => `
-    <tr style="background:${idx%2===0?'#fff':'#f8f9fc'}">
-      <td style="padding:8px 12px;border-bottom:1px solid #e8ecf0;font-weight:600">${i.item_series}</td>
-      <td style="padding:8px 12px;border-bottom:1px solid #e8ecf0;color:#666">${i.variation||'—'}</td>
-      <td style="padding:8px 12px;border-bottom:1px solid #e8ecf0;text-align:right">${i.warehouse_total}</td>
-      <td style="padding:8px 12px;border-bottom:1px solid #e8ecf0;text-align:right;font-weight:700;font-size:14px;color:#f36f4a">${i.recommended_qty}</td>
-      <td style="padding:8px 12px;border-bottom:1px solid #e8ecf0;text-align:right">${parseFloat(i.unit_cost||0).toFixed(2)}</td>
-      <td style="padding:8px 12px;border-bottom:1px solid #e8ecf0;text-align:right;font-weight:600">${i.estimated_cost.toFixed(2)}</td>
-    </tr>`).join('');
-
-  const totalQty  = orderable.reduce((s,i)=>s+i.recommended_qty,0);
-  const totalCost = orderable.reduce((s,i)=>s+i.estimated_cost,0);
-
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
-  <title>Restock Order — ${brandInfo?.brand_name}</title>
-  <style>
-    * { margin:0; padding:0; box-sizing:border-box; }
-    body { font-family:'Helvetica Neue',Arial,sans-serif; font-size:12px; color:#1a1a2e; background:#fff; }
-    @media print { body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } }
-  </style></head><body>
-
-  ${pawvyHeaderHtml('RESTOCK ORDER SHEET', date)}
-  ${pawvyAddressBlockHtml({ company_name: `${brandInfo?.brand_name} — Supplier Order` }, `RO-${brandInfo?.brand_name?.toUpperCase().replace(/\s/g,'')}-${date.replace(/\s/g,'')}`)}
-
-  <div style="padding:0 32px;font-size:11px;color:#666;line-height:1.7">
-    Based on trailing ${recs.trailing_days}-day sales velocity, recommended quantities top up every SKU to cover the next ${recs.cover_days} days.
-  </div>
-
-  <div style="padding:24px 32px">
-    <table style="width:100%;border-collapse:collapse;font-size:12px">
-      <thead>
-        <tr style="background:#14213d">
-          <th style="padding:10px 12px;text-align:left;color:#fff;font-weight:700;font-size:11px">Product</th>
-          <th style="padding:10px 12px;text-align:left;color:#fff;font-weight:700;font-size:11px">Variation</th>
-          <th style="padding:10px 12px;text-align:right;color:#fff;font-weight:700;font-size:11px">Current Stock</th>
-          <th style="padding:10px 12px;text-align:right;color:#f36f4a;font-weight:700;font-size:11px">Order Qty</th>
-          <th style="padding:10px 12px;text-align:right;color:#fff;font-weight:700;font-size:11px">Unit Cost</th>
-          <th style="padding:10px 12px;text-align:right;color:#fff;font-weight:700;font-size:11px">Est. Cost</th>
-        </tr>
-      </thead>
-      <tbody>${rows || '<tr><td colspan="6" style="padding:20px;text-align:center;color:#888">No SKUs need restocking right now</td></tr>'}</tbody>
-    </table>
-  </div>
-
-  <div style="padding:0 32px 24px;display:flex;justify-content:flex-end">
-    <div style="width:280px">
-      <div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid #ddd;font-size:12px;color:#555">
-        <span>Total Order Quantity</span><span style="font-weight:600">${totalQty} units</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;padding:10px 0;border-top:2px solid #14213d;margin-top:4px">
-        <span style="font-size:14px;font-weight:700;color:#14213d">Estimated Total Cost</span>
-        <span style="font-size:14px;font-weight:700;color:#14213d">SGD ${totalCost.toFixed(2)}</span>
-      </div>
-    </div>
-  </div>
-
-  ${pawvyFooterHtml('Internal restock planning document — not for distribution')}
-  </body></html>`;
-
-  openPdfWindow(html);
-}
 
 function useIsMobile() {
   const [m, setM] = useState(window.innerWidth < 768);
@@ -537,17 +470,102 @@ function MovementHistoryModal({ open, onClose, product }) {
 }
 
 // ── Main Inventory Page ────────────────────────────────────────────────
+// ── Restock Planner (step 1): stock cover by month ─────────────────
+const COVER_COLORS = { low:'#f87171', out:'#f87171', watch:'#f5a623', ok:'#7fc93e', no_sales:'#6b7280' };
+const monthLabel = ym => ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'][parseInt(ym.slice(5,7),10)-1];
+
+function RestockPlanner({ cover, selBrand, setSelBrand }) {
+  if (!cover || cover.items.length === 0)
+    return <div style={{padding:40,textAlign:'center',color:'var(--cream-30)',fontSize:12,background:'var(--navy)',border:'1px solid var(--border)',borderRadius:'var(--radius)'}}>No products to plan yet.</div>;
+  const brandInfo = cover.brands.find(b=>String(b.brand_id)===String(selBrand)) || cover.brands[0];
+  const items = cover.items.filter(i=>String(i.brand_id)===String(brandInfo.brand_id));
+  const th = (right) => ({padding:'9px 10px',textAlign:right?'right':'left',fontSize:9.5,fontWeight:700,letterSpacing:.7,textTransform:'uppercase',color:'var(--cream-30)',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap'});
+  const lastIdx = cover.months.length - 1;
+  const BAR_MAX = 6;
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:12}}>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(210px,1fr))',gap:10}}>
+        {cover.brands.map(b=>{
+          const sel = String(b.brand_id)===String(brandInfo.brand_id);
+          return (
+            <div key={b.brand_id} onClick={()=>setSelBrand(b.brand_id)}
+              style={{cursor:'pointer',background:'var(--navy)',border:`1px solid ${sel?'var(--orange)':'var(--border)'}`,borderRadius:8,padding:'12px 14px'}}>
+              <Badge color={b.brand_color}>{b.brand_name}</Badge>
+              {b.active_skus===0 ? <div style={{marginTop:8,fontSize:12,color:'var(--cream-30)'}}>No recent sales to plan from</div> :
+              <div style={{marginTop:8,fontSize:13,color:'var(--cream)'}}>
+                <span style={{fontWeight:700,fontSize:20,fontFamily:"'Bebas Neue',sans-serif",letterSpacing:1,color:b.low_skus>0?'#f87171':'#7fc93e'}}>{b.low_skus}</span>
+                <span style={{color:'var(--cream-30)'}}> of {b.active_skus} SKUs under {cover.low_threshold} months of cover</span>
+              </div>}
+              {b.on_the_way_units>0 && <div style={{fontSize:11,color:'#378ADD',marginTop:4}}>{b.on_the_way_units} units on the way</div>}
+              {b.time_to_plan && <div style={{marginTop:8}}><Badge color="#f87171"><AlertTriangle size={10}/> Time to plan an order</Badge></div>}
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{background:'var(--navy)',border:'1px solid var(--border)',borderRadius:'var(--radius)'}}>
+        <div style={{padding:'12px 16px',borderBottom:'1px solid var(--border)',display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8}}>
+          <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1,color:'var(--cream)'}}>{brandInfo.brand_name} · Stock Cover</span>
+          <span style={{fontSize:11,color:'var(--cream-30)'}}>Real sales only (consignment placements not counted) · cover = (on hand + on the way) ÷ avg per month</span>
+        </div>
+        <div style={{overflowX:'auto'}}>
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:900}}>
+            <thead><tr>
+              <th style={th(false)}>SKU</th>
+              <th style={th(true)}>On Hand</th>
+              {cover.months.map((ym,i)=><th key={ym} style={th(true)}>{monthLabel(ym)}{i===lastIdx?'*':''}</th>)}
+              <th style={th(true)}>Avg / Mo</th>
+              <th style={th(true)}>On The Way</th>
+              <th style={th(false)}>Cover</th>
+            </tr></thead>
+            <tbody>
+              {items.map(i=>{
+                const col = COVER_COLORS[i.status];
+                const pct = i.cover_months===null ? 0 : Math.min(100,(i.cover_months/BAR_MAX)*100);
+                return (
+                  <tr key={i.product_id} style={{borderBottom:'1px solid rgba(245,242,235,.04)',background:(i.status==='low'||i.status==='out')?'rgba(248,113,113,.04)':'transparent'}}>
+                    <td style={{padding:'9px 10px',color:'var(--cream)'}}>{i.item_series}{i.variation?' · '+i.variation:''}</td>
+                    <td style={{padding:'9px 10px',textAlign:'right',fontWeight:700,color:'var(--cream)'}}>{i.on_hand}</td>
+                    {i.monthly.map((u,idx)=>(
+                      <td key={idx} style={{padding:'9px 10px',textAlign:'right',color:idx===lastIdx?'var(--cream-30)':'var(--cream-60)',fontStyle:idx===lastIdx?'italic':'normal'}}>{u||'–'}</td>
+                    ))}
+                    <td style={{padding:'9px 10px',textAlign:'right',color:'var(--cream)'}}>{i.avg_per_month>0?i.avg_per_month:'–'}</td>
+                    <td style={{padding:'9px 10px',textAlign:'right',color:i.on_the_way>0?'#378ADD':'var(--cream-30)',fontWeight:i.on_the_way>0?700:400}}>{i.on_the_way>0?i.on_the_way:'–'}</td>
+                    <td style={{padding:'9px 10px',minWidth:150}}>
+                      {i.status==='no_sales' ? <span style={{fontSize:11,color:'var(--cream-30)'}}>No recent sales</span>
+                      : i.status==='out' ? <span style={{fontSize:11,fontWeight:700,color:col}}>Out of stock</span>
+                      : <div style={{display:'flex',alignItems:'center',gap:8}}>
+                          <div style={{flex:1,height:6,background:'rgba(245,242,235,.08)',borderRadius:3,minWidth:60}}>
+                            <div style={{width:`${pct}%`,height:'100%',background:col,borderRadius:3}}/>
+                          </div>
+                          <span style={{fontWeight:700,color:col,minWidth:44,textAlign:'right'}}>{i.cover_months} mo</span>
+                        </div>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div style={{padding:'10px 16px',fontSize:11,color:'var(--cream-30)',borderTop:'1px solid var(--border)'}}>
+          *{monthLabel(cover.current_month)} = month to date, not used in the average · Avg = last 3 full months ({cover.avg_months.map(monthLabel).join(', ')}) · Red under {cover.low_threshold} months, amber under {cover.watch_threshold} · "Time to plan" shows when half or more of a brand's selling SKUs are in red
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Inventory() {
   const isMobile = useIsMobile();
   const [tab, setTab]           = useState('levels'); // levels | restock
   const [levels, setLevels]     = useState([]);
-  const [recs, setRecs]         = useState(null);
+  const [cover, setCover]       = useState(null);
   const [brands, setBrands]     = useState([]);
   const [filterBrand, setFB]    = useState('');
   const [loading, setLoading]   = useState(false);
   const [modal, setModal]       = useState(null);
   const [historyProduct, setHistoryProduct] = useState(null);
-  const [restockBrand, setRestockBrand] = useState(null);
+  const [selBrand, setSelBrand]   = useState(null);
 
   const loadLevels = useCallback(() => {
     setLoading(true);
@@ -556,17 +574,17 @@ export default function Inventory() {
 
   const loadRecs = useCallback(() => {
     setLoading(true);
-    forecastApi.restockRecommendations(filterBrand?{brand_id:filterBrand}:{}).then(d=>{setRecs(d);setLoading(false);});
+    forecastApi.stockCover(filterBrand?{brand_id:filterBrand}:{}).then(d=>{setCover(d);setLoading(false);});
   }, [filterBrand]);
 
   useEffect(() => { brandsApi.getAll().then(setBrands); }, []);
-  useEffect(() => { setRestockBrand(null); tab==='levels' ? loadLevels() : loadRecs(); }, [tab, loadLevels, loadRecs]);
+  useEffect(() => { tab==='levels' ? loadLevels() : loadRecs(); }, [tab, loadLevels, loadRecs]);
 
   const reload = () => { setModal(null); tab==='levels'?loadLevels():loadRecs(); };
 
   const totalWarehouse   = levels.reduce((s,l)=>s+l.warehouse_total,0);
   const totalConsignment = levels.reduce((s,l)=>s+l.consignment_qty,0);
-  const lowStockCount    = recs?.items.filter(i=>i.needs_reorder).length || 0;
+  const lowStockCount    = cover?.items.filter(i=>i.status==='low'||i.status==='out').length || 0;
 
   return (
     <Page title="INVENTORY" subtitle="Stock levels, movements, and restock planning"
@@ -591,7 +609,7 @@ export default function Inventory() {
           { label:'Warehouse Units', value:totalWarehouse, color:'var(--cream)' },
           { label:'Consignment Units', value:totalConsignment, color:'#378ADD' },
           { label:'SKUs Tracked', value:levels.length, color:'var(--cream-60)' },
-          { label:'Need Reorder', value:lowStockCount, color: lowStockCount>0?'#f87171':'#7fc93e' },
+          { label:'Low Cover SKUs', value:lowStockCount, color: lowStockCount>0?'#f87171':'#7fc93e' },
         ].map(k=>(
           <div key={k.label} style={{background:'var(--navy)',border:'1px solid var(--border)',borderRadius:8,padding:'14px 16px'}}>
             <div style={{fontSize:10,fontWeight:700,letterSpacing:.7,textTransform:'uppercase',color:'var(--cream-30)',marginBottom:6}}>{k.label}</div>
@@ -603,7 +621,7 @@ export default function Inventory() {
       {/* Filters + Tabs */}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',flexWrap:'wrap',gap:12}}>
         <div style={{display:'flex',gap:2,borderBottom:'1px solid var(--border)'}}>
-          {[['levels','Stock Levels'],['restock','Restock Recommendations']].map(([key,label])=>(
+          {[['levels','Stock Levels'],['restock','Restock Planner']].map(([key,label])=>(
             <button key={key} onClick={()=>setTab(key)}
               style={{padding:'8px 16px',fontSize:12,fontWeight:600,border:'none',cursor:'pointer',background:'none',
                 color:tab===key?'var(--orange)':'var(--cream-30)',borderBottom:`2px solid ${tab===key?'var(--orange)':'transparent'}`,marginBottom:-1}}>
@@ -654,117 +672,8 @@ export default function Inventory() {
         </div>
 
       ) : (
-        <div style={{background:'var(--navy)',border:'1px solid var(--border)',borderRadius:'var(--radius)'}}>
-          {!recs || recs.items.length === 0
-            ? <div style={{padding:40,textAlign:'center',color:'var(--cream-30)',fontSize:12}}>No sales data yet to forecast from.</div>
-            : <>
-                <div style={{padding:'10px 16px',fontSize:11,color:'var(--cream-30)',borderBottom:'1px solid var(--border)',display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8}}>
-                  <span>Velocity based on trailing {recs.trailing_days} days · Reorder flagged when stock covers less than {recs.lead_time_days} days (your supplier lead time) · Top-up qty covers the next {recs.cover_days} days</span>
-                  {restockBrand && (
-                    <button onClick={()=>setRestockBrand(null)} style={{display:'flex',alignItems:'center',gap:4,background:'none',border:'none',color:'var(--orange)',cursor:'pointer',fontSize:11,fontWeight:700}}>
-                      <ChevronLeft size={13}/> All Brands
-                    </button>
-                  )}
-                </div>
-
-                {!restockBrand ? (
-                  /* ── Brand Rollup ── */
-                  <div style={{overflowX:'auto'}}>
-                    <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:680}}>
-                      <thead><tr>
-                        {['Brand','SKUs Needing Reorder','Earliest Stockout','Top-up Qty','Est. Cost',''].map(h=>(
-                          <th key={h} style={{padding:'9px 12px',textAlign:['SKUs Needing Reorder','Earliest Stockout','Top-up Qty','Est. Cost'].includes(h)?'right':'left',fontSize:9.5,fontWeight:700,letterSpacing:.7,textTransform:'uppercase',color:'var(--cream-30)',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap'}}>{h}</th>
-                        ))}
-                      </tr></thead>
-                      <tbody>
-                        {recs.brands.map(b=>{
-                          const urgent = b.earliest_days_remaining !== null && b.earliest_days_remaining < recs.lead_time_days;
-                          return (
-                            <tr key={b.brand_id} style={{borderBottom:'1px solid rgba(245,242,235,.04)',cursor:'pointer',background:urgent?'rgba(248,113,113,.04)':'transparent'}}
-                              onClick={()=>setRestockBrand(b.brand_id)}
-                              onMouseEnter={e=>e.currentTarget.style.background='rgba(245,242,235,.04)'}
-                              onMouseLeave={e=>e.currentTarget.style.background=urgent?'rgba(248,113,113,.04)':'transparent'}>
-                              <td style={{padding:'10px 12px'}}><Badge color={b.brand_color}>{b.brand_name}</Badge></td>
-                              <td style={{padding:'10px 12px',textAlign:'right'}}>
-                                <span style={{fontWeight:700,color:b.needs_reorder_count>0?'#f87171':'var(--cream-30)'}}>{b.needs_reorder_count}</span>
-                                <span style={{color:'var(--cream-30)'}}> / {b.total_skus}</span>
-                              </td>
-                              <td style={{padding:'10px 12px',textAlign:'right',fontWeight:700,color:urgent?'#f87171':'var(--cream-60)'}}>
-                                {b.earliest_days_remaining===null?'—':`${b.earliest_days_remaining}d`}
-                              </td>
-                              <td style={{padding:'10px 12px',textAlign:'right',fontWeight:700,color:b.total_recommended_qty>0?'var(--orange)':'var(--cream-30)'}}>
-                                {b.total_recommended_qty>0?b.total_recommended_qty:'—'}
-                              </td>
-                              <td style={{padding:'10px 12px',textAlign:'right',color:'var(--cream-60)'}}>{b.total_estimated_cost>0?sgd(b.total_estimated_cost):'—'}</td>
-                              <td style={{padding:'10px 12px',textAlign:'right'}}><ChevronRight size={14} color="var(--cream-30)"/></td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  /* ── Brand Drill-down — ALL SKUs in brand, not just flagged ones ── */
-                  (() => {
-                    const brandItems = recs.items.filter(i=>String(i.brand_id)===String(restockBrand));
-                    const brandInfo  = recs.brands.find(b=>String(b.brand_id)===String(restockBrand));
-                    return (
-                      <>
-                        <div style={{padding:'12px 16px',display:'flex',justifyContent:'space-between',alignItems:'center',borderBottom:'1px solid var(--border)'}}>
-                          <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1,color:'var(--cream)'}}>
-                            <Badge color={brandInfo?.brand_color}>{brandInfo?.brand_name}</Badge> — Full Catalogue Order Sheet
-                          </span>
-                          <Btn size="sm" variant="ghost" onClick={()=>printRestockOrderSheet(brandInfo, brandItems, recs)}>
-                            <Printer size={12}/> Print Order Sheet
-                          </Btn>
-                        </div>
-                        <div style={{overflowX:'auto'}}>
-                          <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:820}}>
-                            <thead><tr>
-                              {['Product','Stock','Daily Velocity','Days Left','Status','Top-up Qty','Est. Cost'].map(h=>(
-                                <th key={h} style={{padding:'9px 12px',textAlign:['Stock','Daily Velocity','Days Left','Top-up Qty','Est. Cost'].includes(h)?'right':'left',fontSize:9.5,fontWeight:700,letterSpacing:.7,textTransform:'uppercase',color:'var(--cream-30)',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap'}}>{h}</th>
-                              ))}
-                            </tr></thead>
-                            <tbody>
-                              {brandItems.map(item=>(
-                                <tr key={item.product_id} style={{borderBottom:'1px solid rgba(245,242,235,.04)',background:item.needs_reorder?'rgba(248,113,113,.04)':'transparent'}}>
-                                  <td style={{padding:'9px 12px',color:'var(--cream)'}}>{item.item_series}{item.variation?' · '+item.variation:''}</td>
-                                  <td style={{padding:'9px 12px',textAlign:'right',color:'var(--cream-60)'}}>{item.warehouse_total}</td>
-                                  <td style={{padding:'9px 12px',textAlign:'right',color:'var(--cream-60)'}}>{item.daily_velocity>0?item.daily_velocity.toFixed(2):'—'}/day</td>
-                                  <td style={{padding:'9px 12px',textAlign:'right',fontWeight:700,color:item.days_remaining===null?'var(--cream-30)':item.days_remaining<recs.lead_time_days?'#f87171':'var(--cream)'}}>
-                                    {item.days_remaining===null?'—':`${item.days_remaining}d`}
-                                  </td>
-                                  <td style={{padding:'9px 12px'}}>
-                                    {item.needs_reorder
-                                      ? <Badge color="#f87171"><AlertTriangle size={10}/> Reorder</Badge>
-                                      : <Badge color="#7fc93e">OK</Badge>
-                                    }
-                                  </td>
-                                  <td style={{padding:'9px 12px',textAlign:'right',fontWeight:700,color:item.recommended_qty>0?'var(--orange)':'var(--cream-30)'}}>
-                                    {item.recommended_qty>0?item.recommended_qty:'—'}
-                                  </td>
-                                  <td style={{padding:'9px 12px',textAlign:'right',color:'var(--cream-60)'}}>{item.recommended_qty>0?sgd(item.estimated_cost):'—'}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                            <tfoot>
-                              <tr style={{borderTop:'2px solid var(--border)'}}>
-                                <td colSpan={5} style={{padding:'10px 12px',fontWeight:700,color:'var(--cream-30)',fontSize:11}}>CONSOLIDATED ORDER TOTAL</td>
-                                <td style={{padding:'10px 12px',textAlign:'right',fontWeight:700,color:'var(--orange)'}}>{brandInfo?.total_recommended_qty}</td>
-                                <td style={{padding:'10px 12px',textAlign:'right',fontWeight:700,color:'var(--orange)'}}>{sgd(brandInfo?.total_estimated_cost)}</td>
-                              </tr>
-                            </tfoot>
-                          </table>
-                        </div>
-                      </>
-                    );
-                  })()
-                )}
-              </>
-          }
-        </div>
+        <RestockPlanner cover={cover} selBrand={selBrand} setSelBrand={setSelBrand}/>
       )}
-
 
       <RestockModal open={modal==='restock'} onClose={()=>setModal(null)} onSaved={reload}/>
       <TransferModal open={modal==='transfer'} onClose={()=>setModal(null)} onSaved={reload}/>

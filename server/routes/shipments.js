@@ -356,7 +356,16 @@ module.exports = function(db, inventoryRouter) {
       });
     }
 
-    db.run(`UPDATE shipments SET status = 'received', updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [req.params.id]);
+    // Log the actual arrival date the moment it is marked received (same way
+    // costing logs costed_date). Only on the first transition from 'ordered', so
+    // re-clicking never overwrites a date. Any expected date entered earlier is
+    // replaced by the actual one.
+    if (shipment.status === 'ordered') {
+      const arrival = (req.body && req.body.arrival_date) || localDateStr();
+      db.run(`UPDATE shipments SET status = 'received', arrival_date = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [arrival, req.params.id]);
+    } else {
+      db.run(`UPDATE shipments SET status = 'received', updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [req.params.id]);
+    }
     const updated = db.queryOne('SELECT * FROM shipments WHERE id = ?', [req.params.id]);
     res.json({ ...updated, inventory_synced_lines: synced });
   });
