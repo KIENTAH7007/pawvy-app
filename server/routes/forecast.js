@@ -57,7 +57,19 @@ module.exports = function(db) {
     const onWay = {};
     wayRows.forEach(r => { onWay[r.product_id] = r.qty; });
 
-    const LOW = 2, WATCH = 3;
+    // Per-brand settings (Restock Planner): red = cover below the brand's lead time,
+    // amber = cover below the brand's months-to-cover target. Defaults until set.
+    const WEEKS_PER_MONTH = 4.345;
+    const DEF_LEAD_WEEKS = 8, DEF_COVER_MONTHS = 3;
+    const setMap = {};
+    db.query('SELECT brand_id, lead_time_weeks, cover_months FROM brand_restock_settings').forEach(r => { setMap[r.brand_id] = r; });
+    const cfg = bid => {
+      const r = setMap[bid];
+      const weeks = r ? r.lead_time_weeks : DEF_LEAD_WEEKS;
+      const cm = r ? r.cover_months : DEF_COVER_MONTHS;
+      const low = weeks / WEEKS_PER_MONTH;
+      return { weeks, cover_months: cm, low, watch: Math.max(cm, low), is_default: !r };
+    };
     const items = products.map(p => {
       const m = sales[p.product_id] || {};
       const monthly = months.map(ym => m[ym] || 0);
@@ -68,12 +80,13 @@ module.exports = function(db) {
       const on_the_way = onWay[p.product_id] || 0;
       const cover_months = avg > 0 ? (on_hand + on_the_way) / avg : null;
       const cover_now_months = avg > 0 ? on_hand / avg : null;
+      const c = cfg(p.brand_id);
       let status;
       const soldAny = monthly.some(u => u > 0);
       if (!soldAny) status = 'no_sales';            // nothing sold in 6 months: not part of planning
       else if (avg <= 0) status = on_hand + on_the_way <= 0 ? 'out' : 'no_sales';
-      else if (cover_months < LOW) status = 'low';
-      else if (cover_months < WATCH) status = 'watch';
+      else if (cover_months < c.low) status = 'low';
+      else if (cover_months < c.watch) status = 'watch';
       else status = 'ok';
       return {
         ...p, hougang_qty: hougang, mega_qty: mega, on_hand, on_the_way, monthly,
@@ -93,6 +106,9 @@ module.exports = function(db) {
       const b = brandMap[i.brand_id] = brandMap[i.brand_id] || {
         brand_id: i.brand_id, brand_name: i.brand_name, brand_color: i.brand_color,
         total_skus: 0, active_skus: 0, low_skus: 0, on_the_way_units: 0, shortest_cover: null,
+        lead_time_weeks: cfg(i.brand_id).weeks, cover_target_months: cfg(i.brand_id).cover_months,
+        low_threshold: parseFloat(cfg(i.brand_id).low.toFixed(1)), watch_threshold: parseFloat(cfg(i.brand_id).watch.toFixed(1)),
+        settings_default: cfg(i.brand_id).is_default,
       };
       b.total_skus++;
       b.on_the_way_units += i.on_the_way;
@@ -104,7 +120,20 @@ module.exports = function(db) {
       ...b, time_to_plan: b.active_skus > 0 && b.low_skus / b.active_skus >= 0.5,
     }));
 
-    res.json({ months, current_month: currentMonth, avg_months: avgMonths, low_threshold: LOW, watch_threshold: WATCH, items, brands });
+    res.json({ months, current_month: currentMonth, avg_months: avgMonths, items, brands });
+  });
+
+  router.put('/restock-settings/:brand_id', (req, res) => {
+    const brandId = parseInt(req.params.brand_id, 10);
+    const weeks = Number(req.body.lead_time_weeks);
+    const cm = Number(req.body.cover_months);
+    if (!db.queryOne('SELECT id FROM brands WHERE id = ?', [brandId])) return res.status(404).json({ error: 'Brand not found' });
+    if (!(weeks > 0 && weeks <= 52)) return res.status(400).json({ error: 'Lead time must be between 1 and 52 weeks' });
+    if (!(cm > 0 && cm <= 24)) return res.status(400).json({ error: 'Months to cover must be between 1 and 24' });
+    const exists = db.queryOne('SELECT brand_id FROM brand_restock_settings WHERE brand_id = ?', [brandId]);
+    if (exists) db.run('UPDATE brand_restock_settings SET lead_time_weeks = ?, cover_months = ?, updated_at = CURRENT_TIMESTAMP WHERE brand_id = ?', [weeks, cm, brandId]);
+    else db.run('INSERT INTO brand_restock_settings (brand_id, lead_time_weeks, cover_months) VALUES (?,?,?)', [brandId, weeks, cm]);
+    res.json({ brand_id: brandId, lead_time_weeks: weeks, cover_months: cm });
   });
 
   router.get('/restock-recommendations', (req, res) => {

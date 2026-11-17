@@ -110,6 +110,12 @@ function createSchema() {
       notes TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`,
+    `CREATE TABLE IF NOT EXISTS brand_restock_settings (
+      brand_id INTEGER PRIMARY KEY REFERENCES brands(id) ON DELETE CASCADE,
+      lead_time_weeks REAL NOT NULL DEFAULT 8,
+      cover_months REAL NOT NULL DEFAULT 3,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
     `CREATE TABLE IF NOT EXISTS products (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       brand_id INTEGER NOT NULL REFERENCES brands(id),

@@ -91,6 +91,7 @@ export const inventoryApi = {
 export const forecastApi = {
   restockRecommendations: (q) => api.get(`/forecast/restock-recommendations${qs(q)}`),
   stockCover: (q) => api.get(`/forecast/stock-cover${qs(q)}`),
+  saveRestockSettings: (brandId, body) => api.put(`/forecast/restock-settings/${brandId}`, body),
 };
 
 export const partnerAddressesApi = {

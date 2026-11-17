@@ -474,7 +474,33 @@ function MovementHistoryModal({ open, onClose, product }) {
 const COVER_COLORS = { low:'#f87171', out:'#f87171', watch:'#f5a623', ok:'#7fc93e', no_sales:'#6b7280' };
 const monthLabel = ym => ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'][parseInt(ym.slice(5,7),10)-1];
 
-function RestockPlanner({ cover, selBrand, setSelBrand }) {
+function BrandSettings({ brand, onSaved }) {
+  const [weeks, setWeeks] = useState(String(brand.lead_time_weeks));
+  const [months, setMonths] = useState(String(brand.cover_target_months));
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+  useEffect(()=>{ setWeeks(String(brand.lead_time_weeks)); setMonths(String(brand.cover_target_months)); setErr(''); }, [brand.brand_id, brand.lead_time_weeks, brand.cover_target_months]);
+  const dirty = parseFloat(weeks)!==brand.lead_time_weeks || parseFloat(months)!==brand.cover_target_months;
+  const save = async () => {
+    setSaving(true); setErr('');
+    try { await forecastApi.saveRestockSettings(brand.brand_id, { lead_time_weeks: parseFloat(weeks), cover_months: parseFloat(months) }); onSaved(); }
+    catch(e) { setErr(e.message || 'Could not save'); }
+    setSaving(false);
+  };
+  const inp = {width:56,background:'rgba(245,242,235,.06)',border:'1px solid var(--border)',borderRadius:6,color:'var(--cream)',padding:'4px 6px',fontSize:12,textAlign:'right'};
+  return (
+    <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',padding:'10px 16px',borderBottom:'1px solid var(--border)',fontSize:12,color:'var(--cream-60)'}}>
+      <span>Lead time <input type="number" min="1" max="52" step="0.5" value={weeks} onChange={e=>setWeeks(e.target.value)} style={inp}/> weeks</span>
+      <span>Months to cover <input type="number" min="1" max="24" step="0.5" value={months} onChange={e=>setMonths(e.target.value)} style={inp}/> months</span>
+      <Btn size="sm" variant="ghost" onClick={save} disabled={!dirty||saving}>{saving?'Saving…':'Save'}</Btn>
+      {brand.settings_default && !dirty && <span style={{fontSize:11,color:'var(--cream-30)'}}>Defaults — set these for {brand.brand_name}</span>}
+      {err && <span style={{color:'#f87171',fontSize:11}}>{err}</span>}
+      <span style={{fontSize:11,color:'var(--cream-30)',marginLeft:'auto'}}>Red = cover under lead time ({brand.low_threshold} mo) · Amber = under {brand.watch_threshold} mo</span>
+    </div>
+  );
+}
+
+function RestockPlanner({ cover, selBrand, setSelBrand, reloadCover }) {
   if (!cover || cover.items.length === 0)
     return <div style={{padding:40,textAlign:'center',color:'var(--cream-30)',fontSize:12,background:'var(--navy)',border:'1px solid var(--border)',borderRadius:'var(--radius)'}}>No products to plan yet.</div>;
   const brandInfo = cover.brands.find(b=>String(b.brand_id)===String(selBrand)) || cover.brands[0];
@@ -494,7 +520,7 @@ function RestockPlanner({ cover, selBrand, setSelBrand }) {
               {b.active_skus===0 ? <div style={{marginTop:8,fontSize:12,color:'var(--cream-30)'}}>No recent sales to plan from</div> :
               <div style={{marginTop:8,fontSize:13,color:'var(--cream)'}}>
                 <span style={{fontWeight:700,fontSize:20,fontFamily:"'Bebas Neue',sans-serif",letterSpacing:1,color:b.low_skus>0?'#f87171':'#7fc93e'}}>{b.low_skus}</span>
-                <span style={{color:'var(--cream-30)'}}> of {b.active_skus} SKUs under {cover.low_threshold} months of cover</span>
+                <span style={{color:'var(--cream-30)'}}> of {b.active_skus} SKUs under {b.low_threshold} months of cover</span>
               </div>}
               {b.on_the_way_units>0 && <div style={{fontSize:11,color:'#378ADD',marginTop:4}}>{b.on_the_way_units} units on the way</div>}
               {b.time_to_plan && <div style={{marginTop:8}}><Badge color="#f87171"><AlertTriangle size={10}/> Time to plan an order</Badge></div>}
@@ -508,6 +534,7 @@ function RestockPlanner({ cover, selBrand, setSelBrand }) {
           <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1,color:'var(--cream)'}}>{brandInfo.brand_name} · Stock Cover</span>
           <span style={{fontSize:11,color:'var(--cream-30)'}}>Sales Ledger sales incl. consignment sales (placements not counted) · cover = (on hand + on the way) ÷ avg per month</span>
         </div>
+        <BrandSettings brand={brandInfo} onSaved={reloadCover}/>
         <div style={{overflowX:'auto'}}>
           <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:900}}>
             <thead><tr>
@@ -548,7 +575,7 @@ function RestockPlanner({ cover, selBrand, setSelBrand }) {
           </table>
         </div>
         <div style={{padding:'10px 16px',fontSize:11,color:'var(--cream-30)',borderTop:'1px solid var(--border)'}}>
-          *{monthLabel(cover.current_month)} = month to date, not used in the average · Avg = last 3 full months ({cover.avg_months.map(monthLabel).join(', ')}) · Red under {cover.low_threshold} months, amber under {cover.watch_threshold} · "Time to plan" shows when half or more of a brand's selling SKUs are in red
+          *{monthLabel(cover.current_month)} = month to date, not used in the average · Avg = last 3 full months ({cover.avg_months.map(monthLabel).join(', ')}) · Red / amber follow this brand's lead time and months to cover · "Time to plan" shows when half or more of a brand's selling SKUs are in red
         </div>
       </div>
     </div>
@@ -672,7 +699,7 @@ export default function Inventory() {
         </div>
 
       ) : (
-        <RestockPlanner cover={cover} selBrand={selBrand} setSelBrand={setSelBrand}/>
+        <RestockPlanner cover={cover} selBrand={selBrand} setSelBrand={setSelBrand} reloadCover={loadRecs}/>
       )}
 
       <RestockModal open={modal==='restock'} onClose={()=>setModal(null)} onSaved={reload}/>
