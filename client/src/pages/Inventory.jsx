@@ -506,7 +506,7 @@ function RestockPlanner({ cover, selBrand, setSelBrand }) {
       <div style={{background:'var(--navy)',border:'1px solid var(--border)',borderRadius:'var(--radius)'}}>
         <div style={{padding:'12px 16px',borderBottom:'1px solid var(--border)',display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8}}>
           <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1,color:'var(--cream)'}}>{brandInfo.brand_name} · Stock Cover</span>
-          <span style={{fontSize:11,color:'var(--cream-30)'}}>Real sales only (consignment placements not counted) · cover = (on hand + on the way) ÷ avg per month</span>
+          <span style={{fontSize:11,color:'var(--cream-30)'}}>Sales Ledger sales incl. consignment sales (placements not counted) · cover = (on hand + on the way) ÷ avg per month</span>
         </div>
         <div style={{overflowX:'auto'}}>
           <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:900}}>

@@ -9,7 +9,7 @@ module.exports = function(db) {
   const router = Router();
 
   // ── Restock Planner step 1: stock cover by month ───────────────────
-  // Real sales only (consignment placements excluded). Stock on the way =
+  // Real sales only (Sales Ledger incl. consignment sales; placements excluded). Stock on the way =
   // lines of shipments still 'ordered' (not yet received / voided).
   // Average = last 3 FULL calendar months; the current month is shown but not averaged.
   router.get('/stock-cover', (req, res) => {
@@ -34,10 +34,13 @@ module.exports = function(db) {
     sql += ' ORDER BY b.name, p.item_series, p.variation';
     const products = db.query(sql, params);
 
+    // Same source as the Dashboard: Sales Ledger, voided sales excluded. This includes
+    // 'Consignment Sale' (invoiced at stock take) which never creates a warehouse movement.
+    // All markets (SG + MY) because stock is shared. Placements are not sales, so not counted.
     const salesRows = db.query(`
-      SELECT product_id, substr(date,1,7) AS ym, COALESCE(SUM(-qty_change),0) AS units
-      FROM inventory_movements
-      WHERE type IN ('Sale','Sale Reversal') AND date >= ?
+      SELECT product_id, substr(date,1,7) AS ym, COALESCE(SUM(qty),0) AS units
+      FROM sales
+      WHERE COALESCE(voided,0) = 0 AND date >= ?
       GROUP BY product_id, ym`, [firstDay]);
     const sales = {};
     salesRows.forEach(r => { (sales[r.product_id] = sales[r.product_id] || {})[r.ym] = Math.max(0, r.units); });
