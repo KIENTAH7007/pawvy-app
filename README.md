@@ -1,15 +1,11 @@
-# Pawvy App - Restock Planner: per-brand Lead Time and Months to Cover
+# Pawvy App - Restock Planner: "To Order" column
 
-Each brand now has its own settings in Inventory > Restock Planner (select a brand, bar above the table):
-- **Lead time (weeks)**: red = cover below the lead time.
-- **Months to cover**: amber = cover below this target.
-- "Time to plan an order" shows when half or more of that brand's selling SKUs are red.
-Until set, brands use defaults of 8 weeks and 3 months. Settings are saved per brand (new table brand_restock_settings, created automatically on startup; existing data untouched).
+New last column in the Restock Planner table: pieces to order to reach the brand's "Months to cover".
+  To Order = Avg/Mo x Months to cover - On hand - On the way   (rounded up, never below 0)
+A brand total is shown at the bottom of the table. Not rounded to master case / MOQ (that comes with the draft order step).
 
 Files (complete, replace as-is):
-- server/database.js
 - server/routes/forecast.js
-- client/src/api.js
 - client/src/pages/Inventory.jsx
 
 ## Staging
@@ -17,9 +13,9 @@ Files (complete, replace as-is):
 git checkout staging
 git pull
 git merge main
-# copy the 4 files from this zip over the repo (same paths)
-git add server/database.js server/routes/forecast.js client/src/api.js client/src/pages/Inventory.jsx
-git commit -m "Restock Planner: per-brand lead time and months to cover"
+# copy the 2 files from this zip over the repo (same paths)
+git add server/routes/forecast.js client/src/pages/Inventory.jsx
+git commit -m "Restock Planner: To Order column and brand total"
 git push origin staging
 ```
 

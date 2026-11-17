@@ -88,8 +88,10 @@ module.exports = function(db) {
       else if (cover_months < c.low) status = 'low';
       else if (cover_months < c.watch) status = 'watch';
       else status = 'ok';
+      // Pieces to order to reach the brand's months-to-cover target (on hand + on the way counted)
+      const to_order = avg > 0 ? Math.max(0, Math.ceil(avg * c.cover_months - on_hand - on_the_way)) : 0;
       return {
-        ...p, hougang_qty: hougang, mega_qty: mega, on_hand, on_the_way, monthly,
+        ...p, to_order, hougang_qty: hougang, mega_qty: mega, on_hand, on_the_way, monthly,
         avg_per_month: parseFloat(avg.toFixed(1)),
         cover_months: cover_months === null ? null : parseFloat(cover_months.toFixed(1)),
         cover_now_months: cover_now_months === null ? null : parseFloat(cover_now_months.toFixed(1)),
@@ -105,13 +107,14 @@ module.exports = function(db) {
     items.forEach(i => {
       const b = brandMap[i.brand_id] = brandMap[i.brand_id] || {
         brand_id: i.brand_id, brand_name: i.brand_name, brand_color: i.brand_color,
-        total_skus: 0, active_skus: 0, low_skus: 0, on_the_way_units: 0, shortest_cover: null,
+        total_skus: 0, active_skus: 0, low_skus: 0, on_the_way_units: 0, to_order_units: 0, shortest_cover: null,
         lead_time_weeks: cfg(i.brand_id).weeks, cover_target_months: cfg(i.brand_id).cover_months,
         low_threshold: parseFloat(cfg(i.brand_id).low.toFixed(1)), watch_threshold: parseFloat(cfg(i.brand_id).watch.toFixed(1)),
         settings_default: cfg(i.brand_id).is_default,
       };
       b.total_skus++;
       b.on_the_way_units += i.on_the_way;
+      b.to_order_units += i.to_order;
       if (i.status !== 'no_sales') b.active_skus++;
       if (i.status === 'low' || i.status === 'out') b.low_skus++;
       if (i.cover_months !== null && (b.shortest_cover === null || i.cover_months < b.shortest_cover)) b.shortest_cover = i.cover_months;

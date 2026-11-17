@@ -544,6 +544,7 @@ function RestockPlanner({ cover, selBrand, setSelBrand, reloadCover }) {
               <th style={th(true)}>Avg / Mo</th>
               <th style={th(true)}>On The Way</th>
               <th style={th(false)}>Cover</th>
+              <th style={th(true)}>To Order</th>
             </tr></thead>
             <tbody>
               {items.map(i=>{
@@ -568,14 +569,21 @@ function RestockPlanner({ cover, selBrand, setSelBrand, reloadCover }) {
                           <span style={{fontWeight:700,color:col,minWidth:44,textAlign:'right'}}>{i.cover_months} mo</span>
                         </div>}
                     </td>
+                    <td style={{padding:'9px 10px',textAlign:'right',fontWeight:700,color:i.to_order>0?'var(--orange)':'var(--cream-30)'}}>{i.to_order>0?i.to_order:'–'}</td>
                   </tr>
                 );
               })}
             </tbody>
+            <tfoot>
+              <tr style={{borderTop:'2px solid var(--border)'}}>
+                <td colSpan={cover.months.length+5} style={{padding:'10px 10px',fontWeight:700,color:'var(--cream-30)',fontSize:11}}>TOTAL TO ORDER · {brandInfo.cover_target_months} MONTHS OF COVER</td>
+                <td style={{padding:'10px 10px',textAlign:'right',fontWeight:700,color:'var(--orange)'}}>{brandInfo.to_order_units>0?brandInfo.to_order_units:'–'}</td>
+              </tr>
+            </tfoot>
           </table>
         </div>
         <div style={{padding:'10px 16px',fontSize:11,color:'var(--cream-30)',borderTop:'1px solid var(--border)'}}>
-          *{monthLabel(cover.current_month)} = month to date, not used in the average · Avg = last 3 full months ({cover.avg_months.map(monthLabel).join(', ')}) · Red / amber follow this brand's lead time and months to cover · "Time to plan" shows when half or more of a brand's selling SKUs are in red
+          *{monthLabel(cover.current_month)} = month to date, not used in the average · Avg = last 3 full months ({cover.avg_months.map(monthLabel).join(', ')}) · Red / amber follow this brand's lead time and months to cover · To Order = avg per month × months to cover − on hand − on the way (rough guide, not rounded to case sizes) · "Time to plan" shows when half or more of a brand's selling SKUs are in red
         </div>
       </div>
     </div>
