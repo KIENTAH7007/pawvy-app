@@ -541,7 +541,7 @@ export default function Products() {
                       onChange={async e => {
                         const file = e.target.files?.[0];
                         if (!file) return;
-                        if (file.size > 2 * 1024 * 1024) { alert('Image must be under 2MB. Please resize and try again.'); return; }
+                        if (file.size > 8 * 1024 * 1024) { alert('Image must be under 8MB.'); return; }
                         const reader = new FileReader();
                         reader.onload = async ev => {
                           const data = ev.target.result;
@@ -564,11 +564,15 @@ export default function Products() {
                     </button>
                   )}
                   <div style={{fontSize:10,color:'var(--cream-30)',lineHeight:1.5}}>
-                    JPG, PNG or WebP · max 2MB<br/>Recommended: 800×800px square
+                    JPG, PNG or WebP · up to 8MB (resized automatically)<br/>Recommended: square, at least 800×800px
                   </div>
                 </div>
               </div>
             </div>
+          )}
+
+          {modal === 'edit' && form.id && (
+            <ExtraPhotos productId={form.id} onMainChanged={url => { setForm(f => ({ ...f, image_url: url })); load(); }} />
           )}
 
           {saveError && (
@@ -903,6 +907,111 @@ export default function Products() {
         </div>
       </Modal>
     </Page>
+  );
+}
+
+// ── Extra product photos (Nov 2026) ─────────────────────────────────
+// The main photo above stays as it was. Up to 5 more can be added here; they
+// show on the website's product page and as arrows / swipe on Shop cards.
+function ExtraPhotos({ productId, onMainChanged }) {
+  const [allProducts, setAllProducts] = useState([]);   // full list, not the page's current search/filter
+  useEffect(() => { productsApi.getAll().then(setAllProducts).catch(() => {}); }, []);
+  const [images, setImages] = useState([]);
+  const [max, setMax] = useState(5);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [copyFrom, setCopyFrom] = useState('');
+  const [copyMain, setCopyMain] = useState(false);
+
+  const load = () => productsApi.images(productId).then(r => { setImages(r.images); setMax(r.max_extra); }).catch(() => {});
+  useEffect(() => { load(); setCopyFrom(''); setErr(''); }, [productId]);
+
+  const readFile = (file) => new Promise((resolve, reject) => {
+    const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = reject; r.readAsDataURL(file);
+  });
+
+  async function onFiles(e) {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (!files.length) return;
+    setBusy(true); setErr('');
+    try {
+      let room = max - images.length;
+      for (const f of files) {
+        if (room <= 0) { setErr(`Only ${max} extra photos fit — the rest were skipped.`); break; }
+        if (f.size > 8 * 1024 * 1024) { setErr(`${f.name} is over 8MB, skipped.`); continue; }
+        const res = await productsApi.addImage(productId, await readFile(f));
+        setImages(res.images); room -= 1;
+      }
+    } catch (ex) { setErr(ex.message || 'Upload failed.'); }
+    finally { setBusy(false); }
+  }
+  async function remove(id) {
+    setBusy(true); setErr('');
+    try { const r = await productsApi.deleteExtraImage(productId, id); setImages(r.images); } catch (ex) { setErr(ex.message); }
+    finally { setBusy(false); }
+  }
+  async function move(idx, dir) {
+    const next = images.slice(); const j = idx + dir;
+    if (j < 0 || j >= next.length) return;
+    [next[idx], next[j]] = [next[j], next[idx]];
+    setImages(next);
+    try { const r = await productsApi.orderImages(productId, next.map(i => i.id)); setImages(r.images); } catch (ex) { setErr(ex.message); load(); }
+  }
+  async function doCopy() {
+    if (!copyFrom) return;
+    if (images.length && !window.confirm('This replaces this SKU\'s extra photos with the other SKU\'s. Continue?')) return;
+    setBusy(true); setErr('');
+    try {
+      const r = await productsApi.copyImages(productId, copyFrom, copyMain);
+      setImages(r.images);
+      if (copyMain) onMainChanged(r.image_url);
+      setCopyFrom('');
+    } catch (ex) { setErr(ex.message); }
+    finally { setBusy(false); }
+  }
+
+  const btn = {padding:'6px 10px',borderRadius:6,border:'1px solid var(--border)',background:'transparent',color:'var(--cream-60)',fontSize:11,cursor:'pointer'};
+  return (
+    <div style={{borderTop:'1px solid var(--border)',paddingTop:14}} data-testid="extra-photos">
+      <div style={{fontSize:10,fontWeight:700,letterSpacing:1,textTransform:'uppercase',color:'var(--cream-30)',marginBottom:6}}>
+        More photos ({images.length}/{max})
+      </div>
+      <div style={{fontSize:11,color:'var(--cream-30)',marginBottom:10,lineHeight:1.5}}>
+        Shown on the website only — the main photo above is still the first one. Order matters: the first extra photo is shown second.
+      </div>
+      <div style={{display:'flex',gap:10,flexWrap:'wrap',marginBottom:10}}>
+        {images.map((im, i) => (
+          <div key={im.id} style={{width:96}}>
+            <img src={im.image_url} alt="" style={{width:96,height:96,objectFit:'cover',borderRadius:8,border:'1px solid var(--border)',display:'block'}}/>
+            <div style={{display:'flex',justifyContent:'space-between',marginTop:4}}>
+              <button style={btn} disabled={busy || i === 0} onClick={() => move(i, -1)} title="Move earlier">←</button>
+              <button style={{...btn,color:'#f87171',borderColor:'rgba(248,113,113,.3)'}} disabled={busy} onClick={() => remove(im.id)} title="Remove">✕</button>
+              <button style={btn} disabled={busy || i === images.length - 1} onClick={() => move(i, 1)} title="Move later">→</button>
+            </div>
+          </div>
+        ))}
+        {images.length < max && (
+          <label style={{width:96,height:96,borderRadius:8,border:'2px dashed var(--border)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',color:'var(--cream-30)',fontSize:11,cursor:busy?'default':'pointer',textAlign:'center'}}>
+            <span style={{fontSize:22}}>＋</span>{busy ? 'Uploading…' : 'Add photos'}
+            <input type="file" multiple accept="image/jpeg,image/png,image/webp" style={{display:'none'}} disabled={busy} onChange={onFiles}/>
+          </label>
+        )}
+      </div>
+      <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+        <select value={copyFrom} onChange={e => setCopyFrom(e.target.value)}
+          style={{background:'var(--navy-light)',border:'1px solid var(--border)',borderRadius:7,padding:'7px 10px',color:'var(--cream)',fontSize:12,maxWidth:300}}>
+          <option value="">Copy photos from another SKU…</option>
+          {allProducts.filter(p => String(p.id) !== String(productId))
+            .map(p => <option key={p.id} value={p.id}>{p.item_series}{p.variation ? ' · ' + p.variation : ''}</option>)}
+        </select>
+        <label style={{fontSize:11,color:'var(--cream-60)',display:'flex',gap:5,alignItems:'center'}}>
+          <input type="checkbox" checked={copyMain} onChange={e => setCopyMain(e.target.checked)}/> also copy the main photo
+        </label>
+        <button style={btn} disabled={busy || !copyFrom} onClick={doCopy}>Copy</button>
+      </div>
+      {err && <div style={{marginTop:8,fontSize:12,color:'#f87171'}}>{err}</div>}
+    </div>
   );
 }
 

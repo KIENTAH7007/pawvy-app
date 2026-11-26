@@ -6,6 +6,8 @@ import { sgd, pawvyHeaderHtml, pawvyAddressBlockHtml, pawvyFooterHtml, openPdfWi
 import { localDateStr } from '../utils/dates';
 
 const today = () => localDateStr();
+// Ops role never sees or sets costs (server also ignores any cost it is sent).
+const OPS = (() => { try { return localStorage.getItem('pawvy_role') === 'ops'; } catch { return false; } })();
 
 function useIsMobile() {
   const [m, setM] = useState(window.innerWidth < 768);
@@ -187,7 +189,7 @@ function PlaceStockModal({ open, onClose, partnerId, onSaved }) {
           partner_id: partnerId, product_id: l.product_id,
           date, qty: l.qtyNum,
           consignment_price: l.price,
-          unit_cost: l.cost,
+          unit_cost: OPS ? undefined : l.cost,
           notes: notes || null,
         });
       }
@@ -200,8 +202,8 @@ function PlaceStockModal({ open, onClose, partnerId, onSaved }) {
     <Modal open={open} title="PLACE STOCK" onClose={onClose} width={780}>
       <div style={{display:'flex',flexDirection:'column',gap:12}}>
         <Input label="Date" type="date" value={date} onChange={e=>setDate(e.target.value)} style={{width:180}}/>
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1.4fr 55px 120px 95px 28px',gap:8,padding:'0 2px'}}>
-          {['Brand','Product / SKU','Qty','Consign Price','Unit Cost',''].map(h=>(
+        <div style={{display:'grid',gridTemplateColumns:(OPS ? '1fr 1.4fr 55px 120px 28px' : '1fr 1.4fr 55px 120px 95px 28px'),gap:8,padding:'0 2px'}}>
+          {['Brand','Product / SKU','Qty','Consign Price',...(OPS ? [] : ['Unit Cost']),''].map(h=>(
             <div key={h} style={{fontSize:9,fontWeight:700,letterSpacing:.7,textTransform:'uppercase',color:'var(--cream-30)'}}>{h}</div>
           ))}
         </div>
@@ -210,7 +212,7 @@ function PlaceStockModal({ open, onClose, partnerId, onSaved }) {
             ? products.filter(p => String(p.brand_id) === String(line.brand_id))
             : products;
           return (
-            <div key={idx} style={{display:'grid',gridTemplateColumns:'1fr 1.4fr 55px 120px 95px 28px',gap:8,alignItems:'flex-start'}}>
+            <div key={idx} style={{display:'grid',gridTemplateColumns:(OPS ? '1fr 1.4fr 55px 120px 28px' : '1fr 1.4fr 55px 120px 95px 28px'),gap:8,alignItems:'flex-start'}}>
               {/* Brand filter */}
               <Select value={line.brand_id} onChange={e=>selectBrand(idx, e.target.value)}>
                 <option value="">All brands</option>
@@ -232,12 +234,12 @@ function PlaceStockModal({ open, onClose, partnerId, onSaved }) {
                 placeholder="0.00"
                 style={{background:'var(--navy-light)',border:'1px solid var(--orange)',borderRadius:7,padding:'9px 12px',color:'var(--cream)',fontSize:13,outline:'none',width:'100%'}}
               />
-              {/* UNCONTROLLED cost */}
-              <input type="text" inputMode="decimal"
+              {/* UNCONTROLLED cost — hidden for the ops role (server then uses the product's set cost) */}
+              {!OPS && <input type="text" inputMode="decimal"
                 ref={el => { if (el) costRefs.current[idx] = el; }}
                 placeholder="0.00"
                 style={{background:'var(--navy-light)',border:'1px solid var(--border)',borderRadius:7,padding:'9px 12px',color:'var(--cream)',fontSize:13,outline:'none',width:'100%'}}
-              />
+              />}
               <button onClick={()=>removeLine(idx)} disabled={lines.length===1}
                 style={{background:'none',border:'none',color:'rgba(248,113,113,.6)',cursor:'pointer',padding:'8px 0',display:'flex',alignItems:'center'}}>
                 <Trash2 size={14}/>

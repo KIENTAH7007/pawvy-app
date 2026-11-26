@@ -14,11 +14,13 @@ export default function AuthGate({ children }) {
     const token = localStorage.getItem('pawvy_auth_token');
     if (!token) { setAuthed(false); setChecking(false); return; }
     try {
-      await authApi.me();
+      const me = await authApi.me();
+      localStorage.setItem('pawvy_role', me.role || 'master');
       setAuthed(true);
     } catch {
       localStorage.removeItem('pawvy_auth_token');
       localStorage.removeItem('pawvy_auth_expires');
+      localStorage.removeItem('pawvy_role');
       setAuthed(false);
     } finally {
       setChecking(false);
@@ -38,12 +40,13 @@ export default function AuthGate({ children }) {
 
   async function submit(e) {
     e.preventDefault();
-    if (pin.length !== 4) { setError('Enter your 4-digit PIN.'); return; }
+    if (pin.length !== 4 && pin.length !== 6) { setError('Enter your PIN (4 or 6 digits).'); return; }
     setBusy(true); setError('');
     try {
       const res = await authApi.login(pin);
       localStorage.setItem('pawvy_auth_token', res.token);
       localStorage.setItem('pawvy_auth_expires', res.expires_at);
+      localStorage.setItem('pawvy_role', res.role || 'master');
       setAuthed(true);
     } catch (err) {
       setError(err.message || 'Incorrect PIN.');
@@ -78,23 +81,23 @@ export default function AuthGate({ children }) {
             type="password"
             inputMode="numeric"
             pattern="[0-9]*"
-            maxLength={4}
+            maxLength={6}
             value={pin}
-            onChange={e => setPin(e.target.value.replace(/\D/g,'').slice(0,4))}
+            onChange={e => setPin(e.target.value.replace(/\D/g,'').slice(0,6))}
             style={{
-              width:160, textAlign:'center', fontSize:32, letterSpacing:18,
+              width:200, textAlign:'center', fontSize:30, letterSpacing:pin.length > 4 ? 10 : 18,
               background:'var(--navy-light)', border:'1px solid var(--border)', borderRadius:10,
               padding:'12px 0 12px 18px', color:'var(--cream)',
             }}
             autoFocus
           />
           {error && <div style={{fontSize:12,color:'#f87171',textAlign:'center'}}>{error}</div>}
-          <button type="submit" disabled={busy || pin.length !== 4}
+          <button type="submit" disabled={busy || (pin.length !== 4 && pin.length !== 6)}
             style={{
               width:'100%', padding:'11px 0', borderRadius:8, border:'none',
-              background: busy || pin.length !== 4 ? 'var(--navy-light)' : 'var(--orange)',
-              color: busy || pin.length !== 4 ? 'var(--cream-30)' : '#fff',
-              fontWeight:700, fontSize:13, cursor: busy || pin.length !== 4 ? 'default' : 'pointer',
+              background: busy || (pin.length !== 4 && pin.length !== 6) ? 'var(--navy-light)' : 'var(--orange)',
+              color: busy || (pin.length !== 4 && pin.length !== 6) ? 'var(--cream-30)' : '#fff',
+              fontWeight:700, fontSize:13, cursor: busy || (pin.length !== 4 && pin.length !== 6) ? 'default' : 'pointer',
             }}>
             {busy ? 'Checking…' : 'Log In'}
           </button>

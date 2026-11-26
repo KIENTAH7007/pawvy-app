@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { Routes, Route, Navigate, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, PlusCircle, Package, Store, Tag,
   FileText, Users, Receipt, Settings, TrendingUp, ClipboardList,
@@ -32,6 +32,13 @@ import Marketing      from './pages/Marketing';
 import SettingsPage   from './pages/Settings';
 
 import { PAWVY_LOGO_WHITE } from './pawvyLogo.js';
+
+/* ── Staff role (Nov 2026) ─────────────────────────────────────────
+   'master' (the normal PIN) sees everything. 'ops' only sees the pages below.
+   The server enforces the same limits, so this only keeps the menu tidy. */
+const isOps = () => { try { return localStorage.getItem('pawvy_role') === 'ops'; } catch { return false; } };
+const OPS_PATHS = ['/orders', '/inventory', '/restock', '/consignment', '/customers', '/enquiries'];
+const opsOk = (path) => OPS_PATHS.includes(path);
 
 /* ── Nav config ─────────────────────────────────────────────────── */
 const NAV = [
@@ -93,6 +100,7 @@ function Sidebar({ open, onClose }) {
 
   // Backup reminder: "Settings" turns amber when no backup has been downloaded for 7+ days.
   useEffect(() => {
+    if (isOps()) return undefined;   // ops can't see Settings / backups
     function check() { backupApi.status().then(s => setBackupOverdue(!!s.overdue)).catch(() => {}); }
     check();
     const t = setInterval(check, 10 * 60 * 1000);
@@ -154,7 +162,7 @@ function Sidebar({ open, onClose }) {
 
         {/* Nav items */}
         <div style={{ flex:1, overflowY:'auto', padding:'10px 0', scrollbarWidth:'none' }}>
-          {NAV.map((group, gi) => (
+          {NAV.map(g => isOps() ? { ...g, items: g.items.filter(i => opsOk(i.path)) } : g).filter(g => g.items.length > 0).map((group, gi) => (
             <div key={gi}>
               {group.section && (
                 <div style={{ fontSize:8.5, letterSpacing:1.3, textTransform:'uppercase', color:'var(--cream-30)', padding:'10px 16px 4px' }}>
@@ -194,7 +202,7 @@ function Sidebar({ open, onClose }) {
 
         {/* Bottom */}
         <div style={{ padding:'10px 8px', borderTop:'1px solid var(--border)' }}>
-          <NavLink to="/settings" onClick={isMobile ? onClose : undefined} style={{ textDecoration:'none' }}>
+          {!isOps() && <NavLink to="/settings" onClick={isMobile ? onClose : undefined} style={{ textDecoration:'none' }}>
             <div title={backupOverdue ? 'Backup overdue — open Settings to download one' : undefined} style={{
               display:'flex', alignItems:'center', gap:9, padding:'8px', fontSize:12, fontWeight:backupOverdue ? 700 : 500,
               color: backupOverdue ? '#f5a524' : (settingsActive ? 'var(--orange)' : 'var(--cream-30)'),
@@ -203,8 +211,8 @@ function Sidebar({ open, onClose }) {
               <Settings size={15} /> Settings
               {backupOverdue && <span style={{ marginLeft:'auto', width:8, height:8, borderRadius:'50%', background:'#f5a524' }}/>}
             </div>
-          </NavLink>
-          <div onClick={async()=>{ try{await authApi.logout();}catch(e){} localStorage.removeItem('pawvy_auth_token'); localStorage.removeItem('pawvy_auth_expires'); window.location.reload(); }}
+          </NavLink>}
+          <div onClick={async()=>{ try{await authApi.logout();}catch(e){} localStorage.removeItem('pawvy_auth_token'); localStorage.removeItem('pawvy_auth_expires'); localStorage.removeItem('pawvy_role'); window.location.reload(); }}
             style={{ display:'flex', alignItems:'center', gap:9, padding:'8px', fontSize:12, fontWeight:500, color:'var(--cream-30)', borderRadius:7, cursor:'pointer' }}>
             <LogOut size={15} /> Log Out
           </div>
@@ -279,30 +287,42 @@ export default function App() {
       <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden', background:'#0c1726' }}>
         <Topbar onMenuToggle={toggleSidebar}/>
         <main style={{ flex:1, overflowY:'auto', padding: isMobile ? '14px 12px' : 24 }}>
-          <Routes>
-            <Route path="/"              element={<Dashboard />} />
-            <Route path="/sales/record"  element={<RecordSale />} />
-            <Route path="/sales/event"   element={<EventSale />} />
-            <Route path="/sales"         element={<Sales />} />
-            <Route path="/orders"        element={<PendingOrders />} />
-            <Route path="/inventory"     element={<Inventory />} />
-            <Route path="/restock"       element={<RestockChecklist />} />
-            <Route path="/consignment"   element={<Consignment />} />
-            <Route path="/products"      element={<Products />} />
-            <Route path="/new-brand-pricing" element={<NewBrandPricing />} />
-            <Route path="/invoices"      element={<Invoices />} />
-            <Route path="/shipments"     element={<Shipments />} />
-            <Route path="/variance-ledger" element={<VarianceLedger />} />
-            <Route path="/cost-reference" element={<CostReference />} />
-            <Route path="/documents"    element={<DocumentLibrary />} />
-            <Route path="/partners"      element={<Partners />} />
-            <Route path="/customers"     element={<Customers />} />
-            <Route path="/enquiries"     element={<Enquiries />} />
-            <Route path="/marketing"     element={<Marketing />} />
-            <Route path="/costs"         element={<Costs />} />
-            <Route path="/reports"       element={<Reports />} />
-            <Route path="/settings"      element={<SettingsPage />} />
-          </Routes>
+          {isOps() ? (
+            <Routes>
+              <Route path="/orders"        element={<PendingOrders />} />
+              <Route path="/inventory"     element={<Inventory />} />
+              <Route path="/restock"       element={<RestockChecklist />} />
+              <Route path="/consignment"   element={<Consignment />} />
+              <Route path="/customers"     element={<Customers />} />
+              <Route path="/enquiries"     element={<Enquiries />} />
+              <Route path="*"              element={<Navigate to="/orders" replace />} />
+            </Routes>
+          ) : (
+            <Routes>
+              <Route path="/"              element={<Dashboard />} />
+              <Route path="/sales/record"  element={<RecordSale />} />
+              <Route path="/sales/event"   element={<EventSale />} />
+              <Route path="/sales"         element={<Sales />} />
+              <Route path="/orders"        element={<PendingOrders />} />
+              <Route path="/inventory"     element={<Inventory />} />
+              <Route path="/restock"       element={<RestockChecklist />} />
+              <Route path="/consignment"   element={<Consignment />} />
+              <Route path="/products"      element={<Products />} />
+              <Route path="/new-brand-pricing" element={<NewBrandPricing />} />
+              <Route path="/invoices"      element={<Invoices />} />
+              <Route path="/shipments"     element={<Shipments />} />
+              <Route path="/variance-ledger" element={<VarianceLedger />} />
+              <Route path="/cost-reference" element={<CostReference />} />
+              <Route path="/documents"    element={<DocumentLibrary />} />
+              <Route path="/partners"      element={<Partners />} />
+              <Route path="/customers"     element={<Customers />} />
+              <Route path="/enquiries"     element={<Enquiries />} />
+              <Route path="/marketing"     element={<Marketing />} />
+              <Route path="/costs"         element={<Costs />} />
+              <Route path="/reports"       element={<Reports />} />
+              <Route path="/settings"      element={<SettingsPage />} />
+            </Routes>
+          )}
         </main>
       </div>
     </div>

@@ -63,7 +63,8 @@ export const api = {
 const qs = (q) => q ? '?' + new URLSearchParams(q) : '';
 
 export const brandsApi    = { getAll: () => api.get('/brands'), create: (b) => api.post('/brands',b), update: (id,b) => api.put(`/brands/${id}`,b) };
-export const productsApi  = { getAll: (q) => api.get(`/products${qs(q)}`), get: (id) => api.get(`/products/${id}`), create: (p) => api.post('/products',p), update: (id,p) => api.put(`/products/${id}`,p), delete: (id) => api.delete(`/products/${id}`), permanentDelete: (id) => api.delete(`/products/${id}/permanent`), uploadImage: (id, image_data) => api.post(`/products/${id}/image`, { image_data }), deleteImage: (id) => api.delete(`/products/${id}/image`), setPortalOrder: (id, portal_sort_order) => api.post(`/products/${id}/portal-order`, { portal_sort_order }), setDiscount: (id, body) => api.patch(`/products/${id}/discount`, body), setMerchandising: (id, body) => api.patch(`/products/${id}/merchandising`, body), setVisibility: (id, hidden) => api.patch(`/products/${id}/visibility`, { hidden }) };
+export const productsApi  = { getAll: (q) => api.get(`/products${qs(q)}`), get: (id) => api.get(`/products/${id}`), create: (p) => api.post('/products',p), update: (id,p) => api.put(`/products/${id}`,p), delete: (id) => api.delete(`/products/${id}`), permanentDelete: (id) => api.delete(`/products/${id}/permanent`), uploadImage: (id, image_data) => api.post(`/products/${id}/image`, { image_data }), deleteImage: (id) => api.delete(`/products/${id}/image`), setPortalOrder: (id, portal_sort_order) => api.post(`/products/${id}/portal-order`, { portal_sort_order }), setDiscount: (id, body) => api.patch(`/products/${id}/discount`, body), setMerchandising: (id, body) => api.patch(`/products/${id}/merchandising`, body), setVisibility: (id, hidden) => api.patch(`/products/${id}/visibility`, { hidden }),
+  images: (id) => api.get(`/products/${id}/images`), addImage: (id, image_data) => api.post(`/products/${id}/images`, { image_data }), deleteExtraImage: (id, imgId) => api.delete(`/products/${id}/images/${imgId}`), orderImages: (id, ids) => api.put(`/products/${id}/images/order`, { ids }), copyImages: (id, srcId, include_main) => api.post(`/products/${id}/images/copy-from/${srcId}`, { include_main: !!include_main }) };
 export const partnersApi  = { getAll: (q) => api.get(`/partners${qs(q)}`), get: (id) => api.get(`/partners/${id}`), create: (p) => api.post('/partners',p), update: (id,p) => api.put(`/partners/${id}`,p) };
 export const invoicesApi = {
   list:            (q)    => api.get(`/invoices${qs(q)}`),
@@ -240,6 +241,9 @@ export const authApi = {
   login:  (pin) => api.post('/auth/login', { pin }),
   logout: ()    => api.post('/auth/logout', {}),
   me:     ()    => api.get('/auth/me'),
+  roles:        ()          => api.get('/auth/roles'),
+  setRolePin:   (role, pin) => api.put(`/auth/roles/${role}`, { pin }),
+  clearRolePin: (role)      => api.delete(`/auth/roles/${role}`),
 };
 
 // ── Sequential document number generator (localStorage counter per day) ──

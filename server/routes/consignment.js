@@ -194,7 +194,7 @@ module.exports = function(db) {
   router.post('/placements', (req, res) => {
     const { partner_id, product_id, date, qty, consignment_price, unit_cost, notes } = req.body;
     if (!partner_id || !product_id || !date || !qty) return res.status(400).json({ error: 'partner_id, product_id, date, qty required' });
-    let price = consignment_price, cost = unit_cost;
+    let price = consignment_price, cost = req.role === 'ops' ? undefined : unit_cost;  // ops never sets costs — falls back to the product's set cost
     if (price === undefined || cost === undefined) {
       const prod = db.queryOne('SELECT unit_cost, price_consignment_sg FROM products WHERE id = ?', [product_id]);
       if (price === undefined) price = prod?.price_consignment_sg || 0;

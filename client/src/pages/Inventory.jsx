@@ -625,7 +625,7 @@ export default function Inventory() {
     <Page title="INVENTORY" subtitle="Stock levels, movements, and restock planning"
       action={
         <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-          <Btn onClick={()=>setModal('restock')}><Plus size={14}/> Restock In</Btn>
+          {localStorage.getItem('pawvy_role') !== 'ops' && <Btn onClick={()=>setModal('restock')}><Plus size={14}/> Restock In</Btn>}
           <Btn variant="secondary" onClick={()=>setModal('transfer')}><ArrowLeftRight size={14}/> Transfer</Btn>
           <Btn variant="ghost" onClick={()=>setModal('writeoff')} style={{color:'#f87171',borderColor:'rgba(248,113,113,.3)'}}><Trash2 size={14}/> Write-off</Btn>
           <Btn variant="ghost" onClick={()=>setModal('adjustment')}><CheckCircle size={14}/> Adjust</Btn>
@@ -635,7 +635,7 @@ export default function Inventory() {
       {/* Import banner — only meaningful before baseline is set, but harmless to always show as an option */}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',background:'rgba(243,111,74,.06)',border:'1px solid rgba(243,111,74,.2)',borderRadius:8,padding:'10px 16px',flexWrap:'wrap',gap:8}}>
         <span style={{fontSize:12,color:'var(--cream-60)'}}>Haven't set your opening stock baseline yet? Import your 2026 tracking file data in one click.</span>
-        <Btn size="sm" variant="ghost" onClick={()=>setModal('import')}><Upload size={12}/> Import Opening Stock</Btn>
+        {localStorage.getItem('pawvy_role') !== 'ops' && <Btn size="sm" variant="ghost" onClick={()=>setModal('import')}><Upload size={12}/> Import Opening Stock</Btn>}
       </div>
 
       {/* KPIs */}

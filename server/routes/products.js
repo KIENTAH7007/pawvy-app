@@ -5,6 +5,9 @@ const sizeOf = require('image-size');
 const { withEffectivePrice } = require('../lib/pricing');
 const { uploadBuffer, getObjectStream, decodeDataUrl, buildImageKey, deleteObject } = require('../lib/bucket');
 const { NEED_TAGS } = require('../lib/needTags');
+const { compressPhoto } = require('../lib/productPhoto');
+
+const MAX_EXTRA_IMAGES = 5;   // + the main photo = 6 per SKU
 
 // need_tags is stored as a JSON array string (see database.js) so a
 // product can belong to more than one need — this always hands back a
@@ -522,13 +525,12 @@ module.exports = function(db) {
 
     try {
       const existing = db.queryOne('SELECT image_url FROM products WHERE id = ?', [req.params.id]);
-      const { buffer, contentType, extension } = decodeDataUrl(image_data);
+      const raw = decodeDataUrl(image_data);
+      const { buffer, contentType, extension } = await compressPhoto(raw.buffer, raw.contentType);
       const { key, url } = buildImageKey('products', req.params.id, extension);
       await uploadBuffer(key, buffer, contentType);
       db.run('UPDATE products SET image_url = ?, image_data = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [url, req.params.id]);
-      if (existing?.image_url) {
-        deleteObject(existing.image_url.replace(/^\/api\/uploads\//, '')).catch(() => {});
-      }
+      cleanupIfUnused(existing?.image_url);
       res.json({ ok: true, image_url: url });
     } catch (err) {
       res.status(502).json({ error: 'Image upload to storage failed: ' + err.message });
@@ -541,11 +543,93 @@ module.exports = function(db) {
     // Best-effort bucket cleanup — don't fail the request if this errors,
     // the DB is already the source of truth and a stray orphaned object
     // in the bucket costs fractions of a cent, not worth blocking on.
-    if (product?.image_url) {
-      const key = product.image_url.replace(/^\/api\/uploads\//, '');
-      deleteObject(key).catch(() => {});
-    }
+    cleanupIfUnused(product?.image_url);
     res.json({ ok: true });
+  });
+
+  // ── Extra product photos (Nov 2026) ────────────────────────────────
+  // The main photo stays products.image_url (everything that already uses it is
+  // untouched). Up to MAX_EXTRA_IMAGES more live in product_images, in order.
+  // "Copy from another SKU" reuses the SAME bucket file (no duplicate upload),
+  // so a bucket file is only deleted when nothing references it any more.
+  function cleanupIfUnused(url) {
+    if (!url) return;
+    const used = db.queryOne('SELECT 1 AS x FROM products WHERE image_url = ? UNION SELECT 1 FROM product_images WHERE image_url = ?', [url, url]);
+    if (!used) deleteObject(url.replace(/^\/api\/uploads\//, '')).catch(() => {});
+  }
+  const listImages = (productId) =>
+    db.query('SELECT id, position, image_url FROM product_images WHERE product_id = ? ORDER BY position, id', [productId]);
+  function renumber(productId) {
+    listImages(productId).forEach((r, i) => db.run('UPDATE product_images SET position = ? WHERE id = ?', [i + 1, r.id]));
+  }
+
+  router.get('/:id/images', (req, res) => {
+    res.json({ max_extra: MAX_EXTRA_IMAGES, images: listImages(req.params.id) });
+  });
+
+  router.post('/:id/images', async (req, res) => {
+    const { image_data } = req.body;
+    if (!image_data || !image_data.startsWith('data:image/')) return res.status(400).json({ error: 'Must be a base64 image data URI' });
+    if (!db.queryOne('SELECT id FROM products WHERE id = ?', [req.params.id])) return res.status(404).json({ error: 'Product not found.' });
+    if (listImages(req.params.id).length >= MAX_EXTRA_IMAGES) {
+      return res.status(400).json({ error: `A product can have the main photo plus ${MAX_EXTRA_IMAGES} extra photos.` });
+    }
+    try {
+      const raw = decodeDataUrl(image_data);
+      const { buffer, contentType, extension } = await compressPhoto(raw.buffer, raw.contentType);
+      const { key, url } = buildImageKey('products', req.params.id, extension);
+      await uploadBuffer(key, buffer, contentType);
+      // Re-check after the upload so two quick uploads can't exceed the limit.
+      const count = listImages(req.params.id).length;
+      if (count >= MAX_EXTRA_IMAGES) { deleteObject(key).catch(() => {}); return res.status(400).json({ error: `Limit of ${MAX_EXTRA_IMAGES} extra photos reached.` }); }
+      db.run('INSERT INTO product_images (product_id, position, image_url) VALUES (?,?,?)', [req.params.id, count + 1, url]);
+      res.json({ ok: true, images: listImages(req.params.id) });
+    } catch (err) {
+      res.status(502).json({ error: 'Image upload to storage failed: ' + err.message });
+    }
+  });
+
+  router.delete('/:id/images/:imgId', (req, res) => {
+    const row = db.queryOne('SELECT id, image_url FROM product_images WHERE id = ? AND product_id = ?', [req.params.imgId, req.params.id]);
+    if (!row) return res.status(404).json({ error: 'Photo not found.' });
+    db.run('DELETE FROM product_images WHERE id = ?', [row.id]);
+    renumber(req.params.id);
+    cleanupIfUnused(row.image_url);
+    res.json({ ok: true, images: listImages(req.params.id) });
+  });
+
+  // PUT /:id/images/order  { ids: [imageId, ...] } — new display order
+  router.put('/:id/images/order', (req, res) => {
+    const ids = (req.body.ids || []).map(Number);
+    const current = listImages(req.params.id).map(r => r.id);
+    if (ids.length !== current.length || !ids.every(i => current.includes(i))) {
+      return res.status(400).json({ error: 'ids must list every extra photo of this product exactly once.' });
+    }
+    ids.forEach((id, i) => db.run('UPDATE product_images SET position = ? WHERE id = ?', [i + 1, id]));
+    res.json({ ok: true, images: listImages(req.params.id) });
+  });
+
+  // POST /:id/images/copy-from/:srcId  { include_main?: boolean }
+  // Replaces THIS product's extra photos with the other SKU's (same files, no
+  // re-upload). include_main also copies the main photo.
+  router.post('/:id/images/copy-from/:srcId', (req, res) => {
+    const { id, srcId } = req.params;
+    if (String(id) === String(srcId)) return res.status(400).json({ error: 'Pick a different SKU to copy from.' });
+    const src = db.queryOne('SELECT id, image_url FROM products WHERE id = ?', [srcId]);
+    const dst = db.queryOne('SELECT id, image_url FROM products WHERE id = ?', [id]);
+    if (!src || !dst) return res.status(404).json({ error: 'Product not found.' });
+    const old = listImages(id);
+    const copied = listImages(srcId).slice(0, MAX_EXTRA_IMAGES);
+    db.run('DELETE FROM product_images WHERE product_id = ?', [id]);
+    copied.forEach((r, i) => db.run('INSERT INTO product_images (product_id, position, image_url) VALUES (?,?,?)', [id, i + 1, r.image_url]));
+    let oldMain = null;
+    if (req.body?.include_main && src.image_url) {
+      oldMain = dst.image_url;
+      db.run('UPDATE products SET image_url = ?, image_data = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [src.image_url, id]);
+    }
+    old.forEach(r => cleanupIfUnused(r.image_url));
+    if (oldMain && oldMain !== src.image_url) cleanupIfUnused(oldMain);
+    res.json({ ok: true, images: listImages(id), image_url: req.body?.include_main && src.image_url ? src.image_url : dst.image_url });
   });
 
   // ── Portal display order (Phase 6) ─────────────────────────────

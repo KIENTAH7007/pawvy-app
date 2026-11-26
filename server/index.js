@@ -55,6 +55,9 @@ async function startServer() {
   app.post('/api/auth/login',  auth.login);
   app.post('/api/auth/logout', auth.logout);
   app.get('/api/auth/me', auth.requireAuth, auth.me);
+  app.get('/api/auth/roles',          auth.requireAuth, auth.masterOnly, auth.listRoles);
+  app.put('/api/auth/roles/:role',    auth.requireAuth, auth.masterOnly, auth.setRolePin);
+  app.delete('/api/auth/roles/:role', auth.requireAuth, auth.masterOnly, auth.clearRolePin);
 
   // Public healthcheck for Railway (see railway.json) — must never require
   // a PIN, otherwise Railway's automated healthcheck request gets a 401

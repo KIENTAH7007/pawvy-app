@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Download, ShieldCheck, AlertTriangle } from 'lucide-react';
-import { backupApi } from '../api';
+import { backupApi, authApi } from '../api';
 import { Page, Btn } from '../components/ui';
 
 const AMBER = '#f5a524';
@@ -18,6 +18,52 @@ function saveBlob(blob, filename) {
 
 function fmtWhen(iso) {
   return new Date(iso).toLocaleString('en-SG', { timeZone: 'Asia/Singapore', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+function StaffAccess() {
+  const [roles, setRoles] = useState(null);
+  const [pin, setPin] = useState('');
+  const [msg, setMsg] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const load = () => authApi.roles().then(setRoles).catch(() => {});
+  useEffect(() => { load(); }, []);
+
+  async function save() {
+    setBusy(true); setMsg(null);
+    try {
+      await authApi.setRolePin('ops', pin);
+      setPin(''); setMsg({ ok: true, text: 'Operations PIN saved. Anyone signed in with the old operations PIN has been signed out.' });
+      load();
+    } catch (e) { setMsg({ ok: false, text: e.message || 'Could not save.' }); }
+    finally { setBusy(false); }
+  }
+  async function turnOff() {
+    if (!window.confirm('Turn off the Operations PIN? Anyone signed in with it will be signed out.')) return;
+    setBusy(true); setMsg(null);
+    try { await authApi.clearRolePin('ops'); setMsg({ ok: true, text: 'Operations PIN turned off.' }); load(); }
+    catch (e) { setMsg({ ok: false, text: e.message || 'Could not turn off.' }); }
+    finally { setBusy(false); }
+  }
+
+  const isSet = roles?.ops?.is_set;
+  return (
+    <div style={{ background: 'var(--navy)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 22, maxWidth: 640, marginTop: 20 }}>
+      <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--cream)', marginBottom: 6 }}>Staff access: Operations PIN</div>
+      <div style={{ fontSize: 12.5, color: 'var(--cream-60)', lineHeight: 1.6, marginBottom: 14 }}>
+        A separate 6-digit PIN for operations staff. It only opens Pending Orders, Inventory (without Restock In), Restock Checklist,
+        Consignment, Customers and Enquiries. Costs, profit and everything else stay hidden. Your own PIN keeps full access.
+        {' '}<b style={{ color: isSet ? '#7fc93e' : 'var(--cream-30)' }}>{roles ? (isSet ? 'Currently ON.' : 'Currently OFF.') : ''}</b>
+      </div>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <input type="password" inputMode="numeric" maxLength={6} value={pin} placeholder="6 digits"
+          onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+          style={{ width: 150, background: 'var(--navy-light)', border: '1px solid var(--border)', borderRadius: 7, padding: '9px 12px', color: 'var(--cream)', fontSize: 14, letterSpacing: 4 }} />
+        <Btn onClick={save} disabled={busy || pin.length !== 6}>{isSet ? 'Change PIN' : 'Turn on'}</Btn>
+        {isSet && <Btn variant="ghost" onClick={turnOff} disabled={busy}>Turn off</Btn>}
+      </div>
+      {msg && <div style={{ marginTop: 10, fontSize: 12.5, color: msg.ok ? '#7fc93e' : '#f87171' }}>{msg.text}</div>}
+    </div>
+  );
 }
 
 export default function Settings() {
@@ -72,6 +118,7 @@ export default function Settings() {
         <Btn onClick={download} disabled={busy} size="lg"><Download size={15} /> {busy ? 'Preparing…' : 'Download backup'}</Btn>
         {msg && <div style={{ marginTop: 12, fontSize: 12, color: msg.startsWith('Backup failed') ? '#f87171' : '#7fc93e' }}>{msg}</div>}
       </div>
+      <StaffAccess />
     </Page>
   );
 }

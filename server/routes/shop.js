@@ -53,6 +53,18 @@ const WEBSITE_HIDDEN_BARCODES = ['5060518442339'];
 module.exports = function(db) {
   const router = Router();
 
+  // Extra product photos (Nov 2026): adds `gallery` = [image_url, ...] (the photos
+  // AFTER the main one, in order) to each product. One query for the whole list.
+  function withGallery(list) {
+    const ids = list.map(p => p.id).filter(Boolean);
+    if (!ids.length) return list;
+    const rows = db.query(
+      `SELECT product_id, image_url FROM product_images WHERE product_id IN (${ids.map(() => '?').join(',')}) ORDER BY position, id`, ids);
+    const map = {};
+    rows.forEach(r => { (map[r.product_id] = map[r.product_id] || []).push(r.image_url); });
+    return list.map(p => ({ ...p, gallery: map[p.id] || [] }));
+  }
+
   // GET /api/shop/products — active products only, with brand + effective
   // pricing + stock status. Supports the same brand_id/search filters as
   // the staff endpoint for consistency, minus anything staff-only.
@@ -143,7 +155,7 @@ module.exports = function(db) {
       const { mega_qty, hougang_qty, ...rest } = withEffectivePrice(r);
       return parseNeedTags({ ...rest, stock_status: stockStatus(mega_qty + hougang_qty) });
     });
-    res.json({ products });
+    res.json({ products: withGallery(products) });
   });
 
   // GET /api/shop/products/:id — single product detail, same field scope
@@ -167,7 +179,7 @@ module.exports = function(db) {
 
     if (!row) return res.status(404).json({ error: 'Product not found.' });
     const { mega_qty, hougang_qty, ...rest } = withEffectivePrice(row);
-    res.json({ product: parseNeedTags({ ...rest, stock_status: stockStatus(mega_qty + hougang_qty) }) });
+    res.json({ product: withGallery([parseNeedTags({ ...rest, stock_status: stockStatus(mega_qty + hougang_qty) })])[0] });
   });
 
   // GET /api/shop/brands — for a brand filter on the shop page.
@@ -212,7 +224,7 @@ module.exports = function(db) {
       .filter(p => p.stock_status !== 'out_of_stock')
       .slice(0, limit);
 
-    res.json({ products });
+    res.json({ products: withGallery(products) });
   });
 
   // GET /api/shop/pawvy-picks — the homepage's admin-curated section
@@ -240,7 +252,7 @@ module.exports = function(db) {
       const { mega_qty, hougang_qty, ...rest } = withEffectivePrice(r);
       return parseNeedTags({ ...rest, stock_status: stockStatus(mega_qty + hougang_qty) });
     });
-    res.json({ products });
+    res.json({ products: withGallery(products) });
   });
 
   // GET /api/shop/testimonials?need=dental — only active testimonials,

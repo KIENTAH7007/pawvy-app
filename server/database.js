@@ -902,6 +902,19 @@ function createSchema() {
   try { db.run("ALTER TABLE products ADD COLUMN description TEXT"); } catch(e) {}
   // "Hide from POS, Order Portal & website" — product stays Active internally (Shipments, Inventory, Costs)
   try { db.run("ALTER TABLE products ADD COLUMN hidden_from_partners INTEGER DEFAULT 0"); } catch(e) {}
+  // Staff roles (Nov 2026): sessions remember which PIN they used; role PINs are stored hashed.
+  try { db.run("ALTER TABLE sessions ADD COLUMN role TEXT DEFAULT 'master'"); } catch(e) {}
+  // Extra product photos (Nov 2026): the existing products.image_url stays the MAIN photo;
+  // up to 5 more live here, in display order (position 1..5).
+  db.run(`CREATE TABLE IF NOT EXISTS product_images (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    product_id INTEGER NOT NULL,
+    position INTEGER NOT NULL DEFAULT 1,
+    image_url TEXT NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+  )`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_product_images_product ON product_images(product_id, position)`);
+  db.run(`CREATE TABLE IF NOT EXISTS role_pins (role TEXT PRIMARY KEY, pin_hash TEXT NOT NULL, updated_at TEXT)`);
 
   // Primary-pet flag — the birthday-month multiplier and the profile-
   // completion 50B bonus are both keyed off one designated pet, agreed as
