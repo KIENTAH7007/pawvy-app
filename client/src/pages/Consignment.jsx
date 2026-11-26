@@ -7,7 +7,7 @@ import { localDateStr } from '../utils/dates';
 
 const today = () => localDateStr();
 // Ops role never sees or sets costs (server also ignores any cost it is sent).
-const OPS = (() => { try { return localStorage.getItem('pawvy_role') === 'ops'; } catch { return false; } })();
+const isOps = () => { try { return localStorage.getItem('pawvy_role') === 'ops'; } catch { return false; } };
 
 function useIsMobile() {
   const [m, setM] = useState(window.innerWidth < 768);
@@ -116,6 +116,7 @@ function makeDocNum(prefix = 'CS') {
 
 // ── Place Stock Modal ──────────────────────────────────────────────
 function PlaceStockModal({ open, onClose, partnerId, onSaved }) {
+  const OPS = isOps();   // read at render time (not at page load) so it is right straight after logging in
   const [date, setDate]         = useState(today());
   const [products, setProducts] = useState([]);
   const [brands, setBrands]     = useState([]);
